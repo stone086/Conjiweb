@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
@@ -70,7 +70,7 @@ export default function LoginPage() {
                 <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type={showPass ? "text" : "password"} value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="鈥⑩€⑩€⑩€⑩€⑩€⑩€⑩€? className="input-field pl-9 pr-10" required />
+                  placeholder="********" className="input-field pl-9 pr-10" required />
                 <button type="button" onClick={() => setShowPass(!showPass)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-200/30 hover:text-surface-200">
                   {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -91,7 +91,7 @@ export default function LoginPage() {
           </form>
           <p className="text-center text-xs text-surface-200/30 mt-6">Your credentials connect directly to your XMPP server.</p>
         </div>
-        <p className="text-center text-xs text-surface-200/20 mt-6">Conjiweb 路 Open Source 路 v3.0.0</p>
+        <p className="text-center text-xs text-surface-200/20 mt-6">Conjiweb 鐠?Open Source 鐠?v3.0.0</p>
       </div>
     </div>
   );
