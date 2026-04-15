@@ -161,6 +161,8 @@ load_config() {
   if [ ! -f ".env" ]; then
     error ".env 文件不存在，请先复制: cp .env.example .env 并填写配置"
   fi
+  # Normalize CRLF to LF to avoid hidden '\r' in secrets.
+  sed -i 's/\r$//' .env
   # shellcheck disable=SC1091
   set -a; source .env; set +a
 
@@ -172,6 +174,19 @@ load_config() {
   MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
   SECRET_KEY="${SECRET_KEY:-$(openssl rand -hex 32)}"
   XMPP_DOMAIN="${XMPP_DOMAIN:-localhost}"
+
+  # Strip accidental CR characters from sourced values.
+  DOMAIN="${DOMAIN//$'\r'/}"
+  EMAIL="${EMAIL//$'\r'/}"
+  DB_PASS="${DB_PASS//$'\r'/}"
+  REDIS_PASS="${REDIS_PASS//$'\r'/}"
+  MINIO_ROOT_USER="${MINIO_ROOT_USER//$'\r'/}"
+  MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD//$'\r'/}"
+  SECRET_KEY="${SECRET_KEY//$'\r'/}"
+  XMPP_DOMAIN="${XMPP_DOMAIN//$'\r'/}"
+
+  DB_PASS_SQL_ESCAPED="${DB_PASS//\'/\'\'}"
+  DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
 
   if is_placeholder_domain "$DOMAIN" && [[ -t 0 ]]; then
     read -rp "请输入真实域名（例如 chat.yourdomain.com）: " DOMAIN
@@ -251,10 +266,10 @@ install_postgres() {
   # Idempotent role/database setup with strict error checking.
   if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${APP_USER}'" | grep -q 1; then
     sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "CREATE ROLE \"${APP_USER}\" WITH LOGIN PASSWORD '${DB_PASS}';"
+      -c "CREATE ROLE \"${APP_USER}\" WITH LOGIN PASSWORD '${DB_PASS_SQL_ESCAPED}';"
   fi
   sudo -u postgres psql -v ON_ERROR_STOP=1 \
-    -c "ALTER ROLE \"${APP_USER}\" WITH LOGIN PASSWORD '${DB_PASS}';"
+    -c "ALTER ROLE \"${APP_USER}\" WITH LOGIN PASSWORD '${DB_PASS_SQL_ESCAPED}';"
 
   if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${APP_USER}'" | grep -q 1; then
     sudo -u postgres psql -v ON_ERROR_STOP=1 \
@@ -384,7 +399,7 @@ deploy_api() {
 
   # 生成 API .env
   cat > "${INSTALL_DIR}/api/.env" << EOF
-DATABASE_URL=postgresql+asyncpg://${APP_USER}:${DB_PASS}@127.0.0.1:5432/${APP_USER}
+DATABASE_URL=postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}
 REDIS_URL=redis://:${REDIS_PASS}@127.0.0.1:6379/0
 MINIO_ENDPOINT=127.0.0.1:9000
 MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
