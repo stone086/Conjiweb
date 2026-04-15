@@ -146,7 +146,8 @@ bootstrap_if_needed() {
 
   set_env "DOMAIN" "$DOMAIN"
   set_env "EMAIL" "$EMAIL"
-  if grep -qE '^XMPP_DOMAIN=' .env && [[ -z "$(grep -E '^XMPP_DOMAIN=' .env | head -n1 | cut -d= -f2-)" ]]; then
+  CURRENT_XMPP_DOMAIN="$(grep -E '^XMPP_DOMAIN=' .env | head -n1 | cut -d= -f2- || true)"
+  if [[ -z "$CURRENT_XMPP_DOMAIN" ]] || is_placeholder_domain "$CURRENT_XMPP_DOMAIN"; then
     set_env "XMPP_DOMAIN" "$DOMAIN"
   fi
 
@@ -237,8 +238,10 @@ install_deps() {
 install_postgres() {
   step "安装 PostgreSQL 16"
   # 官方日本镜像
-  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
-    gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+  if [ ! -f /etc/apt/keyrings/postgresql.gpg ]; then
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
+      gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+  fi
   echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] \
     https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
     > /etc/apt/sources.list.d/pgdg.list
@@ -299,9 +302,12 @@ install_prosody() {
 # ── 7. 安装 MinIO ──────────────────────────────────────────────────────────────
 install_minio() {
   step "安装 MinIO 对象存储"
-  wget -q https://dl.min.io/server/minio/release/linux-amd64/minio \
-    -O /usr/local/bin/minio
-  chmod +x /usr/local/bin/minio
+  systemctl stop minio 2>/dev/null || true
+  pkill -f '/usr/local/bin/minio' 2>/dev/null || true
+  sleep 1
+  wget -q https://dl.min.io/server/minio/release/linux-amd64/minio -O /tmp/minio.new
+  install -m 755 /tmp/minio.new /usr/local/bin/minio
+  rm -f /tmp/minio.new
 
   mkdir -p /data/minio
 
@@ -634,6 +640,7 @@ main() {
   echo ""
 
   load_config
+  setup_quick_check
   check_system
   setup_apt_mirror
   install_deps
@@ -649,7 +656,6 @@ main() {
   setup_firewall
   setup_fail2ban
   setup_backup
-  setup_quick_check
   print_summary
 }
 
