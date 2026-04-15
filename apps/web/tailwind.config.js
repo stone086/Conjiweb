@@ -5,23 +5,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Deep space palette
         surface: {
-          50:  "#f0f0f8",
-          100: "#e0e0f0",
-          200: "#c0c0e0",
-          800: "#1a1a2e",
-          900: "#0f0f1a",
-          950: "#07070e",
+          50:  "rgb(var(--surface-50) / <alpha-value>)",
+          100: "rgb(var(--surface-100) / <alpha-value>)",
+          200: "rgb(var(--surface-200) / <alpha-value>)",
+          800: "rgb(var(--surface-800) / <alpha-value>)",
+          900: "rgb(var(--surface-900) / <alpha-value>)",
+          950: "rgb(var(--surface-950) / <alpha-value>)",
         },
         accent: {
-          DEFAULT: "#7c6af7",
-          soft:    "#a89cf8",
-          dim:     "#4a3fba",
+          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
+          soft:    "rgb(var(--accent-soft) / <alpha-value>)",
+          dim:     "rgb(var(--accent-dim) / <alpha-value>)",
         },
-        success: "#22c55e",
-        warn:    "#f59e0b",
-        danger:  "#ef4444",
+        success: "rgb(var(--success) / <alpha-value>)",
+        warn:    "rgb(var(--warn) / <alpha-value>)",
+        danger:  "rgb(var(--danger) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["'DM Sans'", "system-ui", "sans-serif"],

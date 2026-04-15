@@ -6,10 +6,13 @@ import { Toaster } from "react-hot-toast";
 import App from "./app/App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/globals.css";
+import { applyTheme, getStoredTheme } from "./utils/theme";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 60 * 5, retry: 1 } },
 });
+
+applyTheme(getStoredTheme());
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

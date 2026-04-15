@@ -4,6 +4,7 @@ import { createClient, destroyClient } from "@/services/xmppAdapter";
 import { Trash2, Plus, Wifi, WifiOff, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
+import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
 
 const PRESENCES: { value: PresenceType; label: string; color: string }[] = [
   { value: "available", label: "Available", color: "bg-success" },
@@ -113,6 +114,7 @@ export default function SettingsPage() {
   const addAccount = useAccountStore((s) => s.addAccount);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ jid: "", password: "", wsUrl: "" });
+  const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
 
   const handleAdd = () => {
     if (!form.jid || !form.password) { toast.error("JID and password required"); return; }
@@ -180,7 +182,15 @@ export default function SettingsPage() {
           <div className="glass rounded-xl p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-surface-200">Theme</span>
-              <select className="input-field w-auto text-sm">
+              <select
+                className="input-field w-auto text-sm"
+                value={theme}
+                onChange={(e) => {
+                  const next = e.target.value as ThemeMode;
+                  setTheme(next);
+                  applyTheme(next);
+                }}
+              >
                 <option value="dark">Dark (Default)</option>
                 <option value="light">Light</option>
                 <option value="system">System</option>

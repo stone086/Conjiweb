@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, Bell, Moon, Sun, PanelRight } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import NotificationPanel from "@/modules/notification/NotificationPanel";
 import GlobalSearch from "@/modules/search/GlobalSearch";
+import { applyTheme, getStoredTheme } from "@/utils/theme";
 
 interface TopBarProps {
   onToggleRight?: () => void;
@@ -12,9 +13,13 @@ interface TopBarProps {
 }
 
 export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) {
-  const [dark, setDark] = useState(true);
+  const [theme, setTheme] = useState(getStoredTheme());
   const [showNotifs, setShowNotifs] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const dark = useMemo(() => {
+    if (theme === "system") return !window.matchMedia("(prefers-color-scheme: light)").matches;
+    return theme === "dark";
+  }, [theme]);
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === s.activeAccountId));
   const totalUnread = useNotificationStore((s) => s.totalUnread);
 
@@ -37,7 +42,14 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
         {showRightToggle && (
           <button onClick={onToggleRight} className="btn-ghost p-2" title="Toggle info panel"><PanelRight size={16} /></button>
         )}
-        <button onClick={() => { setDark(!dark); document.documentElement.classList.toggle("dark"); }} className="btn-ghost p-2">
+        <button
+          onClick={() => {
+            const next = dark ? "light" : "dark";
+            setTheme(next);
+            applyTheme(next);
+          }}
+          className="btn-ghost p-2"
+        >
           {dark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
         <div className="relative">
