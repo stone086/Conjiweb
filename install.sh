@@ -171,8 +171,6 @@ load_config() {
   MINIO_ROOT_USER="${MINIO_ROOT_USER:-minioadmin}"
   MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
   SECRET_KEY="${SECRET_KEY:-$(openssl rand -hex 32)}"
-  ADMIN_USER="${ADMIN_USER:-admin}"
-  ADMIN_PASS="${ADMIN_PASS:-$(openssl rand -hex 8)}"
   XMPP_DOMAIN="${XMPP_DOMAIN:-localhost}"
 
   if is_placeholder_domain "$DOMAIN" && [[ -t 0 ]]; then
@@ -191,7 +189,6 @@ load_config() {
   sed -i "s|^REDIS_PASS=.*|REDIS_PASS=${REDIS_PASS}|" .env
   sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}|" .env
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET_KEY}|" .env
-  sed -i "s|^ADMIN_PASS=.*|ADMIN_PASS=${ADMIN_PASS}|" .env
 }
 
 # ── 1. 系统检查 ────────────────────────────────────────────────────────────────
@@ -381,13 +378,11 @@ MINIO_BUCKET=webgajim-files
 MINIO_SECURE=false
 SECRET_KEY=${SECRET_KEY}
 CORS_ORIGINS=["https://${DOMAIN}"]
-ADMIN_USER=${ADMIN_USER}
-ADMIN_PASS=${ADMIN_PASS}
 EOF
 
   # 运行数据库迁移
   cd "${INSTALL_DIR}/api"
-  .venv/bin/alembic upgrade head || true
+  .venv/bin/alembic upgrade head
 
   # 创建 systemd 服务
   cat > /etc/systemd/system/webgajim-api.service << EOF
@@ -598,8 +593,6 @@ print_summary() {
   echo ""
   echo -e "  ${CYAN}前端地址：${NC}   https://${DOMAIN}"
   echo -e "  ${CYAN}API 文档：${NC}   https://${DOMAIN}/api/docs"
-  echo -e "  ${CYAN}后台登录：${NC}   用户 ${ADMIN_USER} / 密码 ${ADMIN_PASS}"
-  echo ""
   echo -e "  ${CYAN}XMPP 域名：${NC} ${XMPP_DOMAIN}"
   echo -e "  ${CYAN}WebSocket：${NC} wss://${DOMAIN}/xmpp-websocket"
   echo ""
@@ -618,7 +611,6 @@ print_summary() {
   echo -e "  数据库密码: ${DB_PASS}"
   echo -e "  Redis 密码: ${REDIS_PASS}"
   echo -e "  MinIO 密码: ${MINIO_ROOT_PASSWORD}"
-  echo -e "  后台密码:   ${ADMIN_PASS}"
   echo ""
 }
 
