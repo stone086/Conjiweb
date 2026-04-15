@@ -1,139 +1,167 @@
 #!/usr/bin/env bash
-# =============================================================================
-#  Conjiweb 鈥?绠＄悊鑴氭湰
-#  鐢ㄦ硶: bash manage.sh [鍛戒护]
-# =============================================================================
+set -euo pipefail
 
 INSTALL_DIR="/opt/conjiweb"
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; NC='\033[0m'
-
-usage() {
-  echo -e "${CYAN}Conjiweb 绠＄悊鑴氭湰${NC}"
-  echo ""
-  echo "鐢ㄦ硶: bash manage.sh [鍛戒护]"
-  echo ""
-  echo "鏈嶅姟绠＄悊:"
-  echo "  status          鏌ョ湅鎵€鏈夋湇鍔＄姸鎬?
-  echo "  start           鍚姩鎵€鏈夋湇鍔?
-  echo "  stop            鍋滄鎵€鏈夋湇鍔?
-  echo "  restart         閲嶅惎鎵€鏈夋湇鍔?
-  echo "  restart-api     鍙噸鍚悗绔?API"
-  echo "  restart-nginx   鍙噸鍚?Nginx"
-  echo ""
-  echo "鏃ュ織:"
-  echo "  logs-api        鏌ョ湅 API 瀹炴椂鏃ュ織"
-  echo "  logs-xmpp       鏌ョ湅 Prosody 鏃ュ織"
-  echo "  logs-nginx      鏌ョ湅 Nginx 璁块棶鏃ュ織"
-  echo "  logs-nginx-err  鏌ョ湅 Nginx 閿欒鏃ュ織"
-  echo ""
-  echo "XMPP 鐢ㄦ埛:"
-  echo "  add-user        娣诲姞 XMPP 鐢ㄦ埛"
-  echo "  del-user        鍒犻櫎 XMPP 鐢ㄦ埛"
-  echo "  list-users      鍒楀嚭鎵€鏈夌敤鎴?
-  echo "  change-pass     淇敼鐢ㄦ埛瀵嗙爜"
-  echo ""
-  echo "缁存姢:"
-  echo "  backup          绔嬪嵆澶囦唤"
-  echo "  update-front    鏇存柊鍓嶇锛堥噸鏂版瀯寤猴級"
-  echo "  update-api      鏇存柊鍚庣锛堥噸鍚湇鍔★級"
-  echo "  ssl-renew       鎵嬪姩缁湡 SSL 璇佷功"
-  echo "  db-shell        杩涘叆鏁版嵁搴撳懡浠よ"
-  echo "  mem-usage       鏌ョ湅鍐呭瓨浣跨敤"
-}
-
+SRC_DIR="/opt/conjiweb-src"
 SERVICES=("postgresql" "redis-server" "prosody" "minio" "conjiweb-api" "nginx")
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+usage() {
+  echo -e "${CYAN}Conjiweb manage${NC}"
+  echo ""
+  echo "Usage: bash manage.sh <command>"
+  echo ""
+  echo "Service:"
+  echo "  status          Show service status"
+  echo "  start           Start all services"
+  echo "  stop            Stop all services"
+  echo "  restart         Restart all services"
+  echo "  restart-api     Restart API service only"
+  echo "  restart-nginx   Reload nginx only"
+  echo ""
+  echo "Logs:"
+  echo "  logs-api        Tail API journal"
+  echo "  logs-xmpp       Tail Prosody log"
+  echo "  logs-nginx      Tail nginx access log"
+  echo "  logs-nginx-err  Tail nginx error log"
+  echo ""
+  echo "XMPP:"
+  echo "  add-user        Add XMPP user"
+  echo "  del-user        Delete XMPP user"
+  echo "  list-users      List XMPP users"
+  echo "  change-pass     Change XMPP user password"
+  echo ""
+  echo "Ops:"
+  echo "  backup          Run backup now"
+  echo "  update          Recommended: incremental update (pull + api + frontend)"
+  echo "  update-front    Update frontend only"
+  echo "  update-api      Update API only"
+  echo "  ssl-renew       Renew SSL certificates"
+  echo "  db-shell        Open PostgreSQL shell"
+  echo "  mem-usage       Show process memory usage"
+}
+
+load_env() {
+  source "${SRC_DIR}/.env" 2>/dev/null || true
+}
+
 cmd_status() {
-  echo -e "\n${CYAN}鈹佲攣鈹?鏈嶅姟鐘舵€?鈹佲攣鈹?{NC}"
+  echo -e "\n${CYAN}== Services ==${NC}"
   for svc in "${SERVICES[@]}"; do
-    STATUS=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
-    if [ "$STATUS" = "active" ]; then
-      echo -e "  ${GREEN}鈼?{NC} $svc"
+    status="$(systemctl is-active "$svc" 2>/dev/null || echo unknown)"
+    if [[ "$status" == "active" ]]; then
+      echo -e "  ${GREEN}OK${NC}  $svc"
     else
-      echo -e "  ${RED}鈼?{NC} $svc (${STATUS})"
+      echo -e "  ${RED}NO${NC}  $svc ($status)"
     fi
   done
 
-  echo -e "\n${CYAN}鈹佲攣鈹?鍐呭瓨浣跨敤 鈹佲攣鈹?{NC}"
+  echo -e "\n${CYAN}== Memory ==${NC}"
   free -h | grep -E "^(Mem|Swap)"
-
-  echo -e "\n${CYAN}鈹佲攣鈹?纾佺洏浣跨敤 鈹佲攣鈹?{NC}"
-  df -h / /data 2>/dev/null | tail -n +1
-  echo ""
+  echo -e "\n${CYAN}== Disk ==${NC}"
+  df -h / /data 2>/dev/null || true
 }
 
-cmd_start() {
-  for svc in "${SERVICES[@]}"; do
-    systemctl start "$svc" && echo -e "${GREEN}[OK]${NC} $svc" || echo -e "${RED}[FAIL]${NC} $svc"
-  done
-}
-
-cmd_stop() {
-  for svc in $(echo "${SERVICES[@]}" | tr ' ' '\n' | tac); do
-    systemctl stop "$svc" && echo -e "${GREEN}[OK]${NC} stopped $svc"
-  done
-}
-
-cmd_restart() {
-  for svc in "${SERVICES[@]}"; do
-    systemctl restart "$svc" && echo -e "${GREEN}[OK]${NC} restarted $svc"
-  done
-}
+cmd_start() { for svc in "${SERVICES[@]}"; do systemctl start "$svc"; done; }
+cmd_stop() { for svc in nginx conjiweb-api minio prosody redis-server postgresql; do systemctl stop "$svc" 2>/dev/null || true; done; }
+cmd_restart() { for svc in "${SERVICES[@]}"; do systemctl restart "$svc"; done; }
 
 cmd_add_user() {
-  source .env 2>/dev/null || true
-  DOMAIN="${XMPP_DOMAIN:-localhost}"
-  read -rp "鐢ㄦ埛鍚? " USERNAME
-  prosodyctl adduser "${USERNAME}@${DOMAIN}"
-  echo -e "${GREEN}鐢ㄦ埛 ${USERNAME}@${DOMAIN} 宸插垱寤?{NC}"
+  load_env
+  domain="${XMPP_DOMAIN:-localhost}"
+  read -rp "Username: " username
+  prosodyctl adduser "${username}@${domain}"
 }
 
 cmd_del_user() {
-  source .env 2>/dev/null || true
-  DOMAIN="${XMPP_DOMAIN:-localhost}"
-  read -rp "瑕佸垹闄ょ殑鐢ㄦ埛鍚? " USERNAME
-  prosodyctl deluser "${USERNAME}@${DOMAIN}"
-  echo -e "${YELLOW}鐢ㄦ埛 ${USERNAME}@${DOMAIN} 宸插垹闄?{NC}"
+  load_env
+  domain="${XMPP_DOMAIN:-localhost}"
+  read -rp "Username to delete: " username
+  prosodyctl deluser "${username}@${domain}"
 }
 
 cmd_list_users() {
-  source .env 2>/dev/null || true
-  DOMAIN="${XMPP_DOMAIN:-localhost}"
-  prosodyctl list users "${DOMAIN}"
+  load_env
+  domain="${XMPP_DOMAIN:-localhost}"
+  prosodyctl list users "$domain"
 }
 
 cmd_change_pass() {
-  source .env 2>/dev/null || true
-  DOMAIN="${XMPP_DOMAIN:-localhost}"
-  read -rp "鐢ㄦ埛鍚? " USERNAME
-  prosodyctl passwd "${USERNAME}@${DOMAIN}"
+  load_env
+  domain="${XMPP_DOMAIN:-localhost}"
+  read -rp "Username: " username
+  prosodyctl passwd "${username}@${domain}"
 }
 
 cmd_update_front() {
-  echo "閲嶆柊鏋勫缓鍓嶇..."
+  load_env
+  mkdir -p "${INSTALL_DIR}/web"
+  cp -r "${SRC_DIR}/apps/web/." "${INSTALL_DIR}/web/"
   cd "${INSTALL_DIR}/web"
-  git pull 2>/dev/null || true
-  npm ci --silent
+
+  if [[ -n "${DOMAIN:-}" ]]; then
+    cat > .env.production <<EOF
+VITE_API_URL=https://${DOMAIN}
+VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
+EOF
+  fi
+
+  if [[ -f package-lock.json ]]; then
+    npm ci --silent
+  else
+    npm install --silent --no-audit --no-fund
+  fi
   npm run build
-  echo -e "${GREEN}鍓嶇鏇存柊瀹屾垚${NC}"
   systemctl reload nginx
+  echo -e "${GREEN}Frontend updated${NC}"
 }
 
 cmd_update_api() {
-  echo "鏇存柊鍚庣..."
+  mkdir -p "${INSTALL_DIR}/api"
+  cp -r "${SRC_DIR}/apps/api/." "${INSTALL_DIR}/api/"
   cd "${INSTALL_DIR}/api"
-  git pull 2>/dev/null || true
+
+  if [[ ! -d .venv ]]; then
+    python3.11 -m venv .venv
+  fi
+  .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
+
+  if [[ -f .env && -f alembic.ini ]]; then
+    db_url="$(grep '^DATABASE_URL=' .env | cut -d= -f2- || true)"
+    if [[ -n "${db_url}" ]]; then
+      sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = ${db_url}|" alembic.ini
+    fi
+  fi
   .venv/bin/alembic upgrade head
   systemctl restart conjiweb-api
-  echo -e "${GREEN}鍚庣鏇存柊瀹屾垚${NC}"
+  echo -e "${GREEN}API updated${NC}"
+}
+
+cmd_update_all() {
+  echo -e "${CYAN}[1/4] Pull source${NC}"
+  cd "${SRC_DIR}"
+  git fetch --all --prune
+  git reset --hard origin/main
+
+  echo -e "${CYAN}[2/4] Update API${NC}"
+  cmd_update_api
+
+  echo -e "${CYAN}[3/4] Update frontend${NC}"
+  cmd_update_front
+
+  echo -e "${CYAN}[4/4] Status${NC}"
+  cmd_status
 }
 
 cmd_mem_usage() {
-  echo -e "${CYAN}鈹佲攣鈹?杩涚▼鍐呭瓨浣跨敤 鈹佲攣鈹?{NC}"
-  ps aux --sort=-%mem | grep -E "(postgres|redis|prosody|minio|uvicorn|nginx)" | \
-    awk '{printf "%-30s %s MB\n", $11, int($6/1024)}'
+  ps aux --sort=-%mem | grep -E "(postgres|redis|prosody|minio|uvicorn|nginx)" | grep -v grep | \
+    awk '{printf "%-28s %s MB\n", $11, int($6/1024)}'
   echo ""
   free -h
 }
@@ -141,7 +169,6 @@ cmd_mem_usage() {
 cmd_ssl_renew() {
   certbot renew --nginx
   systemctl reload nginx
-  echo -e "${GREEN}SSL 璇佷功缁湡瀹屾垚${NC}"
 }
 
 cmd_db_shell() {
@@ -149,25 +176,27 @@ cmd_db_shell() {
 }
 
 case "${1:-}" in
-  status)       cmd_status ;;
-  start)        cmd_start ;;
-  stop)         cmd_stop ;;
-  restart)      cmd_restart ;;
-  restart-api)  systemctl restart conjiweb-api && echo "API 閲嶅惎瀹屾垚" ;;
-  restart-nginx) systemctl reload nginx && echo "Nginx 閲嶈浇瀹屾垚" ;;
-  logs-api)     journalctl -u conjiweb-api -f ;;
-  logs-xmpp)    tail -f /var/log/prosody/prosody.log ;;
-  logs-nginx)   tail -f /var/log/nginx/access.log ;;
-  logs-nginx-err) tail -f /var/log/nginx/error.log ;;
-  add-user)     cmd_add_user ;;
-  del-user)     cmd_del_user ;;
-  list-users)   cmd_list_users ;;
-  change-pass)  cmd_change_pass ;;
-  backup)       /usr/local/bin/conjiweb-backup.sh ;;
-  update-front) cmd_update_front ;;
-  update-api)   cmd_update_api ;;
-  ssl-renew)    cmd_ssl_renew ;;
-  db-shell)     cmd_db_shell ;;
-  mem-usage)    cmd_mem_usage ;;
-  *)            usage ;;
+  status)          cmd_status ;;
+  start)           cmd_start ;;
+  stop)            cmd_stop ;;
+  restart)         cmd_restart ;;
+  restart-api)     systemctl restart conjiweb-api ;;
+  restart-nginx)   systemctl reload nginx ;;
+  logs-api)        journalctl -u conjiweb-api -f ;;
+  logs-xmpp)       tail -f /var/log/prosody/prosody.log ;;
+  logs-nginx)      tail -f /var/log/nginx/access.log ;;
+  logs-nginx-err)  tail -f /var/log/nginx/error.log ;;
+  add-user)        cmd_add_user ;;
+  del-user)        cmd_del_user ;;
+  list-users)      cmd_list_users ;;
+  change-pass)     cmd_change_pass ;;
+  backup)          /usr/local/bin/conjiweb-backup.sh ;;
+  update)          cmd_update_all ;;
+  update-front)    cmd_update_front ;;
+  update-api)      cmd_update_api ;;
+  ssl-renew)       cmd_ssl_renew ;;
+  db-shell)        cmd_db_shell ;;
+  mem-usage)       cmd_mem_usage ;;
+  *)               usage ;;
 esac
+

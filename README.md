@@ -23,5 +23,6 @@ bash manage.sh status
 bash manage.sh logs-api
 bash manage.sh add-user
 bash manage.sh backup
+bash manage.sh update
 conjiweb-check your-domain.com
 ```
