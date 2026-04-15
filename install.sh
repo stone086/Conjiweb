@@ -248,10 +248,31 @@ install_postgres() {
   systemctl enable postgresql
   systemctl start postgresql
 
-  sudo -u postgres psql -c "CREATE USER ${APP_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
-  sudo -u postgres psql -c "ALTER USER ${APP_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
-  sudo -u postgres psql -c "CREATE DATABASE ${APP_USER} OWNER ${APP_USER};" 2>/dev/null || true
-  sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${APP_USER} TO ${APP_USER};" 2>/dev/null || true
+  # Idempotent role/database setup with strict error checking.
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --set app_user="${APP_USER}" --set app_pass="${DB_PASS}" <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_pass');
+  ELSE
+    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'app_user', :'app_pass');
+  END IF;
+END
+$$;
+SQL
+
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --set app_user="${APP_USER}" <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'app_user') THEN
+    EXECUTE format('CREATE DATABASE %I OWNER %I', :'app_user', :'app_user');
+  END IF;
+END
+$$;
+SQL
+
+  sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres \
+    -c "GRANT ALL PRIVILEGES ON DATABASE \"${APP_USER}\" TO \"${APP_USER}\";"
 
   # 内存优化（适合 2GB VPS）
   PG_CONF="/etc/postgresql/16/main/postgresql.conf"
@@ -260,6 +281,10 @@ install_postgres() {
   sed -i "s|#maintenance_work_mem = 64MB|maintenance_work_mem = 64MB|" "$PG_CONF"
   sed -i "s|#effective_cache_size = 4GB|effective_cache_size = 512MB|" "$PG_CONF"
   systemctl restart postgresql
+
+  # Verify that password auth really works before continuing.
+  PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" \
+    -c "SELECT 1;" >/dev/null 2>&1 || error "PostgreSQL login check failed for user ${APP_USER}"
 
   success "PostgreSQL 16 安装完成，数据库: ${APP_USER}"
 }
