@@ -8,6 +8,7 @@ export interface XmppAccount {
   jid: string;
   domain: string;
   password: string; // stored encrypted in production - use keychain
+  is_enabled?: boolean;
   displayName?: string;
   avatarUrl?: string;
   presence: PresenceType;
@@ -34,7 +35,7 @@ export const useAccountStore = create<AccountState>()(
         set((s) => ({
           accounts: [
             ...s.accounts,
-            { ...account, presence: "available", connected: false },
+            { ...account, is_enabled: account.is_enabled ?? true, presence: "available", connected: false },
           ],
           activeAccountId: s.activeAccountId ?? account.id,
         })),
