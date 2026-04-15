@@ -4,8 +4,8 @@
 
 ## 版本
 
-- Native 版：`web_Conji_native`（当前）
-- Docker 版：`web_Conji_Dock`
+- Native 版：`Conjiweb`（当前）
+- Docker 版：`Conjiweb-Docker`
 
 ## 快速开始（推荐）
 
