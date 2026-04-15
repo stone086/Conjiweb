@@ -249,28 +249,17 @@ install_postgres() {
   systemctl start postgresql
 
   # Idempotent role/database setup with strict error checking.
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --set app_user="${APP_USER}" --set app_pass="${DB_PASS}" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_pass');
-  ELSE
-    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'app_user', :'app_pass');
-  END IF;
-END
-$$;
-SQL
+  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${APP_USER}'" | grep -q 1; then
+    sudo -u postgres psql -v ON_ERROR_STOP=1 \
+      -c "CREATE ROLE \"${APP_USER}\" WITH LOGIN PASSWORD '${DB_PASS}';"
+  fi
+  sudo -u postgres psql -v ON_ERROR_STOP=1 \
+    -c "ALTER ROLE \"${APP_USER}\" WITH LOGIN PASSWORD '${DB_PASS}';"
 
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --set app_user="${APP_USER}" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'app_user') THEN
-    EXECUTE format('CREATE DATABASE %I OWNER %I', :'app_user', :'app_user');
-  END IF;
-END
-$$;
-SQL
-
+  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${APP_USER}'" | grep -q 1; then
+    sudo -u postgres psql -v ON_ERROR_STOP=1 \
+      -c "CREATE DATABASE \"${APP_USER}\" OWNER \"${APP_USER}\";"
+  fi
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres \
     -c "GRANT ALL PRIVILEGES ON DATABASE \"${APP_USER}\" TO \"${APP_USER}\";"
 
