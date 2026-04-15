@@ -5,9 +5,10 @@ import { useChatStore } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useGroupStore } from "@/modules/group/GroupPanel";
 import { debounce } from "@/utils/helpers";
-import { clsx } from "clsx";
 import { Search, MessageSquare, User, Hash, X, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
+import { useLanguage } from "@/utils/i18n";
 
 type ResultType = "message" | "contact" | "room";
 
@@ -21,12 +22,11 @@ interface SearchResult {
 }
 
 export default function GlobalSearch({ onClose }: { onClose: () => void }) {
+  const { lang, t } = useLanguage();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [recent] = useState<string[]>(
-    JSON.parse(localStorage.getItem("conjiweb-recent-searches") ?? "[]")
-  );
+  const [recent] = useState<string[]>(JSON.parse(localStorage.getItem("conjiweb-recent-searches") ?? "[]"));
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -36,34 +36,38 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
 
   const doSearch = useCallback(
     debounce(async (q: string) => {
-      if (!q.trim() || q.length < 2) { setResults([]); return; }
+      if (!q.trim() || q.length < 2) {
+        setResults([]);
+        return;
+      }
       setLoading(true);
       try {
         const found: SearchResult[] = [];
 
-        // Local contacts
         contacts
           .filter((c) => c.jid.includes(q) || (c.name ?? "").toLowerCase().includes(q.toLowerCase()))
           .slice(0, 3)
-          .forEach((c) => found.push({
-            type: "contact",
-            id: c.jid,
-            title: c.name ?? c.jid.split("@")[0],
-            subtitle: c.jid,
-          }));
+          .forEach((c) =>
+            found.push({
+              type: "contact",
+              id: c.jid,
+              title: c.name ?? c.jid.split("@")[0],
+              subtitle: c.jid,
+            }),
+          );
 
-        // Rooms
         rooms
           .filter((r) => r.name.toLowerCase().includes(q.toLowerCase()) || r.jid.includes(q))
           .slice(0, 3)
-          .forEach((r) => found.push({
-            type: "room",
-            id: r.jid,
-            title: r.name,
-            subtitle: r.jid,
-          }));
+          .forEach((r) =>
+            found.push({
+              type: "room",
+              id: r.jid,
+              title: r.name,
+              subtitle: r.jid,
+            }),
+          );
 
-        // Backend message search
         try {
           const msgs = await messagesApi.search(q);
           msgs.slice(0, 5).forEach((m: any) => {
@@ -77,14 +81,16 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
               conversationId: m.conversation_id,
             });
           });
-        } catch {}
+        } catch {
+          // Ignore backend search errors.
+        }
 
         setResults(found);
       } finally {
         setLoading(false);
       }
     }, 300),
-    [contacts, rooms, conversations]
+    [contacts, rooms, conversations],
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,14 +119,11 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4
-                    bg-surface-950/80 backdrop-blur-sm"
-      onClick={onClose}>
-      <div className="w-full max-w-xl bg-surface-900 rounded-2xl border border-white/10
-                      shadow-2xl overflow-hidden animate-slide-in"
-        onClick={(e) => e.stopPropagation()}>
-
-        {/* Input */}
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-surface-950/80 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-xl bg-surface-900 rounded-2xl border border-white/10 shadow-2xl overflow-hidden animate-slide-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
           <Search size={16} className="text-surface-200/40 flex-shrink-0" />
           <input
@@ -128,26 +131,21 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
             autoFocus
             value={query}
             onChange={handleChange}
-            placeholder="Search messages, contacts, rooms..."
-            className="flex-1 bg-transparent text-surface-50 text-sm outline-none
-                       placeholder:text-surface-200/30"
+            placeholder={t("search.placeholder")}
+            className="flex-1 bg-transparent text-surface-50 text-sm outline-none placeholder:text-surface-200/30"
           />
-          {loading && (
-            <span className="w-4 h-4 border border-surface-200/20 border-t-surface-200/60 rounded-full animate-spin flex-shrink-0" />
-          )}
+          {loading && <span className="w-4 h-4 border border-surface-200/20 border-t-surface-200/60 rounded-full animate-spin flex-shrink-0" />}
           <button onClick={onClose} className="text-surface-200/30 hover:text-surface-200 flex-shrink-0">
             <X size={16} />
           </button>
         </div>
 
-        {/* Results */}
         <div className="max-h-80 overflow-y-auto">
           {query.length === 0 && recent.length > 0 && (
             <div className="p-3">
-              <p className="text-[10px] text-surface-200/30 uppercase tracking-wide px-2 mb-1">Recent searches</p>
+              <p className="text-[10px] text-surface-200/30 uppercase tracking-wide px-2 mb-1">{t("search.recent")}</p>
               {recent.map((r) => (
-                <button key={r} onClick={() => { setQuery(r); doSearch(r); }}
-                  className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-left">
+                <button key={r} onClick={() => { setQuery(r); doSearch(r); }} className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-left">
                   <Clock size={13} className="text-surface-200/30" />
                   <span className="text-sm text-surface-200/70">{r}</span>
                 </button>
@@ -157,7 +155,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
 
           {query.length > 0 && results.length === 0 && !loading && (
             <div className="py-8 text-center text-sm text-surface-200/30">
-              No results for "{query}"
+              {t("search.noResults")} "{query}"
             </div>
           )}
 
@@ -166,28 +164,23 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
               {(["contact", "room", "message"] as ResultType[]).map((type) => {
                 const group = results.filter((r) => r.type === type);
                 if (!group.length) return null;
-                const labels = { contact: "Contacts", room: "Rooms", message: "Messages" };
+                const labels = { contact: t("search.contacts"), room: t("search.rooms"), message: t("search.messages") };
                 return (
                   <div key={type}>
-                    <p className="text-[10px] text-surface-200/30 uppercase tracking-wide px-2 py-1">
-                      {labels[type]}
-                    </p>
+                    <p className="text-[10px] text-surface-200/30 uppercase tracking-wide px-2 py-1">{labels[type]}</p>
                     {group.map((result) => (
-                      <button
-                        key={result.id}
-                        onClick={() => handleSelect(result)}
-                        className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-white/5 text-left"
-                      >
+                      <button key={result.id} onClick={() => handleSelect(result)} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-white/5 text-left">
                         <span className="flex-shrink-0">{icons[result.type]}</span>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-surface-50 truncate">{result.title}</p>
-                          {result.subtitle && (
-                            <p className="text-xs text-surface-200/40 truncate">{result.subtitle}</p>
-                          )}
+                          {result.subtitle && <p className="text-xs text-surface-200/40 truncate">{result.subtitle}</p>}
                         </div>
                         {result.timestamp && (
                           <span className="text-[10px] text-surface-200/30 flex-shrink-0">
-                            {formatDistanceToNow(result.timestamp, { addSuffix: true })}
+                            {formatDistanceToNow(result.timestamp, {
+                              addSuffix: true,
+                              locale: lang === "zh-CN" ? zhCN : undefined,
+                            })}
                           </span>
                         )}
                       </button>
@@ -200,11 +193,12 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="px-4 py-2 border-t border-white/5 flex gap-3 text-[10px] text-surface-200/25">
-          <span>鈫戔啌 Navigate</span>
-          <span>鈫?Select</span>
-          <span>Esc Close</span>
+          <span>{t("search.navigate")}</span>
+          <span>{t("search.select")}</span>
+          <span>{t("search.close")}</span>
         </div>
       </div>
     </div>
   );
 }
+

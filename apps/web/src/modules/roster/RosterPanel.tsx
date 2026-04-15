@@ -10,6 +10,7 @@ import {
   Ban, Trash2, ChevronDown, ChevronRight, Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useLanguage } from "@/utils/i18n";
 
 function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
   const colors: Record<string, string> = {
@@ -23,6 +24,7 @@ function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
 }
 
 function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid: string) => void }) {
+  const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const blockContact = useRosterStore((s) => s.blockContact);
   const removeContact = useRosterStore((s) => s.removeContact);
@@ -33,7 +35,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     const client = getClient(activeAccountId);
     client?.removeContact(contact.jid);
     removeContact(contact.jid);
-    toast.success("Contact removed");
+    toast.success(t("roster.contactRemoved"));
   };
 
   return (
@@ -74,11 +76,11 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
             <div className="absolute right-0 top-6 z-50 glass rounded-lg py-1 w-36 shadow-xl border border-white/10">
               <button onClick={() => { blockContact(contact.jid); setMenuOpen(false); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-surface-200 hover:bg-white/5">
-                <Ban size={12} /> Block
+                <Ban size={12} /> {t("roster.block")}
               </button>
               <button onClick={() => { handleRemove(); setMenuOpen(false); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover:bg-white/5">
-                <Trash2 size={12} /> Remove
+                <Trash2 size={12} /> {t("roster.remove")}
               </button>
             </div>
           )}
@@ -86,7 +88,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
       </div>
 
       {contact.isBlocked && (
-        <span className="text-[10px] text-danger/70 flex-shrink-0">Blocked</span>
+        <span className="text-[10px] text-danger/70 flex-shrink-0">{t("roster.blocked")}</span>
       )}
     </div>
   );
@@ -112,6 +114,7 @@ function GroupSection({ name, contacts, onChat }: {
 }
 
 export default function RosterPanel() {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newJid, setNewJid] = useState("");
@@ -127,14 +130,14 @@ export default function RosterPanel() {
     ), [contacts, query]);
 
   const grouped = useMemo(() => {
-    const groups: Record<string, RosterContact[]> = { Online: [], Offline: [] };
+    const groups: Record<string, RosterContact[]> = { [t("roster.groupOnline")]: [], [t("roster.groupOffline")]: [] };
     filtered.forEach((c) => {
-      const g = c.groups[0] ?? (c.presence === "available" ? "Online" : "Offline");
+      const g = c.groups[0] ?? (c.presence === "available" ? t("roster.groupOnline") : t("roster.groupOffline"));
       if (!groups[g]) groups[g] = [];
       groups[g].push(c);
     });
     return groups;
-  }, [filtered]);
+  }, [filtered, t]);
 
   const startChat = (jid: string) => {
     if (!activeAccountId) return;
@@ -163,7 +166,7 @@ export default function RosterPanel() {
       presence: "unavailable",
       isBlocked: false,
     });
-    toast.success(`Added ${newJid}`);
+    toast.success(`${t("roster.added")} ${newJid}`);
     setNewJid("");
     setShowAdd(false);
   };
@@ -172,7 +175,7 @@ export default function RosterPanel() {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
         <h2 className="text-sm font-semibold text-surface-50 flex items-center gap-2">
-          <Users size={14} /> Contacts
+          <Users size={14} /> {t("roster.title")}
         </h2>
         <button onClick={() => setShowAdd(!showAdd)}
           className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
@@ -186,7 +189,7 @@ export default function RosterPanel() {
             onKeyDown={(e) => e.key === "Enter" && addContact()}
             placeholder="user@example.com"
             className="input-field text-xs flex-1 py-1.5" />
-          <button onClick={addContact} className="btn-primary text-xs py-1.5 px-3">Add</button>
+          <button onClick={addContact} className="btn-primary text-xs py-1.5 px-3">{t("roster.add")}</button>
         </div>
       )}
 
@@ -194,7 +197,7 @@ export default function RosterPanel() {
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-200/30" />
           <input value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search contacts..."
+            placeholder={t("roster.searchPlaceholder")}
             className="w-full pl-7 pr-3 py-1.5 text-xs bg-surface-900 rounded-lg
                        border border-white/5 text-surface-50 placeholder:text-surface-200/30
                        focus:outline-none focus:ring-1 focus:ring-accent/30" />
@@ -210,7 +213,7 @@ export default function RosterPanel() {
         {contacts.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 gap-2 text-surface-200/30">
             <Users size={20} />
-            <span className="text-xs">No contacts yet</span>
+            <span className="text-xs">{t("roster.empty")}</span>
           </div>
         )}
       </div>

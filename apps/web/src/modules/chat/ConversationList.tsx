@@ -2,8 +2,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useChatStore } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { clsx } from "clsx";
 import { Users, User, MessageSquare } from "lucide-react";
+import { useLanguage } from "@/utils/i18n";
 
 function ConvIcon({ type }: { type: string }) {
   if (type === "group") return <Users size={14} />;
@@ -11,6 +13,7 @@ function ConvIcon({ type }: { type: string }) {
 }
 
 export default function ConversationList() {
+  const { lang, t } = useLanguage();
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const conversations = useChatStore((s) => Object.values(s.conversations));
@@ -30,7 +33,7 @@ export default function ConversationList() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-        <h2 className="text-sm font-semibold text-surface-50">Conversations</h2>
+        <h2 className="text-sm font-semibold text-surface-50">{t("conv.title")}</h2>
         <span className="text-xs text-surface-200/40">{filtered.length}</span>
       </div>
 
@@ -39,7 +42,7 @@ export default function ConversationList() {
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-surface-200/30">
             <MessageSquare size={24} />
-            <span className="text-xs">No conversations yet</span>
+            <span className="text-xs">{t("conv.empty")}</span>
           </div>
         ) : (
           filtered.map((conv) => (
@@ -70,13 +73,16 @@ export default function ConversationList() {
                   </span>
                   {conv.lastMessageAt && (
                     <span className="text-[10px] text-surface-200/40 flex-shrink-0 ml-1">
-                      {formatDistanceToNow(conv.lastMessageAt, { addSuffix: false })}
+                      {formatDistanceToNow(conv.lastMessageAt, {
+                        addSuffix: false,
+                        locale: lang === "zh-CN" ? zhCN : undefined,
+                      })}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-xs text-surface-200/50 truncate">
-                    {conv.lastMessage ?? "No messages yet"}
+                    {conv.lastMessage ?? t("conv.noMessages")}
                   </span>
                   {conv.unreadCount > 0 && (
                     <span className="badge flex-shrink-0 ml-1">{conv.unreadCount}</span>

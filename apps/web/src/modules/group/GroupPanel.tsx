@@ -8,6 +8,7 @@ import { Users, Plus, Hash, LogOut, Settings, Crown, Shield } from "lucide-react
 import toast from "react-hot-toast";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useLanguage } from "@/utils/i18n";
 
 export interface MucRoom {
   jid: string;
@@ -63,6 +64,7 @@ function RoleIcon({ role, affiliation }: { role: MucMember["role"]; affiliation:
 }
 
 function RoomCard({ room }: { room: MucRoom }) {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const upsertConversation = useChatStore((s) => s.upsertConversation);
@@ -92,7 +94,7 @@ function RoomCard({ room }: { room: MucRoom }) {
     const client = getClient(activeAccountId);
     client?.leaveRoom(room.jid, room.nickname);
     upsertRoom({ ...room, joined: false });
-    toast("Left room");
+    toast(t("group.leftRoom"));
   };
 
   return (
@@ -106,20 +108,20 @@ function RoomCard({ room }: { room: MucRoom }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-surface-50 truncate">{room.name}</p>
-          {room.joined && <span className="text-[10px] text-accent-soft flex-shrink-0">Joined</span>}
+          {room.joined && <span className="text-[10px] text-accent-soft flex-shrink-0">{t("group.joined")}</span>}
         </div>
         <p className="text-xs text-surface-200/40 truncate">{room.jid}</p>
         {room.subject && <p className="text-xs text-surface-200/50 mt-1 truncate">{room.subject}</p>}
         {room.memberCount && (
           <p className="text-xs text-surface-200/30 mt-0.5 flex items-center gap-1">
-            <Users size={10} /> {room.memberCount} members
+            <Users size={10} /> {room.memberCount} {t("group.members")}
           </p>
         )}
       </div>
       {room.joined && (
         <button onClick={(e) => { e.stopPropagation(); leave(); }}
           className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger flex-shrink-0"
-          title="Leave room">
+          title={t("group.leave")}>
           <LogOut size={13} />
         </button>
       )}
@@ -128,6 +130,7 @@ function RoomCard({ room }: { room: MucRoom }) {
 }
 
 export default function GroupPanel() {
+  const { t } = useLanguage();
   const [showJoin, setShowJoin] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [joinForm, setJoinForm] = useState({ jid: "", nickname: "" });
@@ -141,7 +144,7 @@ export default function GroupPanel() {
   const defaultNickname = activeAccount?.jid.split("@")[0] ?? "user";
 
   const handleJoin = () => {
-    if (!joinForm.jid.trim()) { toast.error("Room JID required"); return; }
+    if (!joinForm.jid.trim()) { toast.error(t("group.jidRequired")); return; }
     const nick = joinForm.nickname.trim() || defaultNickname;
     const room: MucRoom = {
       jid: joinForm.jid.trim(),
@@ -153,11 +156,11 @@ export default function GroupPanel() {
     upsertRoom(room);
     setJoinForm({ jid: "", nickname: "" });
     setShowJoin(false);
-    toast.success("Room added. Click to join.");
+    toast.success(t("group.roomAdded"));
   };
 
   const handleCreate = () => {
-    if (!createForm.name.trim()) { toast.error("Room name required"); return; }
+    if (!createForm.name.trim()) { toast.error(t("group.nameRequired")); return; }
     const slug = createForm.name.toLowerCase().replace(/\s+/g, "-");
     const room: MucRoom = {
       jid: `${slug}@${createForm.server}`,
@@ -169,24 +172,24 @@ export default function GroupPanel() {
     upsertRoom(room);
     setCreateForm({ name: "", server: "conference.localhost" });
     setShowCreate(false);
-    toast.success("Room created. Click to join.");
+    toast.success(t("group.roomCreated"));
   };
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
         <h2 className="text-sm font-semibold text-surface-50 flex items-center gap-2">
-          <Users size={14} /> Group Chats
+          <Users size={14} /> {t("group.title")}
         </h2>
         <div className="flex gap-1">
           <button onClick={() => { setShowJoin(!showJoin); setShowCreate(false); }}
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200"
-            title="Join room">
+            title={t("group.joinRoom")}>
             <Hash size={14} />
           </button>
           <button onClick={() => { setShowCreate(!showCreate); setShowJoin(false); }}
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200"
-            title="Create room">
+            title={t("group.createRoom")}>
             <Plus size={14} />
           </button>
         </div>
@@ -194,23 +197,23 @@ export default function GroupPanel() {
 
       {showJoin && (
         <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
-          <p className="text-xs text-surface-200/50 font-medium">Join a room</p>
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.joinRoomTitle")}</p>
           <input value={joinForm.jid} onChange={(e) => setJoinForm({ ...joinForm, jid: e.target.value })}
             placeholder="room@conference.example.com"
             className="input-field text-xs py-1.5" />
           <input value={joinForm.nickname} onChange={(e) => setJoinForm({ ...joinForm, nickname: e.target.value })}
-            placeholder={`Nickname (default: ${defaultNickname})`}
+            placeholder={`${t("group.nicknameDefault")} ${defaultNickname})`}
             className="input-field text-xs py-1.5" />
           <div className="flex gap-2">
-            <button onClick={handleJoin} className="btn-primary text-xs py-1.5 flex-1">Join</button>
-            <button onClick={() => setShowJoin(false)} className="btn-ghost text-xs py-1.5">Cancel</button>
+            <button onClick={handleJoin} className="btn-primary text-xs py-1.5 flex-1">{t("group.join")}</button>
+            <button onClick={() => setShowJoin(false)} className="btn-ghost text-xs py-1.5">{t("group.cancel")}</button>
           </div>
         </div>
       )}
 
       {showCreate && (
         <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
-          <p className="text-xs text-surface-200/50 font-medium">Create a room</p>
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.createRoomTitle")}</p>
           <input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
             placeholder="Room name"
             className="input-field text-xs py-1.5" />
@@ -218,8 +221,8 @@ export default function GroupPanel() {
             placeholder="conference.localhost"
             className="input-field text-xs py-1.5" />
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="btn-primary text-xs py-1.5 flex-1">Create</button>
-            <button onClick={() => setShowCreate(false)} className="btn-ghost text-xs py-1.5">Cancel</button>
+            <button onClick={handleCreate} className="btn-primary text-xs py-1.5 flex-1">{t("group.create")}</button>
+            <button onClick={() => setShowCreate(false)} className="btn-ghost text-xs py-1.5">{t("group.cancel")}</button>
           </div>
         </div>
       )}
@@ -228,7 +231,7 @@ export default function GroupPanel() {
         {rooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 gap-2 text-surface-200/30">
             <Hash size={20} />
-            <span className="text-xs">No rooms joined</span>
+            <span className="text-xs">{t("group.empty")}</span>
           </div>
         ) : (
           rooms.map((room) => <RoomCard key={room.jid} room={room} />)

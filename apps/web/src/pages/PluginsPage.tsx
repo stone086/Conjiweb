@@ -3,6 +3,7 @@ import { pluginsApi } from "@/services/api";
 import { Puzzle, ToggleLeft, ToggleRight, Zap, Globe, Bot, MessageSquare, Bell, BookOpen } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
+import { useLanguage } from "@/utils/i18n";
 
 const PLUGIN_ICONS: Record<string, React.ReactNode> = {
   "ai-summary": <Bot size={18} />,
@@ -14,6 +15,7 @@ const PLUGIN_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function PluginsPage() {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const { data: pluginsData = [], isLoading } = useQuery({
     queryKey: ["plugins"],
@@ -25,7 +27,7 @@ export default function PluginsPage() {
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       enabled ? pluginsApi.disable(id) : pluginsApi.enable(id),
     onSuccess: (_, { id, enabled }) => {
-      toast.success(`Plugin ${enabled ? "disabled" : "enabled"}`);
+      toast.success(`${t("plugins.title")} ${enabled ? t("plugins.disabled") : t("plugins.enabled")}`);
       qc.invalidateQueries({ queryKey: ["plugins"] });
     },
   });
@@ -34,8 +36,8 @@ export default function PluginsPage() {
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
         <div>
-          <h1 className="text-xl font-bold text-surface-50">Plugins</h1>
-          <p className="text-sm text-surface-200/50 mt-1">Extend Conjiweb with powerful add-ons</p>
+          <h1 className="text-xl font-bold text-surface-50">{t("plugins.title")}</h1>
+          <p className="text-sm text-surface-200/50 mt-1">{t("plugins.subtitle")}</p>
         </div>
 
         {isLoading ? (
@@ -65,12 +67,12 @@ export default function PluginsPage() {
                     <span className="text-[10px] text-surface-200/30">v{plugin.version}</span>
                   </div>
                   <p className="text-xs text-surface-200/50 mt-0.5">
-                    {plugin.id === "ai-summary" && "Summarize long conversations using AI"}
-                    {plugin.id === "translate" && "Auto-translate messages to your language"}
-                    {plugin.id === "quick-reply" && "Send pre-configured quick reply templates"}
-                    {plugin.id === "bot-bridge" && "Connect chatbots and automation"}
-                    {plugin.id === "reminder" && "Convert messages into reminders and tasks"}
-                    {plugin.id === "markdown-plus" && "Enhanced markdown rendering with LaTeX"}
+                    {plugin.id === "ai-summary" && t("plugins.desc.ai-summary")}
+                    {plugin.id === "translate" && t("plugins.desc.translate")}
+                    {plugin.id === "quick-reply" && t("plugins.desc.quick-reply")}
+                    {plugin.id === "bot-bridge" && t("plugins.desc.bot-bridge")}
+                    {plugin.id === "reminder" && t("plugins.desc.reminder")}
+                    {plugin.id === "markdown-plus" && t("plugins.desc.markdown-plus")}
                   </p>
                   <div className="flex gap-1.5 mt-2 flex-wrap">
                     {(["messages", "sidebar", "toolbar"] as string[]).slice(0, 2).map((perm) => (
@@ -88,7 +90,7 @@ export default function PluginsPage() {
                     "flex-shrink-0 transition-colors mt-0.5",
                     plugin.is_enabled ? "text-accent" : "text-surface-200/30 hover:text-surface-200"
                   )}
-                  title={plugin.is_enabled ? "Disable" : "Enable"}
+                  title={plugin.is_enabled ? t("plugins.disable") : t("plugins.enable")}
                 >
                   {plugin.is_enabled
                     ? <ToggleRight size={24} />
@@ -102,7 +104,7 @@ export default function PluginsPage() {
 
         <div className="glass rounded-xl p-4 text-center">
           <p className="text-sm text-surface-200/50">
-            Plugin marketplace coming soon. Place custom plugins in <code className="text-accent-soft text-xs">plugins/</code> directory.
+            {t("plugins.market")}
           </p>
         </div>
       </div>

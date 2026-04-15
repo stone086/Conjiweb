@@ -6,10 +6,12 @@ import RosterPanel from "@/modules/roster/RosterPanel";
 import GroupPanel from "@/modules/group/GroupPanel";
 import TopBar from "@/components/TopBar";
 import RightPanel from "@/components/RightPanel";
+import { useLanguage } from "@/utils/i18n";
 
 type LeftTab = "chats" | "contacts" | "groups";
 
 export default function MainLayout() {
+  const { t } = useLanguage();
   const [leftTab, setLeftTab] = useState<LeftTab>("chats");
   const [showRight, setShowRight] = useState(false);
   const { conversationId } = useParams();
@@ -24,13 +26,13 @@ export default function MainLayout() {
             <button
               key={tab}
               onClick={() => setLeftTab(tab)}
-              className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors ${
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
                 leftTab === tab
                   ? "text-accent-soft border-b-2 border-accent"
                   : "text-surface-200/40 hover:text-surface-200"
               }`}
             >
-              {tab}
+              {tab === "chats" ? t("lefttab.chats") : tab === "contacts" ? t("lefttab.contacts") : t("lefttab.groups")}
             </button>
           ))}
         </div>

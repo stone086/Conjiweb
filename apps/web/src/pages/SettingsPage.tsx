@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
@@ -252,8 +252,9 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <p className="text-xs text-surface-200/20 text-center">Conjiweb 路 v3.0.0</p>
+        <p className="text-xs text-surface-200/20 text-center">Conjiweb · v3.0.0</p>
       </div>
     </div>
   );
 }
+

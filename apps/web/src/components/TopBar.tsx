@@ -6,6 +6,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import NotificationPanel from "@/modules/notification/NotificationPanel";
 import GlobalSearch from "@/modules/search/GlobalSearch";
 import { applyTheme, getStoredTheme } from "@/utils/theme";
+import { useLanguage } from "@/utils/i18n";
 
 interface TopBarProps {
   onToggleRight?: () => void;
@@ -13,6 +14,7 @@ interface TopBarProps {
 }
 
 export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) {
+  const { t } = useLanguage();
   const [theme, setTheme] = useState(getStoredTheme());
   const [showNotifs, setShowNotifs] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -26,21 +28,30 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
   useKeyboardShortcuts({
     "ctrl+k": () => setShowSearch(true),
     "meta+k": () => setShowSearch(true),
-    "escape": () => { setShowSearch(false); setShowNotifs(false); },
+    "escape": () => {
+      setShowSearch(false);
+      setShowNotifs(false);
+    },
   });
 
   return (
     <>
       <header className="h-12 flex items-center gap-3 px-4 border-b border-white/5 bg-surface-950/80 backdrop-blur-sm flex-shrink-0 relative z-20">
-        <button onClick={() => setShowSearch(true)}
-          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border border-white/5 text-surface-200/30 hover:border-white/10 transition-colors cursor-text">
+        <button
+          onClick={() => setShowSearch(true)}
+          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border border-white/5 text-surface-200/30 hover:border-white/10 transition-colors cursor-text"
+        >
           <Search size={13} />
-          <span className="text-xs flex-1 text-left">Search…</span>
-          <kbd className="hidden sm:inline text-[9px] px-1.5 py-0.5 rounded bg-surface-800 text-surface-200/30 border border-white/5">⌘K</kbd>
+          <span className="text-xs flex-1 text-left">{t("topbar.searchPlaceholder")}</span>
+          <kbd className="hidden sm:inline text-[9px] px-1.5 py-0.5 rounded bg-surface-800 text-surface-200/30 border border-white/5">
+            {t("topbar.searchShortcut")}
+          </kbd>
         </button>
         <div className="flex-1" />
         {showRightToggle && (
-          <button onClick={onToggleRight} className="btn-ghost p-2" title="Toggle info panel"><PanelRight size={16} /></button>
+          <button onClick={onToggleRight} className="btn-ghost p-2" title={t("topbar.toggleInfo")}>
+            <PanelRight size={16} />
+          </button>
         )}
         <button
           onClick={() => {
@@ -68,7 +79,9 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-accent-soft text-xs uppercase font-medium">
               {(account.displayName ?? account.jid)[0]}
             </div>
-            <span className="text-surface-200 text-xs max-w-[100px] truncate">{account.displayName ?? account.jid.split("@")[0]}</span>
+            <span className="text-surface-200 text-xs max-w-[100px] truncate">
+              {account.displayName ?? account.jid.split("@")[0]}
+            </span>
           </div>
         )}
       </header>
@@ -76,3 +89,4 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
     </>
   );
 }
+

@@ -3,6 +3,8 @@ import { formatDistanceToNow } from "date-fns";
 import { Bell, BellOff, Check, Trash2, MessageSquare, AtSign, Settings, File } from "lucide-react";
 import { clsx } from "clsx";
 import { useNavigate } from "react-router-dom";
+import { useLanguage } from "@/utils/i18n";
+import { zhCN } from "date-fns/locale";
 
 const typeIcons: Record<AppNotification["type"], React.ReactNode> = {
   message: <MessageSquare size={13} />,
@@ -12,6 +14,7 @@ const typeIcons: Record<AppNotification["type"], React.ReactNode> = {
 };
 
 export default function NotificationPanel({ onClose }: { onClose: () => void }) {
+  const { lang, t } = useLanguage();
   const { notifications, totalUnread, markRead, markAllRead, clearAll, soundEnabled, browserEnabled, setSoundEnabled, setBrowserEnabled } =
     useNotificationStore();
   const navigate = useNavigate();
@@ -35,20 +38,20 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
         <div className="flex items-center gap-2">
           <Bell size={14} className="text-surface-200/60" />
-          <span className="text-sm font-semibold text-surface-50">Notifications</span>
+          <span className="text-sm font-semibold text-surface-50">{t("notify.title")}</span>
           {totalUnread > 0 && <span className="badge">{totalUnread}</span>}
         </div>
         <div className="flex items-center gap-1">
           {totalUnread > 0 && (
             <button onClick={markAllRead}
               className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-surface-200"
-              title="Mark all read">
+              title={t("notify.markAllRead")}>
               <Check size={12} />
             </button>
           )}
           <button onClick={clearAll}
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-danger"
-            title="Clear all">
+            title={t("notify.clearAll")}>
             <Trash2 size={12} />
           </button>
         </div>
@@ -59,13 +62,13 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
         <label className="flex items-center gap-1.5 cursor-pointer text-xs text-surface-200/50 hover:text-surface-200">
           <input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)}
             className="w-3.5 h-3.5 accent-[#7c6af7]" />
-          Sound
+          {t("notify.sound")}
         </label>
         <label className="flex items-center gap-1.5 cursor-pointer text-xs text-surface-200/50 hover:text-surface-200">
           <input type="checkbox" checked={browserEnabled}
             onChange={(e) => e.target.checked ? enableBrowser() : setBrowserEnabled(false)}
             className="w-3.5 h-3.5 accent-[#7c6af7]" />
-          Browser
+          {t("notify.browser")}
         </label>
       </div>
 
@@ -74,7 +77,7 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
         {notifications.length === 0 ? (
           <div className="py-8 text-center">
             <BellOff size={20} className="mx-auto mb-2 text-surface-200/20" />
-            <p className="text-xs text-surface-200/30">No notifications</p>
+            <p className="text-xs text-surface-200/30">{t("notify.empty")}</p>
           </div>
         ) : (
           notifications.map((n) => (
@@ -91,7 +94,10 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
                 <p className="text-xs font-medium text-surface-50 truncate">{n.title}</p>
                 <p className="text-xs text-surface-200/50 truncate mt-0.5">{n.body}</p>
                 <p className="text-[10px] text-surface-200/25 mt-1">
-                  {formatDistanceToNow(n.timestamp, { addSuffix: true })}
+                  {formatDistanceToNow(n.timestamp, {
+                    addSuffix: true,
+                    locale: lang === "zh-CN" ? zhCN : undefined,
+                  })}
                 </p>
               </div>
               {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0 mt-1.5" />}

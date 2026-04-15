@@ -9,11 +9,14 @@ import { format, isSameDay } from "date-fns";
 import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader } from "lucide-react";
 import toast from "react-hot-toast";
+import { useLanguage } from "@/utils/i18n";
 
-function DateDivider({ date }: { date: number }) {
-  const label = isSameDay(date, Date.now()) ? "Today"
-    : isSameDay(date, Date.now() - 86400000) ? "Yesterday"
-    : format(date, "MMMM d, yyyy");
+function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
+  const label = isSameDay(date, Date.now())
+    ? todayLabel
+    : isSameDay(date, Date.now() - 86400000)
+      ? yesterdayLabel
+      : format(date, "yyyy-MM-dd");
   return (
     <div className="flex items-center gap-3 py-2 my-1">
       <div className="flex-1 h-px bg-white/5" />
@@ -23,11 +26,26 @@ function DateDivider({ date }: { date: number }) {
   );
 }
 
-function MessageBubble({ msg, isOwn, onReply }: { msg: ChatMessage; isOwn: boolean; onReply: (m: ChatMessage) => void }) {
+function MessageBubble({
+  msg,
+  isOwn,
+  onReply,
+  sentLabel,
+  readLabel,
+}: {
+  msg: ChatMessage;
+  isOwn: boolean;
+  onReply: (m: ChatMessage) => void;
+  sentLabel: string;
+  readLabel: string;
+}) {
   const [hovered, setHovered] = useState(false);
   return (
-    <div className={clsx("flex gap-2 group", isOwn ? "flex-row-reverse" : "flex-row")}
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div
+      className={clsx("flex gap-2 group", isOwn ? "flex-row-reverse" : "flex-row")}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       {!isOwn && (
         <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-[11px] font-medium uppercase flex-shrink-0 mt-auto mb-1 text-surface-200">
           {msg.senderJid[0]}
@@ -39,15 +57,17 @@ function MessageBubble({ msg, isOwn, onReply }: { msg: ChatMessage; isOwn: boole
           {msg.body && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>}
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
-              {att.mimeType.startsWith("image/")
-                ? <ImagePreview src={att.downloadUrl} alt={att.fileName} />
-                : <FileCard name={att.fileName} mimeType={att.mimeType} sizeBytes={att.sizeBytes} downloadUrl={att.downloadUrl} />}
+              {att.mimeType.startsWith("image/") ? (
+                <ImagePreview src={att.downloadUrl} alt={att.fileName} />
+              ) : (
+                <FileCard name={att.fileName} mimeType={att.mimeType} sizeBytes={att.sizeBytes} downloadUrl={att.downloadUrl} />
+              )}
             </div>
           ))}
         </div>
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] text-surface-200/25">{format(msg.timestamp, "HH:mm")}</span>
-          {isOwn && <span className="text-[10px] text-surface-200/25">{msg.status === "read" ? "✓✓" : "✓"}</span>}
+          {isOwn && <span className="text-[10px] text-surface-200/25">{msg.status === "read" ? readLabel : sentLabel}</span>}
         </div>
       </div>
       <div className={clsx("flex items-center self-center transition-opacity", hovered ? "opacity-100" : "opacity-0")}>
@@ -64,26 +84,31 @@ function TypingBubble({ name }: { name: string }) {
     <div className="flex gap-2 items-end">
       <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-[11px] font-medium uppercase text-surface-200">{name[0]}</div>
       <div className="msg-bubble-in flex items-center gap-1 py-3">
-        {[0,1,2].map((i) => <span key={i} className="w-1.5 h-1.5 rounded-full bg-surface-200/40 animate-bounce" style={{animationDelay:`${i*0.15}s`}} />)}
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="w-1.5 h-1.5 rounded-full bg-surface-200/40 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+        ))}
       </div>
     </div>
   );
 }
 
-function ReplyPreview({ msg, onCancel }: { msg: ChatMessage; onCancel: () => void }) {
+function ReplyPreview({ msg, onCancel, title }: { msg: ChatMessage; onCancel: () => void; title: string }) {
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
       <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-[10px] text-accent-soft font-medium">Replying to {msg.senderJid.split("@")[0]}</p>
+        <p className="text-[10px] text-accent-soft font-medium">{title} {msg.senderJid.split("@")[0]}</p>
         <p className="text-xs text-surface-200/50 truncate">{msg.body}</p>
       </div>
-      <button onClick={onCancel} className="text-surface-200/30 hover:text-surface-200 p-1"><X size={12} /></button>
+      <button onClick={onCancel} className="text-surface-200/30 hover:text-surface-200 p-1">
+        <X size={12} />
+      </button>
     </div>
   );
 }
 
 export default function MessageView({ conversationId }: { conversationId: string }) {
+  const { t } = useLanguage();
   const [input, setInput] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -100,7 +125,9 @@ export default function MessageView({ conversationId }: { conversationId: string
   const { peerIsTyping, onInputChange, onBlur } = useTypingIndicator(conversation?.peerJid ?? "");
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
 
-  useEffect(() => { if (conversation && messages.length === 0) fetchHistory(); }, [conversationId]);
+  useEffect(() => {
+    if (conversation && messages.length === 0) fetchHistory();
+  }, [conversationId]);
 
   useEffect(() => {
     const c = containerRef.current;
@@ -120,37 +147,65 @@ export default function MessageView({ conversationId }: { conversationId: string
     if (!body && !pendingFiles.length) return;
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
-    if (!client?.connected) { toast.error("Not connected"); return; }
-    const id = body ? client.sendMessage(conversation?.peerJid ?? conversationId, body, conversation?.type === "group" ? "groupchat" : "chat") : crypto.randomUUID();
+    if (!client?.connected) {
+      toast.error(t("chat.notConnected"));
+      return;
+    }
+    const id = body
+      ? client.sendMessage(conversation?.peerJid ?? conversationId, body, conversation?.type === "group" ? "groupchat" : "chat")
+      : crypto.randomUUID();
     addMessage({
-      id, conversationId, senderJid: client.config.jid, body,
-      bodyType: "text", direction: "out", status: "sent", timestamp: Date.now(),
+      id,
+      conversationId,
+      senderJid: client.config.jid,
+      body,
+      bodyType: "text",
+      direction: "out",
+      status: "sent",
+      timestamp: Date.now(),
       replyToId: replyTo?.id,
-      attachments: pendingFiles.map((f) => ({ id: f.id, fileName: f.name, mimeType: f.mimeType, downloadUrl: f.downloadUrl, sizeBytes: f.sizeBytes })),
+      attachments: pendingFiles.map((f) => ({
+        id: f.id,
+        fileName: f.name,
+        mimeType: f.mimeType,
+        downloadUrl: f.downloadUrl,
+        sizeBytes: f.sizeBytes,
+      })),
     });
-    setInput(""); setReplyTo(null); setPendingFiles([]); setShowUpload(false);
+    setInput("");
+    setReplyTo(null);
+    setPendingFiles([]);
+    setShowUpload(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, replyTo]);
+  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, replyTo, t]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
-  if (!conversation) return <div className="flex items-center justify-center h-full text-surface-200/30 text-sm">Conversation not found</div>;
+  if (!conversation) return <div className="flex items-center justify-center h-full text-surface-200/30 text-sm">{t("chat.notFound")}</div>;
 
   return (
     <div className="flex flex-col h-full relative">
       <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
         {hasMore && (
           <div className="flex justify-center py-2">
-            <button onClick={fetchHistory} disabled={mamLoading}
-              className="text-xs text-surface-200/40 hover:text-surface-200 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-900 hover:bg-surface-800 transition-colors">
+            <button
+              onClick={fetchHistory}
+              disabled={mamLoading}
+              className="text-xs text-surface-200/40 hover:text-surface-200 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-900 hover:bg-surface-800 transition-colors"
+            >
               {mamLoading && <Loader size={11} className="animate-spin" />}
-              {mamLoading ? "Loading..." : "Load older messages"}
+              {mamLoading ? t("chat.loading") : t("chat.loadOlder")}
             </button>
           </div>
         )}
         {messages.length === 0 && !mamLoading && (
           <div className="flex flex-col items-center justify-center flex-1 gap-2 text-surface-200/25">
-            <p className="text-sm">No messages yet. Say hello!</p>
+            <p className="text-sm">{t("chat.noMessages")}</p>
           </div>
         )}
         {messages.map((msg, i) => {
@@ -159,10 +214,12 @@ export default function MessageView({ conversationId }: { conversationId: string
           const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
           return (
             <div key={msg.id} className="animate-fade-in">
-              {showDate && <DateDivider date={msg.timestamp} />}
-              {msg.direction === "system"
-                ? <div className="msg-bubble-system">{msg.body}</div>
-                : <MessageBubble msg={msg} isOwn={isOwn} onReply={setReplyTo} />}
+              {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
+              {msg.direction === "system" ? (
+                <div className="msg-bubble-system">{msg.body}</div>
+              ) : (
+                <MessageBubble msg={msg} isOwn={isOwn} onReply={setReplyTo} sentLabel={t("chat.sentSent")} readLabel={t("chat.sentRead")} />
+              )}
             </div>
           );
         })}
@@ -171,8 +228,10 @@ export default function MessageView({ conversationId }: { conversationId: string
       </div>
 
       {showScrollBtn && (
-        <button onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-          className="absolute bottom-24 right-4 w-8 h-8 rounded-full bg-surface-800 border border-white/10 flex items-center justify-center text-surface-200/70 hover:text-surface-50 shadow-lg z-10">
+        <button
+          onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
+          className="absolute bottom-24 right-4 w-8 h-8 rounded-full bg-surface-800 border border-white/10 flex items-center justify-center text-surface-200/70 hover:text-surface-50 shadow-lg z-10"
+        >
           <ChevronDown size={14} />
         </button>
       )}
@@ -188,30 +247,48 @@ export default function MessageView({ conversationId }: { conversationId: string
           {pendingFiles.map((f) => (
             <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-800 text-xs text-surface-200/70 border border-white/5">
               <span className="truncate max-w-[100px]">{f.name}</span>
-              <button onClick={() => setPendingFiles((p) => p.filter((x) => x.id !== f.id))} className="text-surface-200/30 hover:text-danger"><X size={10} /></button>
+              <button onClick={() => setPendingFiles((p) => p.filter((x) => x.id !== f.id))} className="text-surface-200/30 hover:text-danger">
+                <X size={10} />
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} />}
+      {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} title={t("chat.replyingTo")} />}
 
       <div className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0">
         <div className="flex items-end gap-2">
-          <button onClick={() => setShowUpload(!showUpload)} className={clsx("btn-ghost p-2 flex-shrink-0", showUpload && "text-accent")} title="Attach file">
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className={clsx("btn-ghost p-2 flex-shrink-0", showUpload && "text-accent")}
+            title={t("chat.attachFile")}
+          >
             <Paperclip size={16} />
           </button>
-          <textarea ref={textareaRef} value={input}
-            onChange={(e) => { setInput(e.target.value); onInputChange(); const t = e.target; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; }}
-            onKeyDown={handleKeyDown} onBlur={onBlur}
-            placeholder={`Message ${conversation.title ?? conversation.peerJid}…`}
-            rows={1} className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px]" />
-          <button onClick={sendMessage} disabled={!input.trim() && !pendingFiles.length} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title="Send">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              onInputChange();
+              const next = e.target;
+              next.style.height = "auto";
+              next.style.height = Math.min(next.scrollHeight, 120) + "px";
+            }}
+            onKeyDown={handleKeyDown}
+            onBlur={onBlur}
+            placeholder={`${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
+            rows={1}
+            className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px]"
+          />
+          <button onClick={sendMessage} disabled={!input.trim() && !pendingFiles.length} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
             <Send size={16} />
           </button>
         </div>
-        <p className="text-[10px] text-surface-200/20 mt-1 pl-1">Enter to send · Shift+Enter new line</p>
+        <p className="text-[10px] text-surface-200/20 mt-1 pl-1">{t("chat.hint")}</p>
       </div>
     </div>
   );
 }
+

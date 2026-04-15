@@ -7,8 +7,10 @@ import { accountsApi } from "@/services/api";
 import { requestNotificationPermission } from "@/stores/notificationStore";
 import toast from "react-hot-toast";
 import { Wifi, Lock, User, Server, Eye, EyeOff } from "lucide-react";
+import { useLanguage } from "@/utils/i18n";
 
 export default function LoginPage() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const addAccount = useAccountStore((s) => s.addAccount);
 
@@ -33,11 +35,11 @@ export default function LoginPage() {
       initXmppBridge(client);
       await client.connect();
       await requestNotificationPermission();
-      toast.success(`Connected as ${form.jid}`);
+      toast.success(`${t("login.connectedAs")}: ${form.jid}`);
       navigate("/");
     } catch (err: any) {
       useAccountStore.getState().removeAccount(id);
-      toast.error(err.message ?? "Connection failed");
+      toast.error(err.message ?? t("login.connectionFailed"));
     } finally {
       setLoading(false);
     }
@@ -53,13 +55,13 @@ export default function LoginPage() {
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-300 via-emerald-300 via-yellow-300 via-orange-300 to-pink-300 bg-clip-text text-transparent">
             Conjiweb
           </h1>
-          <p className="text-surface-200/50 mt-1 text-sm">Modern Web XMPP Client Platform</p>
+          <p className="text-surface-200/50 mt-1 text-sm">{t("login.subtitle")}</p>
         </div>
         <div className="glass rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-lg font-semibold text-surface-50 mb-6">Connect your account</h2>
+          <h2 className="text-lg font-semibold text-surface-50 mb-6">{t("login.connectAccount")}</h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">XMPP Address (JID)</label>
+              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.jid")}</label>
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type="text" value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })}
@@ -67,7 +69,7 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">Password</label>
+              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.password")}</label>
               <div className="relative">
                 <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type={showPass ? "text" : "password"} value={form.password}
@@ -80,7 +82,7 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">WebSocket URL</label>
+              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.wsUrl")}</label>
               <div className="relative">
                 <Server size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type="text" value={form.wsUrl} onChange={(e) => setForm({ ...form, wsUrl: e.target.value })}
@@ -88,12 +90,12 @@ export default function LoginPage() {
               </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary mt-2 flex items-center justify-center gap-2">
-              {loading ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Connecting...</>) : (<><Wifi size={16} />Connect</>)}
+              {loading ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t("login.connecting")}</>) : (<><Wifi size={16} />{t("login.connect")}</>)}
             </button>
           </form>
-          <p className="text-center text-xs text-surface-200/30 mt-6">Your credentials connect directly to your XMPP server.</p>
+          <p className="text-center text-xs text-surface-200/30 mt-6">{t("login.credentialTip")}</p>
         </div>
-        <p className="text-center text-xs text-surface-200/20 mt-6">Conjiweb 鐠?Open Source 鐠?v3.0.0</p>
+        <p className="text-center text-xs text-surface-200/20 mt-6">{t("login.version")}</p>
       </div>
     </div>
   );

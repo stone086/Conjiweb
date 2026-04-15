@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
-  MessageSquare, Settings, Puzzle, Shield,
-  User, Plus, ChevronDown, Wifi, WifiOff,
+  MessageSquare, Settings, Puzzle, Plus, Wifi, WifiOff,
 } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { clsx } from "clsx";
@@ -11,7 +10,6 @@ const navItems = [
   { to: "/", icon: MessageSquare, key: "nav.chats", end: true },
   { to: "/settings", icon: Settings, key: "nav.settings" },
   { to: "/plugins", icon: Puzzle, key: "nav.plugins" },
-  { to: "/admin", icon: Shield, key: "nav.admin" },
 ];
 
 function PresenceBadge({ presence }: { presence: string }) {

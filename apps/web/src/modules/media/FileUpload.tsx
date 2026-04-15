@@ -8,6 +8,7 @@ import {
   File, CheckCircle, AlertCircle, Download,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useLanguage } from "@/utils/i18n";
 
 export interface UploadedFile {
   id: string;
@@ -43,6 +44,7 @@ function FileIcon({ mimeType }: { mimeType: string }) {
 }
 
 export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadProps) {
+  const { t } = useLanguage();
   const [files, setFiles] = useState<FileItem[]>([]);
 
   const onDrop = useCallback((accepted: File[]) => {
@@ -91,9 +93,9 @@ export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadPr
       onUploaded(uploaded);
     } catch (e: any) {
       setFiles((prev) => prev.map((f, i) =>
-        i === index ? { ...f, status: "error", error: e.message ?? "Upload failed" } : f
+        i === index ? { ...f, status: "error", error: e.message ?? t("upload.error") } : f
       ));
-      toast.error("Upload failed");
+      toast.error(t("upload.error"));
     }
   };
 
@@ -112,9 +114,9 @@ export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadPr
         <input {...getInputProps()} />
         <Upload size={24} className={clsx("mx-auto mb-2", isDragActive ? "text-accent" : "text-surface-200/30")} />
         <p className="text-sm text-surface-200/50">
-          {isDragActive ? "Drop files here" : "Drag & drop files, or click to browse"}
+          {isDragActive ? t("upload.dropHere") : t("upload.dragOrClick")}
         </p>
-        <p className="text-xs text-surface-200/30 mt-1">Max 100MB per file</p>
+        <p className="text-xs text-surface-200/30 mt-1">{t("upload.maxPerFile")}</p>
       </div>
 
       {/* File list */}
@@ -135,7 +137,7 @@ export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadPr
                       />
                     </div>
                   )}
-                  {item.status === "done" && <span className="text-xs text-success">Uploaded</span>}
+                  {item.status === "done" && <span className="text-xs text-success">{t("upload.uploaded")}</span>}
                   {item.status === "error" && <span className="text-xs text-danger">{item.error}</span>}
                 </div>
               </div>
@@ -159,10 +161,10 @@ export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadPr
           <div className="flex gap-2">
             {files.some((f) => f.status === "idle") && (
               <button onClick={uploadAll} className="btn-primary text-sm flex items-center gap-2">
-                <Upload size={14} /> Upload All
+                <Upload size={14} /> {t("upload.uploadAll")}
               </button>
             )}
-            <button onClick={onCancel} className="btn-ghost text-sm">Done</button>
+            <button onClick={onCancel} className="btn-ghost text-sm">{t("upload.done")}</button>
           </div>
         </div>
       )}
