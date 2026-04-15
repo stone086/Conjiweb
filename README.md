@@ -10,7 +10,7 @@
 ## 快速开始（推荐）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/remote-install.sh | \
+curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/install.sh | \
 bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
 ```
 
@@ -20,7 +20,7 @@ bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.yourdom
 cd /opt
 git clone git@github.com:stone086/Conjiweb.git
 cd Conjiweb
-bash remote-install.sh --repo git@github.com:stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
+bash install.sh --repo git@github.com:stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
 ```
 
 ## 安装后常用命令
