@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Conjiweb — Native Install Script
+#  Conjiweb — Install Script
 #  Target: Debian/Linux VPS (root)
-#  Usage:  bash install.sh
+#  Usage:  bash setup.sh
 # =============================================================================
 set -euo pipefail
 
@@ -466,7 +466,7 @@ main() {
   echo "  ╚██████╗╚██████╔╝██║ ╚████║╚█████╔╝██║╚███╔███╔╝███████╗██████╔╝"
   echo "   ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝ ╚════╝ ╚═╝ ╚══╝╚══╝ ╚══════╝╚═════╝ "
   echo -e "${NC}"
-  echo -e "  ${BLUE}Conjiweb · Native Install${NC}"
+  echo -e "  ${BLUE}Conjiweb · Installer${NC}"
   echo ""
 
   load_config

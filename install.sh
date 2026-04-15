@@ -67,18 +67,18 @@ fi
 
 if [[ -n "$PROJECT_PATH" ]]; then
   INSTALL_DIR="$TARGET_DIR/$PROJECT_PATH"
-elif [[ -f "$TARGET_DIR/native-install.sh" ]]; then
+elif [[ -f "$TARGET_DIR/setup.sh" ]]; then
   INSTALL_DIR="$TARGET_DIR"
-elif [[ -f "$TARGET_DIR/web_Conji_native/native-install.sh" ]]; then
+elif [[ -f "$TARGET_DIR/web_Conji_native/setup.sh" ]]; then
   INSTALL_DIR="$TARGET_DIR/web_Conji_native"
 else
-  echo "[ERR] Cannot find native-install.sh. Use --path to specify project directory inside repo."
+  echo "[ERR] Cannot find setup.sh. Use --path to specify project directory inside repo."
   exit 1
 fi
 
 cd "$INSTALL_DIR"
 [[ -f ".env.example" ]] || { echo "[ERR] .env.example not found in $INSTALL_DIR"; exit 1; }
-if [[ ! -f "native-install.sh" && ! -f "install.sh" ]]; then
+if [[ ! -f "setup.sh" && ! -f "install.sh" ]]; then
   echo "[ERR] install script not found in $INSTALL_DIR"
   exit 1
 fi
@@ -103,13 +103,13 @@ if grep -qE '^XMPP_DOMAIN=' .env && [[ -z "$(grep -E '^XMPP_DOMAIN=' .env | head
   set_env "XMPP_DOMAIN" "$DOMAIN"
 fi
 
-if [[ -f "native-install.sh" ]]; then
-  chmod +x native-install.sh manage.sh
-  ENTRY_SCRIPT="native-install.sh"
+if [[ -f "setup.sh" ]]; then
+  chmod +x setup.sh manage.sh
+  ENTRY_SCRIPT="setup.sh"
 else
   chmod +x install.sh manage.sh
   ENTRY_SCRIPT="install.sh"
 fi
-echo "[INFO] Starting native install in $INSTALL_DIR"
+echo "[INFO] Starting install in $INSTALL_DIR"
 bash "$ENTRY_SCRIPT"
 echo "[OK] Install finished."
