@@ -25,11 +25,3 @@ bash manage.sh add-user
 bash manage.sh backup
 conjiweb-check your-domain.com
 ```
-
-## 连不上 GitHub
-
-```bash
-curl -I https://github.com
-```
-
-如果失败，先解决网络连通性再安装。
