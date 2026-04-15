@@ -15,10 +15,11 @@ const PLUGIN_ICONS: Record<string, React.ReactNode> = {
 
 export default function PluginsPage() {
   const qc = useQueryClient();
-  const { data: plugins = [], isLoading } = useQuery({
+  const { data: pluginsData = [], isLoading } = useQuery({
     queryKey: ["plugins"],
     queryFn: pluginsApi.list,
   });
+  const plugins = Array.isArray(pluginsData) ? pluginsData : [];
 
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>

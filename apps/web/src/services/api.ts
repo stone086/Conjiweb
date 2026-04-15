@@ -43,7 +43,14 @@ export const attachmentsApi = {
 
 // Plugins
 export const pluginsApi = {
-  list: () => api.get("/plugins/").then((r) => r.data),
+  list: () =>
+    api.get("/plugins/").then((r) => {
+      const data = r.data;
+      if (Array.isArray(data)) return data;
+      if (Array.isArray(data?.items)) return data.items;
+      if (Array.isArray(data?.data)) return data.data;
+      return [];
+    }),
   enable: (id: string) => api.post(`/plugins/${id}/enable`).then((r) => r.data),
   disable: (id: string) => api.post(`/plugins/${id}/disable`).then((r) => r.data),
 };
