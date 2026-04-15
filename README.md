@@ -14,15 +14,6 @@ curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/install.sh |
 bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
 ```
 
-## SSH 私有仓库安装
-
-```bash
-cd /opt
-git clone git@github.com:stone086/Conjiweb.git
-cd Conjiweb
-bash install.sh --repo git@github.com:stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
-```
-
 ## 安装后常用命令
 
 ```bash
