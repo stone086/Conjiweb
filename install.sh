@@ -249,6 +249,7 @@ install_postgres() {
   systemctl start postgresql
 
   sudo -u postgres psql -c "CREATE USER ${APP_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
+  sudo -u postgres psql -c "ALTER USER ${APP_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
   sudo -u postgres psql -c "CREATE DATABASE ${APP_USER} OWNER ${APP_USER};" 2>/dev/null || true
   sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${APP_USER} TO ${APP_USER};" 2>/dev/null || true
 
