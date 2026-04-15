@@ -2,34 +2,65 @@
 
 针对 **Debian 12 · 2GB 内存 · 日本 VPS · root 用户** 优化。
 
+## 版本说明
+
+本项目有两个版本，请按你的部署方式选择：
+
+| 版本 | 目录/仓库标识 | 适用场景 |
+|------|---------------|---------|
+| Conjiweb Native（当前） | `web_Conji_native` | 单机 VPS、无需 Docker、希望最小资源占用 |
+| Conjiweb Docker | `web_Conji_Dock` | 需要容器化部署、环境隔离、便于编排与迁移 |
+
+> 当前仓库内容为 **Native 版本**。如果你要使用 Docker 版本，请切换到 `web_Conji_Dock` 对应仓库/目录。
+
 ## 快速开始
 
-### 方式 A：从 GitHub 远程一键安装（推荐）
+### 方式 A：GitHub SSH 密钥登录安装（推荐，适合私有仓库）
 
-在你的 VPS 上直接执行：
+先在 VPS 上确认 SSH 密钥可访问 GitHub：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<你的GitHub用户名>/<你的仓库名>/main/remote-install.sh -o remote-install.sh
+ssh -T git@github.com
+```
+
+然后执行安装（仓库名已固定为 `Conjiweb`）：
+
+```bash
+cd /opt
+git clone git@github.com:stone086/Conjiweb.git
+cd Conjiweb
 bash remote-install.sh \
-  --repo https://github.com/<你的GitHub用户名>/<你的仓库名>.git \
+  --repo git@github.com:stone086/Conjiweb.git \
   --domain chat.yourdomain.com \
   --email you@example.com
 ```
 
-可选参数：
+### 方式 B：GitHub HTTPS 安装（公开仓库更方便）
 
-- `--branch`：指定分支（默认 `main`）
-- `--path`：当项目不在仓库根目录时指定路径（例如 `web_Conji_native`）
-- `--target`：源码拉取目录（默认 `/opt/web-gajim-v3-src`）
+```bash
+curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/remote-install.sh -o remote-install.sh
+bash remote-install.sh \
+  --repo https://github.com/stone086/Conjiweb.git \
+  --domain chat.yourdomain.com \
+  --email you@example.com
+```
 
-### 方式 B：离线上传安装
+### 方式 C：离线上传安装
 
 ```bash
 # 在本地电脑执行
 scp web-gajim-v3-native.zip root@你的VPS_IP:/root/
 ```
 
-### 第二步：解压
+`remote-install.sh` 可选参数：
+
+- `--branch`：指定分支（默认 `main`）
+- `--path`：项目不在仓库根目录时指定路径（例如 `web_Conji_native`）
+- `--target`：源码拉取目录（默认 `/opt/web-gajim-v3-src`）
+
+离线安装后续步骤：
+
+### 步骤 1：解压
 
 ```bash
 cd /root
@@ -37,7 +68,7 @@ unzip web-gajim-v3-native.zip
 cd web-gajim-v3-native
 ```
 
-### 第三步：填写配置
+### 步骤 2：填写配置
 
 ```bash
 cp .env.example .env
@@ -55,7 +86,7 @@ EMAIL=you@example.com          # 你的邮箱（用于 SSL）
 > ⚠️ 安装前请确保你的域名 DNS 已经解析到这台 VPS 的 IP。
 > 否则 SSL 证书申请会失败。
 
-### 第四步：一键安装
+### 步骤 3：一键安装
 
 ```bash
 bash install.sh
@@ -68,14 +99,14 @@ bash install.sh
 - 管理员账号密码
 - 数据库/Redis/MinIO 密码（请保存）
 
-### 第五步：创建 XMPP 用户
+### 步骤 4：创建 XMPP 用户
 
 ```bash
 bash manage.sh add-user
 # 输入用户名，然后输入密码
 ```
 
-### 第六步：登录
+### 步骤 5：登录
 
 打开浏览器访问 `https://你的域名`，用刚创建的 XMPP 账号登录。
 
