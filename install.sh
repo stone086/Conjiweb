@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Web Gajim V3 — Native Install Script
-#  Target: Debian 12, 2GB RAM, root, Japan VPS
+#  Conjiweb — Native Install Script
+#  Target: Debian/Linux VPS (root)
 #  Usage:  bash install.sh
 # =============================================================================
 set -euo pipefail
@@ -243,7 +243,7 @@ EOF
   # 创建 systemd 服务
   cat > /etc/systemd/system/webgajim-api.service << EOF
 [Unit]
-Description=Web Gajim V3 FastAPI Backend
+Description=Conjiweb FastAPI Backend
 After=network.target postgresql.service redis.service
 Requires=postgresql.service
 
@@ -423,7 +423,7 @@ BACKUP
 print_summary() {
   echo ""
   echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${GREEN}║         Web Gajim V3 安装完成！                         ║${NC}"
+  echo -e "${GREEN}║            Conjiweb 安装完成！                          ║${NC}"
   echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
   echo ""
   echo -e "  ${CYAN}前端地址：${NC}   https://${DOMAIN}"
@@ -454,14 +454,14 @@ print_summary() {
 # ── 主流程 ────────────────────────────────────────────────────────────────────
 main() {
   echo -e "${CYAN}"
-  echo "  ██╗    ██╗███████╗██████╗      ██████╗  █████╗      ██╗██╗███╗   ███╗"
-  echo "  ██║    ██║██╔════╝██╔══██╗    ██╔════╝ ██╔══██╗     ██║██║████╗ ████║"
-  echo "  ██║ █╗ ██║█████╗  ██████╔╝    ██║  ███╗███████║     ██║██║██╔████╔██║"
-  echo "  ██║███╗██║██╔══╝  ██╔══██╗    ██║   ██║██╔══██║██   ██║██║██║╚██╔╝██║"
-  echo "  ╚███╔███╔╝███████╗██████╔╝    ╚██████╔╝██║  ██║╚█████╔╝██║██║ ╚═╝ ██║"
-  echo "   ╚══╝╚══╝ ╚══════╝╚═════╝      ╚═════╝ ╚═╝  ╚═╝ ╚════╝ ╚═╝╚═╝     ╚═╝"
+  echo "   ██████╗ ██████╗ ███╗   ██╗     ██╗██╗██╗    ██╗███████╗██████╗ "
+  echo "  ██╔════╝██╔═══██╗████╗  ██║     ██║██║██║    ██║██╔════╝██╔══██╗"
+  echo "  ██║     ██║   ██║██╔██╗ ██║     ██║██║██║ █╗ ██║█████╗  ██████╔╝"
+  echo "  ██║     ██║   ██║██║╚██╗██║██   ██║██║██║███╗██║██╔══╝  ██╔══██╗"
+  echo "  ╚██████╗╚██████╔╝██║ ╚████║╚█████╔╝██║╚███╔███╔╝███████╗██████╔╝"
+  echo "   ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝ ╚════╝ ╚═╝ ╚══╝╚══╝ ╚══════╝╚═════╝ "
   echo -e "${NC}"
-  echo -e "  ${BLUE}Debian 12 · 2GB · Japan · Native Install${NC}"
+  echo -e "  ${BLUE}Conjiweb · Native Install${NC}"
   echo ""
 
   load_config

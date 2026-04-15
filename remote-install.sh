@@ -14,7 +14,7 @@ Required:
 Optional:
   --branch    Git branch to install from (default: main)
   --path      Project path inside repo; auto-detected if omitted
-  --target    Clone target directory (default: /opt/web-gajim-v3-src)
+  --target    Clone target directory (default: /opt/conjiweb-src)
   --help      Show this help
 
 Example:
@@ -30,7 +30,7 @@ DOMAIN=""
 EMAIL=""
 BRANCH="main"
 PROJECT_PATH=""
-TARGET_DIR="/opt/web-gajim-v3-src"
+TARGET_DIR="/opt/conjiweb-src"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
