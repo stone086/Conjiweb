@@ -410,6 +410,10 @@ SECRET_KEY=${SECRET_KEY}
 CORS_ORIGINS=["https://${DOMAIN}"]
 EOF
 
+  # Alembic uses alembic.ini sqlalchemy.url (not app .env), keep them in sync.
+  sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}|" \
+    "${INSTALL_DIR}/api/alembic.ini"
+
   # 运行数据库迁移
   cd "${INSTALL_DIR}/api"
   .venv/bin/alembic upgrade head
