@@ -16,10 +16,11 @@ error()   { echo -e "${RED}[ERR]${NC}  $*"; exit 1; }
 step()    { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 
 # ── 配置变量（安装前自动读取 .env） ───────────────────────────────────────────
-INSTALL_DIR="/opt/web-gajim-v3"
+INSTALL_DIR="/opt/conjiweb"
 APP_USER="webgajim"
 DOMAIN=""
 EMAIL=""
+SRC_DIR=""
 
 # ── 读取配置文件 ───────────────────────────────────────────────────────────────
 load_config() {
@@ -214,7 +215,8 @@ install_nodejs() {
 deploy_api() {
   step "部署 FastAPI 后端"
   mkdir -p "${INSTALL_DIR}"
-  cp -r apps/api "${INSTALL_DIR}/api"
+  rm -rf "${INSTALL_DIR}/api"
+  cp -r "${SRC_DIR}/apps/api" "${INSTALL_DIR}/api"
 
   cd "${INSTALL_DIR}/api"
   python3.11 -m venv .venv
@@ -231,7 +233,7 @@ MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
 MINIO_BUCKET=webgajim-files
 MINIO_SECURE=false
 SECRET_KEY=${SECRET_KEY}
-CORS_ORIGINS=https://${DOMAIN}
+CORS_ORIGINS=["https://${DOMAIN}"]
 ADMIN_USER=${ADMIN_USER}
 ADMIN_PASS=${ADMIN_PASS}
 EOF
@@ -268,14 +270,15 @@ EOF
   systemctl start webgajim-api
   sleep 2
 
-  cd - > /dev/null
+  cd "${SRC_DIR}"
   success "FastAPI 后端部署完成，监听 127.0.0.1:8000"
 }
 
 # ── 10. 构建并部署前端 ────────────────────────────────────────────────────────
 deploy_frontend() {
   step "构建前端（React + Vite）"
-  cp -r apps/web "${INSTALL_DIR}/web"
+  rm -rf "${INSTALL_DIR}/web"
+  cp -r "${SRC_DIR}/apps/web" "${INSTALL_DIR}/web"
   cd "${INSTALL_DIR}/web"
 
   # 写入前端环境变量
@@ -288,7 +291,7 @@ EOF
   npm run build
 
   FRONTEND_DIST="${INSTALL_DIR}/web/dist"
-  cd - > /dev/null
+  cd "${SRC_DIR}"
   success "前端构建完成，输出目录: ${FRONTEND_DIST}"
 }
 
@@ -453,6 +456,8 @@ print_summary() {
 
 # ── 主流程 ────────────────────────────────────────────────────────────────────
 main() {
+  SRC_DIR="$(pwd -P)"
+
   echo -e "${CYAN}"
   echo "   ██████╗ ██████╗ ███╗   ██╗     ██╗██╗██╗    ██╗███████╗██████╗ "
   echo "  ██╔════╝██╔═══██╗████╗  ██║     ██║██║██║    ██║██╔════╝██╔══██╗"
