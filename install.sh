@@ -563,7 +563,27 @@ BACKUP
   success "备份脚本配置完成（每天 03:00 自动备份）"
 }
 
-# ── 16. 输出安装摘要 ──────────────────────────────────────────────────────────
+# ── 16. 生成快速验收命令 ──────────────────────────────────────────────────────
+setup_quick_check() {
+  cat > /usr/local/bin/conjiweb-check << 'CHECK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "=== Conjiweb 30s Check ==="
+for svc in postgresql redis-server prosody minio webgajim-api nginx; do
+  state=$(systemctl is-active "$svc" 2>/dev/null || true)
+  printf "%-16s %s\n" "$svc" "${state:-unknown}"
+done
+
+echo ""
+echo "--- HTTP ---"
+curl -k -I --max-time 8 "https://$1" 2>/dev/null | head -n 1 || echo "https://$1 FAIL"
+curl -k -I --max-time 8 "https://$1/api/docs" 2>/dev/null | head -n 1 || echo "https://$1/api/docs FAIL"
+CHECK
+  chmod +x /usr/local/bin/conjiweb-check
+}
+
+# ── 17. 输出安装摘要 ──────────────────────────────────────────────────────────
 print_summary() {
   echo ""
   echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
@@ -586,6 +606,7 @@ print_summary() {
   echo -e "  systemctl status prosody        # 查看 XMPP 状态"
   echo -e "  systemctl status nginx          # 查看 Nginx 状态"
   echo -e "  webgajim-backup.sh              # 立即备份"
+  echo -e "  conjiweb-check ${DOMAIN}        # 30秒验收"
   echo ""
   echo -e "  ${RED}请保存以下密码（只显示一次）：${NC}"
   echo -e "  数据库密码: ${DB_PASS}"
@@ -628,6 +649,7 @@ main() {
   setup_firewall
   setup_fail2ban
   setup_backup
+  setup_quick_check
   print_summary
 }
 
