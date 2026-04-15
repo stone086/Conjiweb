@@ -416,6 +416,19 @@ EOF
 
   # 运行数据库迁移
   cd "${INSTALL_DIR}/api"
+  DB_HAS_ACCOUNTS="$(
+    PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" -tAc \
+      "SELECT CASE WHEN to_regclass('public.accounts') IS NULL THEN '0' ELSE '1' END;" 2>/dev/null || echo "0"
+  )"
+  DB_HAS_ALEMBIC="$(
+    PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" -tAc \
+      "SELECT CASE WHEN to_regclass('public.alembic_version') IS NULL THEN '0' ELSE '1' END;" 2>/dev/null || echo "0"
+  )"
+
+  if [[ "${DB_HAS_ACCOUNTS}" = "1" && "${DB_HAS_ALEMBIC}" = "0" ]]; then
+    warn "Detected existing schema without alembic version table, stamping to head..."
+    .venv/bin/alembic stamp head
+  fi
   .venv/bin/alembic upgrade head
 
   # 创建 systemd 服务
