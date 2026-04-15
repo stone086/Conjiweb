@@ -67,7 +67,7 @@ export default function Sidebar() {
 
         {/* Add account */}
         <NavLink
-          to="/settings"
+          to="/settings?add=1"
           className="w-9 h-9 rounded-xl border border-dashed border-white/20
                      flex items-center justify-center text-surface-200/40
                      hover:border-accent/50 hover:text-accent transition-all duration-150"

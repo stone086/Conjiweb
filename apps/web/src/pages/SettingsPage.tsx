@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
 import { Trash2, Plus, Wifi, WifiOff, ChevronDown } from "lucide-react";
@@ -114,10 +115,18 @@ export default function SettingsPage() {
   const { t } = useLanguage();
   const accounts = useAccountStore((s) => s.accounts);
   const addAccount = useAccountStore((s) => s.addAccount);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ jid: "", password: "", wsUrl: "" });
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
   const [language, setLanguageState] = useState<Language>(getStoredLanguage());
+
+  useEffect(() => {
+    if (searchParams.get("add") === "1") {
+      setShowAdd(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleAdd = () => {
     if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
