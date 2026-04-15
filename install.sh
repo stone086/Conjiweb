@@ -7,7 +7,7 @@ Usage:
   bash install.sh --repo <github_repo_url> --domain <your_domain> --email <your_email> [options]
 
 Required:
-  --repo      Git repository URL, for example: https://github.com/you/web-gajim-v3-native.git
+  --repo      Git repository URL, for example: https://github.com/stone086/Conjiweb.git
   --domain    Public domain, for example: chat.example.com
   --email     Email for Let's Encrypt certificate notices
 
@@ -19,7 +19,7 @@ Optional:
 
 Example:
   bash install.sh \
-    --repo https://github.com/you/web-gajim-v3-native.git \
+    --repo https://github.com/stone086/Conjiweb.git \
     --domain chat.example.com \
     --email you@example.com
 EOF
@@ -78,8 +78,8 @@ fi
 
 cd "$INSTALL_DIR"
 [[ -f ".env.example" ]] || { echo "[ERR] .env.example not found in $INSTALL_DIR"; exit 1; }
-if [[ ! -f "setup.sh" && ! -f "install.sh" ]]; then
-  echo "[ERR] install script not found in $INSTALL_DIR"
+if [[ ! -f "setup.sh" ]]; then
+  echo "[ERR] setup.sh not found in $INSTALL_DIR"
   exit 1
 fi
 
@@ -103,13 +103,8 @@ if grep -qE '^XMPP_DOMAIN=' .env && [[ -z "$(grep -E '^XMPP_DOMAIN=' .env | head
   set_env "XMPP_DOMAIN" "$DOMAIN"
 fi
 
-if [[ -f "setup.sh" ]]; then
-  chmod +x setup.sh manage.sh
-  ENTRY_SCRIPT="setup.sh"
-else
-  chmod +x install.sh manage.sh
-  ENTRY_SCRIPT="install.sh"
-fi
+chmod +x setup.sh manage.sh
+ENTRY_SCRIPT="setup.sh"
 echo "[INFO] Starting install in $INSTALL_DIR"
 bash "$ENTRY_SCRIPT"
 echo "[OK] Install finished."

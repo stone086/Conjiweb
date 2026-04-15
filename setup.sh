@@ -43,6 +43,10 @@ load_config() {
 
   [ -z "$DOMAIN" ] && error "请在 .env 中设置 DOMAIN=你的域名"
   [ -z "$EMAIL" ]  && error "请在 .env 中设置 EMAIL=你的邮箱（用于申请 SSL 证书）"
+  [[ "$DOMAIN" == "chat.yourdomain.com" || "$DOMAIN" == "chat.example.com" || "$DOMAIN" == "example.com" ]] && \
+    error "DOMAIN 仍是示例值（${DOMAIN}），请改成真实域名后重试"
+  [[ "$EMAIL" == "you@example.com" || "$EMAIL" == "example@example.com" ]] && \
+    error "EMAIL 仍是示例值（${EMAIL}），请改成真实邮箱后重试"
 
   # 更新 .env 写回随机生成的值
   sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
@@ -457,6 +461,8 @@ print_summary() {
 # ── 主流程 ────────────────────────────────────────────────────────────────────
 main() {
   SRC_DIR="$(pwd -P)"
+  [[ -d "${SRC_DIR}/apps/api" ]] || error "缺少源码目录: ${SRC_DIR}/apps/api"
+  [[ -d "${SRC_DIR}/apps/web" ]] || error "缺少源码目录: ${SRC_DIR}/apps/web"
 
   echo -e "${CYAN}"
   echo "   ██████╗ ██████╗ ███╗   ██╗     ██╗██╗██╗    ██╗███████╗██████╗ "

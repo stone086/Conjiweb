@@ -14,6 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/install.sh |
 bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
 ```
 
+说明：`install.sh` 是统一入口。旧的 `remote-install.sh` 仍可用，但仅用于兼容，会自动转到 `install.sh`。
+
 ## SSH 私有仓库安装
 
 ```bash
