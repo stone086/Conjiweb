@@ -15,6 +15,19 @@
 
 ## 快速开始
 
+仓库地址：`https://github.com/stone086/Conjiweb`
+
+### 安装前自检（建议先执行）
+
+```bash
+# 必须是 root
+id -u
+
+# 域名是否已解析到本机 IP
+ping -c 2 github.com
+curl -I https://github.com
+```
+
 ### 方式 A：GitHub SSH 密钥登录安装（推荐，适合私有仓库）
 
 先在 VPS 上确认 SSH 密钥可访问 GitHub：
@@ -35,6 +48,19 @@ bash remote-install.sh \
   --email you@example.com
 ```
 
+如果 VPS 对 `github.com:22` 不通，可使用 SSH 443 通道：
+
+```bash
+mkdir -p ~/.ssh
+cat > ~/.ssh/config << 'EOF'
+Host github.com
+  HostName ssh.github.com
+  Port 443
+  User git
+EOF
+chmod 600 ~/.ssh/config
+```
+
 ### 方式 B：GitHub HTTPS 安装（公开仓库更方便）
 
 ```bash
@@ -43,6 +69,13 @@ bash remote-install.sh \
   --repo https://github.com/stone086/Conjiweb.git \
   --domain chat.yourdomain.com \
   --email you@example.com
+```
+
+### 一条命令安装（HTTPS）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/remote-install.sh | \
+bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
 ```
 
 ### 方式 C：离线上传安装
@@ -57,6 +90,17 @@ scp web-gajim-v3-native.zip root@你的VPS_IP:/root/
 - `--branch`：指定分支（默认 `main`）
 - `--path`：项目不在仓库根目录时指定路径（例如 `web_Conji_native`）
 - `--target`：源码拉取目录（默认 `/opt/web-gajim-v3-src`）
+
+### GitHub 拉取失败排查
+
+如果出现 `Could not connect to github.com` 或 `Connection reset`：
+
+```bash
+curl -I https://github.com
+```
+
+- 若失败：说明服务器网络到 GitHub 不通（防火墙/运营商/地区网络限制），需换网络或配置代理。
+- 若成功：再重试 `bash remote-install.sh ...`。
 
 离线安装后续步骤：
 
