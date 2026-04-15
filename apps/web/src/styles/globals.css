@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --scrollbar-track: #0f0f1a;
+    --scrollbar-thumb: #2a2a4a;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-surface-950 text-surface-50 font-sans antialiased;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a6a; }
+}
+
+@layer components {
+  .glass {
+    @apply bg-surface-800/60 backdrop-blur-md border border-white/5;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-accent text-white rounded-lg font-medium
+           hover:bg-accent-dim active:scale-95 transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply px-3 py-2 rounded-lg text-surface-200 hover:bg-white/5
+           active:scale-95 transition-all duration-150;
+  }
+
+  .input-field {
+    @apply w-full bg-surface-900 border border-white/10 rounded-lg px-3 py-2
+           text-surface-50 placeholder:text-surface-200/40
+           focus:outline-none focus:ring-2 focus:ring-accent/40
+           transition-all duration-150;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer
+           text-surface-200 hover:bg-white/5 hover:text-surface-50
+           transition-all duration-150 select-none;
+  }
+
+  .sidebar-item.active {
+    @apply bg-accent/15 text-accent-soft;
+  }
+
+  .avatar {
+    @apply rounded-full object-cover flex-shrink-0 bg-surface-800;
+  }
+
+  .badge {
+    @apply inline-flex items-center justify-center min-w-[18px] h-[18px]
+           px-1 rounded-full text-[10px] font-bold bg-accent text-white;
+  }
+
+  .presence-dot {
+    @apply w-2.5 h-2.5 rounded-full border-2 border-surface-900;
+  }
+
+  .presence-dot.available   { @apply bg-success; }
+  .presence-dot.away        { @apply bg-warn; }
+  .presence-dot.dnd         { @apply bg-danger; }
+  .presence-dot.unavailable { @apply bg-surface-200/40; }
+}
+
+/* Message bubbles */
+.msg-bubble-out {
+  @apply bg-accent/20 border border-accent/20 rounded-2xl rounded-tr-sm px-4 py-2 max-w-[70%] ml-auto;
+}
+.msg-bubble-in {
+  @apply bg-surface-800 border border-white/5 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[70%];
+}
+.msg-bubble-system {
+  @apply text-center text-xs text-surface-200/50 py-2;
+}

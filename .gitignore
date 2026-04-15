@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.DS_Store
+*.local
+*.log
+.idea/
+.vscode/
+postgres_data/
+redis_data/
+minio_data/
+prosody_data/
