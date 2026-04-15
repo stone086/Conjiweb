@@ -50,7 +50,9 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
             <Wifi size={28} className="text-accent" />
           </div>
-          <h1 className="text-3xl font-bold text-surface-50 tracking-tight">Conjiweb</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-300 via-emerald-300 via-yellow-300 via-orange-300 to-pink-300 bg-clip-text text-transparent">
+            Conjiweb
+          </h1>
           <p className="text-surface-200/50 mt-1 text-sm">Modern Web XMPP Client Platform</p>
         </div>
         <div className="glass rounded-2xl p-8 shadow-2xl">
