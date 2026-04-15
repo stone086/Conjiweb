@@ -476,7 +476,12 @@ VITE_API_URL=https://${DOMAIN}
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
 EOF
 
-  npm ci --silent
+  if [[ -f package-lock.json ]]; then
+    npm ci --silent
+  else
+    warn "package-lock.json not found, using npm install instead of npm ci"
+    npm install --silent --no-audit --no-fund
+  fi
   npm run build
 
   FRONTEND_DIST="${INSTALL_DIR}/web/dist"
