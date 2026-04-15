@@ -11,7 +11,7 @@
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/install.sh | \
-bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.yourdomain.com --email you@example.com
+bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain <YOUR_DOMAIN> --email <YOUR_EMAIL>
 ```
 
 ## 安装后常用命令
