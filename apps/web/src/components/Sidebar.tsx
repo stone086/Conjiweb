@@ -5,12 +5,13 @@ import {
 } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { clsx } from "clsx";
+import { useLanguage } from "@/utils/i18n";
 
 const navItems = [
-  { to: "/", icon: MessageSquare, label: "Chats", end: true },
-  { to: "/settings", icon: Settings, label: "Settings" },
-  { to: "/plugins", icon: Puzzle, label: "Plugins" },
-  { to: "/admin", icon: Shield, label: "Admin" },
+  { to: "/", icon: MessageSquare, key: "nav.chats", end: true },
+  { to: "/settings", icon: Settings, key: "nav.settings" },
+  { to: "/plugins", icon: Puzzle, key: "nav.plugins" },
+  { to: "/admin", icon: Shield, key: "nav.admin" },
 ];
 
 function PresenceBadge({ presence }: { presence: string }) {
@@ -27,6 +28,7 @@ function PresenceBadge({ presence }: { presence: string }) {
 }
 
 export default function Sidebar() {
+  const { t } = useLanguage();
   const accounts = useAccountStore((s) => s.accounts);
   const activeId = useAccountStore((s) => s.activeAccountId);
   const setActive = useAccountStore((s) => s.setActiveAccount);
@@ -69,7 +71,7 @@ export default function Sidebar() {
           className="w-9 h-9 rounded-xl border border-dashed border-white/20
                      flex items-center justify-center text-surface-200/40
                      hover:border-accent/50 hover:text-accent transition-all duration-150"
-          title="Add account"
+          title={t("nav.addAccount")}
         >
           <Plus size={14} />
         </NavLink>
@@ -79,12 +81,12 @@ export default function Sidebar() {
 
       {/* Nav icons */}
       <nav className="flex flex-col gap-1 w-full px-2">
-        {navItems.map(({ to, icon: Icon, label, end }) => (
+        {navItems.map(({ to, icon: Icon, key, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
-            title={label}
+            title={t(key)}
             className={({ isActive }) =>
               clsx(
                 "w-full flex items-center justify-center py-2.5 rounded-lg transition-all duration-150",
@@ -100,7 +102,10 @@ export default function Sidebar() {
       </nav>
 
       {/* Connection status */}
-      <div className="mt-2 flex items-center justify-center" title={activeAccount?.connected ? "Connected" : "Disconnected"}>
+      <div
+        className="mt-2 flex items-center justify-center"
+        title={activeAccount?.connected ? t("nav.connected") : t("nav.disconnected")}
+      >
         {activeAccount?.connected
           ? <Wifi size={14} className="text-success" />
           : <WifiOff size={14} className="text-surface-200/30" />

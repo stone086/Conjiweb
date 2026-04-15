@@ -5,19 +5,20 @@ import { Trash2, Plus, Wifi, WifiOff, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
-
-const PRESENCES: { value: PresenceType; label: string; color: string }[] = [
-  { value: "available", label: "Available", color: "bg-success" },
-  { value: "away", label: "Away", color: "bg-warn" },
-  { value: "dnd", label: "Do Not Disturb", color: "bg-danger" },
-  { value: "unavailable", label: "Offline", color: "bg-surface-200/40" },
-];
+import { getStoredLanguage, Language, setLanguage, useLanguage } from "@/utils/i18n";
 
 function AccountCard({ account }: { account: XmppAccount }) {
+  const { t } = useLanguage();
   const removeAccount = useAccountStore((s) => s.removeAccount);
   const updatePresence = useAccountStore((s) => s.updatePresence);
   const setConnected = useAccountStore((s) => s.setConnected);
   const [connecting, setConnecting] = useState(false);
+  const PRESENCES: { value: PresenceType; label: string; color: string }[] = [
+    { value: "available", label: t("presence.available"), color: "bg-success" },
+    { value: "away", label: t("presence.away"), color: "bg-warn" },
+    { value: "dnd", label: t("presence.dnd"), color: "bg-danger" },
+    { value: "unavailable", label: t("presence.offline"), color: "bg-surface-200/40" },
+  ];
 
   const connect = async () => {
     setConnecting(true);
@@ -30,9 +31,9 @@ function AccountCard({ account }: { account: XmppAccount }) {
       });
       client.on("connection.changed", (d: any) => setConnected(account.id, d.status === "connected"));
       await client.connect();
-      toast.success(`Connected: ${account.jid}`);
+      toast.success(`${t("toast.connected")}: ${account.jid}`);
     } catch (e: any) {
-      toast.error(e.message ?? "Connection failed");
+      toast.error(e.message ?? t("toast.connectionFailed"));
     } finally {
       setConnecting(false);
     }
@@ -41,7 +42,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
   const disconnect = () => {
     destroyClient(account.id);
     setConnected(account.id, false);
-    toast("Disconnected");
+    toast(t("toast.disconnected"));
   };
 
   return (
@@ -59,8 +60,8 @@ function AccountCard({ account }: { account: XmppAccount }) {
         </div>
         <div className="flex items-center gap-2">
           {account.connected
-            ? <span className="text-[10px] text-success font-medium flex items-center gap-1"><Wifi size={10}/> Online</span>
-            : <span className="text-[10px] text-surface-200/40 flex items-center gap-1"><WifiOff size={10}/> Offline</span>
+            ? <span className="text-[10px] text-success font-medium flex items-center gap-1"><Wifi size={10}/> {t("account.online")}</span>
+            : <span className="text-[10px] text-surface-200/40 flex items-center gap-1"><WifiOff size={10}/> {t("account.offline")}</span>
           }
         </div>
       </div>
@@ -91,18 +92,18 @@ function AccountCard({ account }: { account: XmppAccount }) {
               ? <span className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
               : <Wifi size={12} />
             }
-            Connect
+            {t("account.connect")}
           </button>
         ) : (
           <button onClick={disconnect} className="btn-ghost text-xs py-1.5 flex items-center gap-1.5 text-danger">
-            <WifiOff size={12} /> Disconnect
+            <WifiOff size={12} /> {t("account.disconnect")}
           </button>
         )}
         <button
           onClick={() => { disconnect(); removeAccount(account.id); }}
           className="btn-ghost text-xs py-1.5 flex items-center gap-1.5 text-danger ml-auto"
         >
-          <Trash2 size={12} /> Remove
+          <Trash2 size={12} /> {t("account.remove")}
         </button>
       </div>
     </div>
@@ -110,14 +111,16 @@ function AccountCard({ account }: { account: XmppAccount }) {
 }
 
 export default function SettingsPage() {
+  const { t } = useLanguage();
   const accounts = useAccountStore((s) => s.accounts);
   const addAccount = useAccountStore((s) => s.addAccount);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ jid: "", password: "", wsUrl: "" });
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
+  const [language, setLanguageState] = useState<Language>(getStoredLanguage());
 
   const handleAdd = () => {
-    if (!form.jid || !form.password) { toast.error("JID and password required"); return; }
+    if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
     addAccount({
       id: crypto.randomUUID(),
       jid: form.jid,
@@ -127,47 +130,47 @@ export default function SettingsPage() {
     });
     setForm({ jid: "", password: "", wsUrl: "" });
     setShowAdd(false);
-    toast.success("Account added");
+    toast.success(t("toast.accountAdded"));
   };
 
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
         <div>
-          <h1 className="text-xl font-bold text-surface-50">Settings</h1>
-          <p className="text-sm text-surface-200/50 mt-1">Manage accounts and preferences</p>
+          <h1 className="text-xl font-bold text-surface-50">{t("settings.title")}</h1>
+          <p className="text-sm text-surface-200/50 mt-1">{t("settings.subtitle")}</p>
         </div>
 
         {/* Accounts section */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide">
-              XMPP Accounts
+              {t("settings.accounts")}
             </h2>
             <button onClick={() => setShowAdd(!showAdd)} className="btn-ghost text-xs flex items-center gap-1">
-              <Plus size={12} /> Add Account
+              <Plus size={12} /> {t("settings.addAccount")}
             </button>
           </div>
 
           {showAdd && (
             <div className="glass rounded-xl p-4 mb-3 flex flex-col gap-3 animate-fade-in">
-              <h3 className="text-sm font-medium text-surface-50">Add new account</h3>
+              <h3 className="text-sm font-medium text-surface-50">{t("settings.addNewAccount")}</h3>
               <input className="input-field text-sm" placeholder="user@xmpp.example.com"
                 value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })} />
-              <input className="input-field text-sm" type="password" placeholder="Password"
+              <input className="input-field text-sm" type="password" placeholder={t("settings.password")}
                 value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-              <input className="input-field text-sm" placeholder="ws://... (optional)"
+              <input className="input-field text-sm" placeholder={t("settings.wsOptional")}
                 value={form.wsUrl} onChange={(e) => setForm({ ...form, wsUrl: e.target.value })} />
               <div className="flex gap-2">
-                <button onClick={handleAdd} className="btn-primary text-sm">Add</button>
-                <button onClick={() => setShowAdd(false)} className="btn-ghost text-sm">Cancel</button>
+                <button onClick={handleAdd} className="btn-primary text-sm">{t("settings.add")}</button>
+                <button onClick={() => setShowAdd(false)} className="btn-ghost text-sm">{t("settings.cancel")}</button>
               </div>
             </div>
           )}
 
           <div className="flex flex-col gap-3">
             {accounts.length === 0 ? (
-              <p className="text-sm text-surface-200/30 py-4 text-center">No accounts configured</p>
+              <p className="text-sm text-surface-200/30 py-4 text-center">{t("settings.noAccounts")}</p>
             ) : (
               accounts.map((acc) => <AccountCard key={acc.id} account={acc} />)
             )}
@@ -177,11 +180,11 @@ export default function SettingsPage() {
         {/* Appearance */}
         <section>
           <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide mb-3">
-            Appearance
+            {t("settings.appearance")}
           </h2>
           <div className="glass rounded-xl p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-surface-200">Theme</span>
+              <span className="text-sm text-surface-200">{t("settings.theme")}</span>
               <select
                 className="input-field w-auto text-sm"
                 value={theme}
@@ -191,16 +194,31 @@ export default function SettingsPage() {
                   applyTheme(next);
                 }}
               >
-                <option value="dark">Dark (Default)</option>
-                <option value="light">Light</option>
-                <option value="system">System</option>
+                <option value="dark">{t("settings.themeDark")}</option>
+                <option value="light">{t("settings.themeLight")}</option>
+                <option value="system">{t("settings.themeSystem")}</option>
               </select>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-surface-200">Message density</span>
+              <span className="text-sm text-surface-200">{t("settings.languagePack")}</span>
+              <select
+                className="input-field w-auto text-sm"
+                value={language}
+                onChange={(e) => {
+                  const next = e.target.value as Language;
+                  setLanguageState(next);
+                  setLanguage(next);
+                }}
+              >
+                <option value="en-US">{t("settings.languageEn")}</option>
+                <option value="zh-CN">{t("settings.languageZh")}</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-surface-200">{t("settings.messageDensity")}</span>
               <select className="input-field w-auto text-sm">
-                <option value="comfortable">Comfortable</option>
-                <option value="compact">Compact</option>
+                <option value="comfortable">{t("settings.densityComfortable")}</option>
+                <option value="compact">{t("settings.densityCompact")}</option>
               </select>
             </div>
           </div>
@@ -209,13 +227,13 @@ export default function SettingsPage() {
         {/* Notifications */}
         <section>
           <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide mb-3">
-            Notifications
+            {t("settings.notifications")}
           </h2>
           <div className="glass rounded-xl p-4 flex flex-col gap-3">
             {[
-              { label: "Browser notifications", key: "browser" },
-              { label: "Sound alerts", key: "sound" },
-              { label: "Mention highlights", key: "mention" },
+              { label: t("settings.notifyBrowser"), key: "browser" },
+              { label: t("settings.notifySound"), key: "sound" },
+              { label: t("settings.notifyMention"), key: "mention" },
             ].map(({ label, key }) => (
               <label key={key} className="flex items-center justify-between cursor-pointer">
                 <span className="text-sm text-surface-200">{label}</span>
