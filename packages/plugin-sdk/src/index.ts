@@ -1,5 +1,5 @@
 /**
- * Web Gajim V3 Plugin SDK
+ * Conjiweb Plugin SDK
  * Use this to build plugins that extend the client.
  */
 

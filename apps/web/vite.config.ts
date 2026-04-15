@@ -9,7 +9,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "Web Gajim V3",
+        name: "Conjiweb",
         short_name: "WGajim",
         description: "Modern Web XMPP Client",
         theme_color: "#1a1a2e",

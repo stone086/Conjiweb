@@ -1,1 +1,1 @@
-# Web Gajim V3 API
+# Conjiweb API

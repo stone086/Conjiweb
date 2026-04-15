@@ -60,6 +60,6 @@ export const useAccountStore = create<AccountState>()(
           accounts: s.accounts.map((a) => (a.id === id ? { ...a, connected } : a)),
         })),
     }),
-    { name: "wgv3-accounts" }
+    { name: "conjiweb-accounts" }
   )
 );

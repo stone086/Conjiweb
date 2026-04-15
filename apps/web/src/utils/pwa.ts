@@ -1,4 +1,4 @@
-// PWA utilities for Web Gajim V3
+// PWA utilities for Conjiweb
 
 /**
  * Check if app is running in standalone (installed PWA) mode
@@ -35,7 +35,7 @@ export function canInstall(): boolean {
 /**
  * Update document title with unread count
  */
-export function updateTabTitle(unreadCount: number, baseTitle = "Web Gajim V3") {
+export function updateTabTitle(unreadCount: number, baseTitle = "Conjiweb") {
   document.title = unreadCount > 0 ? `(${unreadCount}) ${baseTitle}` : baseTitle;
 }
 

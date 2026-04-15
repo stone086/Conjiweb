@@ -51,7 +51,7 @@ export const useGroupStore = create<GroupState>()(
         rooms: s.rooms[roomJid] ? { ...s.rooms, [roomJid]: { ...s.rooms[roomJid], subject } } : s.rooms,
       })),
     }),
-    { name: "wgv3-groups" }
+    { name: "conjiweb-groups" }
   )
 );
 

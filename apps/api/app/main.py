@@ -19,9 +19,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Web Gajim V3 API",
+    title="Conjiweb API",
     version="3.0.0",
-    description="Backend API for Web Gajim V3 — Modern Web XMPP Client Platform",
+    description="Backend API for Conjiweb 鈥?Modern Web XMPP Client Platform",
     lifespan=lifespan,
 )
 

@@ -84,7 +84,7 @@ export const useNotificationStore = create<NotificationState>()(
       setSoundEnabled: (v) => set({ soundEnabled: v }),
       setBrowserEnabled: (v) => set({ browserEnabled: v }),
     }),
-    { name: "wgv3-notifications", partialize: (s) => ({ soundEnabled: s.soundEnabled, browserEnabled: s.browserEnabled }) }
+    { name: "conjiweb-notifications", partialize: (s) => ({ soundEnabled: s.soundEnabled, browserEnabled: s.browserEnabled }) }
   )
 );
 

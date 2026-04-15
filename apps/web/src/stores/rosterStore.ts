@@ -73,6 +73,6 @@ export const useRosterStore = create<RosterState>()(
             : s.contacts,
         })),
     }),
-    { name: "wgv3-roster" }
+    { name: "conjiweb-roster" }
   )
 );

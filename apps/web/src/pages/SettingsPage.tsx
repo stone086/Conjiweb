@@ -215,7 +215,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <p className="text-xs text-surface-200/20 text-center">Web Gajim V3 · v3.0.0</p>
+        <p className="text-xs text-surface-200/20 text-center">Conjiweb 路 v3.0.0</p>
       </div>
     </div>
   );

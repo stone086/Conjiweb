@@ -25,7 +25,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [recent] = useState<string[]>(
-    JSON.parse(localStorage.getItem("wgv3-recent-searches") ?? "[]")
+    JSON.parse(localStorage.getItem("conjiweb-recent-searches") ?? "[]")
   );
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,7 +95,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
 
   const handleSelect = (result: SearchResult) => {
     const searches = [query, ...recent.filter((r) => r !== query)].slice(0, 5);
-    localStorage.setItem("wgv3-recent-searches", JSON.stringify(searches));
+    localStorage.setItem("conjiweb-recent-searches", JSON.stringify(searches));
 
     if (result.type === "message" && result.conversationId) {
       navigate(`/chat/${result.conversationId}`);
@@ -200,8 +200,8 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="px-4 py-2 border-t border-white/5 flex gap-3 text-[10px] text-surface-200/25">
-          <span>↑↓ Navigate</span>
-          <span>↵ Select</span>
+          <span>鈫戔啌 Navigate</span>
+          <span>鈫?Select</span>
           <span>Esc Close</span>
         </div>
       </div>

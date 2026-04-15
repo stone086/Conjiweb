@@ -1,5 +1,5 @@
 /**
- * xmpp-adapter — Full XMPP client wrapper for Web Gajim V3
+ * xmpp-adapter 鈥?Full XMPP client wrapper for Conjiweb
  * Wraps Strophe.js with a clean event-driven API.
  */
 

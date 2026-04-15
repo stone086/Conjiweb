@@ -23,7 +23,7 @@ class WGajimDB extends Dexie {
   contacts!: Table<CachedContact>;
 
   constructor() {
-    super("web-gajim-v3");
+    super("conjiweb");
     this.version(1).stores({
       messages: "id, conversationId, timestamp",
       conversations: "id, accountId, peerJid, lastMessageAt",

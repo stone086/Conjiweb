@@ -3,13 +3,13 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://webgajim:changeme@localhost:5432/webgajim"
+    DATABASE_URL: str = "postgresql+asyncpg://conjiweb:changeme@localhost:5432/conjiweb"
     REDIS_URL: str = "redis://localhost:6379/0"
 
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "changeme123"
-    MINIO_BUCKET: str = "webgajim-files"
+    MINIO_BUCKET: str = "conjiweb-files"
     MINIO_SECURE: bool = False
 
     SECRET_KEY: str = "supersecretkey"

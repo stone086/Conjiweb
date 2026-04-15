@@ -34,7 +34,7 @@ export default function PluginsPage() {
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
         <div>
           <h1 className="text-xl font-bold text-surface-50">Plugins</h1>
-          <p className="text-sm text-surface-200/50 mt-1">Extend Web Gajim with powerful add-ons</p>
+          <p className="text-sm text-surface-200/50 mt-1">Extend Conjiweb with powerful add-ons</p>
         </div>
 
         {isLoading ? (

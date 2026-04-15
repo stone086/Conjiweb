@@ -1,24 +1,21 @@
-# 常见问题排查
+# 甯歌闂鎺掓煡
 
-## SSL 证书申请失败
+## SSL 璇佷功鐢宠澶辫触
 
-**症状：** `certbot` 报错，证书申请不成功。
-
-**原因 1：域名 DNS 未生效**
+**鐥囩姸锛?* `certbot` 鎶ラ敊锛岃瘉涔︾敵璇蜂笉鎴愬姛銆?
+**鍘熷洜 1锛氬煙鍚?DNS 鏈敓鏁?*
 ```bash
-# 检查 DNS 是否指向你的 VPS
-dig +short 你的域名
-nslookup 你的域名
+# 妫€鏌?DNS 鏄惁鎸囧悜浣犵殑 VPS
+dig +short 浣犵殑鍩熷悕
+nslookup 浣犵殑鍩熷悕
 ```
-确认输出的 IP 和你的 VPS IP 一致。DNS 生效可能需要几分钟到 24 小时。
-
-**原因 2：80 端口被占用**
+纭杈撳嚭鐨?IP 鍜屼綘鐨?VPS IP 涓€鑷淬€侱NS 鐢熸晥鍙兘闇€瑕佸嚑鍒嗛挓鍒?24 灏忔椂銆?
+**鍘熷洜 2锛?0 绔彛琚崰鐢?*
 ```bash
 ss -tlnp | grep :80
-# 如果有其他进程占用，先停掉
-```
+# 濡傛灉鏈夊叾浠栬繘绋嬪崰鐢紝鍏堝仠鎺?```
 
-**原因 3：防火墙没开 80 端口**
+**鍘熷洜 3锛氶槻鐏娌″紑 80 绔彛**
 ```bash
 ufw allow 80/tcp
 ufw allow 443/tcp
@@ -26,109 +23,100 @@ ufw allow 443/tcp
 
 ---
 
-## API 启动失败
+## API 鍚姩澶辫触
 
 ```bash
-# 查看详细日志
-journalctl -u webgajim-api -n 50 --no-pager
+# 鏌ョ湅璇︾粏鏃ュ織
+journalctl -u conjiweb-api -n 50 --no-pager
 
-# 常见原因：数据库连不上
-systemctl status postgresql
+# 甯歌鍘熷洜锛氭暟鎹簱杩炰笉涓?systemctl status postgresql
 
-# 手动测试 API 启动
-cd /opt/web-gajim-v3/api
+# 鎵嬪姩娴嬭瘯 API 鍚姩
+cd /opt/conjiweb/api
 source .env
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 ---
 
-## 数据库迁移失败
-
+## 鏁版嵁搴撹縼绉诲け璐?
 ```bash
-cd /opt/web-gajim-v3/api
+cd /opt/conjiweb/api
 source .env
 
-# 查看当前迁移状态
-.venv/bin/alembic current
+# 鏌ョ湅褰撳墠杩佺Щ鐘舵€?.venv/bin/alembic current
 
-# 重新运行迁移
+# 閲嶆柊杩愯杩佺Щ
 .venv/bin/alembic upgrade head
 
-# 如果迁移文件有问题，重建数据库（会丢失数据！）
-sudo -u postgres psql -c "DROP DATABASE webgajim;"
-sudo -u postgres psql -c "CREATE DATABASE webgajim OWNER webgajim;"
+# 濡傛灉杩佺Щ鏂囦欢鏈夐棶棰橈紝閲嶅缓鏁版嵁搴擄紙浼氫涪澶辨暟鎹紒锛?sudo -u postgres psql -c "DROP DATABASE conjiweb;"
+sudo -u postgres psql -c "CREATE DATABASE conjiweb OWNER conjiweb;"
 .venv/bin/alembic upgrade head
 ```
 
 ---
 
-## XMPP 无法连接
+## XMPP 鏃犳硶杩炴帴
 
-**检查 Prosody 状态：**
+**妫€鏌?Prosody 鐘舵€侊細**
 ```bash
 systemctl status prosody
 tail -20 /var/log/prosody/prosody.log
 tail -20 /var/log/prosody/prosody.err
 ```
 
-**测试 WebSocket 连接：**
+**娴嬭瘯 WebSocket 杩炴帴锛?*
 ```bash
-# 检查 Prosody 是否在监听 5280
+# 妫€鏌?Prosody 鏄惁鍦ㄧ洃鍚?5280
 ss -tlnp | grep 5280
 
-# 检查 Nginx 是否正确代理
-curl -i https://你的域名/xmpp-websocket \
+# 妫€鏌?Nginx 鏄惁姝ｇ‘浠ｇ悊
+curl -i https://浣犵殑鍩熷悕/xmpp-websocket \
   -H "Upgrade: websocket" \
   -H "Connection: Upgrade"
 ```
 
-**检查域名配置：**
-确认 `prosody.cfg.lua` 里的 `VirtualHost` 域名和你登录时填的 JID 域名一致。
-比如 JID 是 `alice@chat.example.com`，则 VirtualHost 应该是 `chat.example.com`。
-
+**妫€鏌ュ煙鍚嶉厤缃細**
+纭 `prosody.cfg.lua` 閲岀殑 `VirtualHost` 鍩熷悕鍜屼綘鐧诲綍鏃跺～鐨?JID 鍩熷悕涓€鑷淬€?姣斿 JID 鏄?`alice@chat.example.com`锛屽垯 VirtualHost 搴旇鏄?`chat.example.com`銆?
 ---
 
-## 前端白屏
+## 鍓嶇鐧藉睆
 
 ```bash
-# 检查 Nginx 日志
+# 妫€鏌?Nginx 鏃ュ織
 tail -20 /var/log/nginx/error.log
 
-# 检查前端文件是否存在
-ls /opt/web-gajim-v3/web/dist/
+# 妫€鏌ュ墠绔枃浠舵槸鍚﹀瓨鍦?ls /opt/conjiweb/web/dist/
 
-# 重新构建前端
+# 閲嶆柊鏋勫缓鍓嶇
 bash manage.sh update-front
 ```
 
 ---
 
-## MinIO 文件上传失败
+## MinIO 鏂囦欢涓婁紶澶辫触
 
 ```bash
-# 检查 MinIO 状态
-systemctl status minio
+# 妫€鏌?MinIO 鐘舵€?systemctl status minio
 
-# 检查 bucket 是否存在
+# 妫€鏌?bucket 鏄惁瀛樺湪
 mc ls local/
 
-# 重新创建 bucket
-mc mb local/webgajim-files
-mc anonymous set download local/webgajim-files
+# 閲嶆柊鍒涘缓 bucket
+mc mb local/conjiweb-files
+mc anonymous set download local/conjiweb-files
 ```
 
 ---
 
-## 内存不足
+## 鍐呭瓨涓嶈冻
 
 ```bash
-# 查看内存使用
+# 鏌ョ湅鍐呭瓨浣跨敤
 bash manage.sh mem-usage
 free -h
 
-# 启用 swap（2GB VPS 建议加 1GB swap）
-fallocate -l 1G /swapfile
+# 鍚敤 swap锛?GB VPS 寤鸿鍔?1GB swap锛?fallocate -l 1G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
 swapon /swapfile
@@ -137,11 +125,10 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
 ---
 
-## 查看所有服务日志
-
+## 鏌ョ湅鎵€鏈夋湇鍔℃棩蹇?
 ```bash
 # API
-journalctl -u webgajim-api -f
+journalctl -u conjiweb-api -f
 
 # Nginx
 tail -f /var/log/nginx/access.log
@@ -162,26 +149,24 @@ journalctl -u minio -f
 
 ---
 
-## 重置管理员密码
-
-编辑 `/opt/web-gajim-v3/api/.env`，修改 `ADMIN_PASS=新密码`，然后：
+## 閲嶇疆绠＄悊鍛樺瘑鐮?
+缂栬緫 `/opt/conjiweb/api/.env`锛屼慨鏀?`ADMIN_PASS=鏂板瘑鐮乣锛岀劧鍚庯細
 ```bash
-systemctl restart webgajim-api
+systemctl restart conjiweb-api
 ```
 
 ---
 
-## 证书快到期了
+## 璇佷功蹇埌鏈熶簡
 
 ```bash
-# 查看证书到期时间
+# 鏌ョ湅璇佷功鍒版湡鏃堕棿
 certbot certificates
 
-# 手动续期
+# 鎵嬪姩缁湡
 bash manage.sh ssl-renew
 
-# 或直接
-certbot renew --nginx
+# 鎴栫洿鎺?certbot renew --nginx
 ```
 
-证书自动续期已配置（每天检查），通常不需要手动操作。
+璇佷功鑷姩缁湡宸查厤缃紙姣忓ぉ妫€鏌ワ級锛岄€氬父涓嶉渶瑕佹墜鍔ㄦ搷浣溿€?

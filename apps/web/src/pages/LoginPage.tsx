@@ -50,7 +50,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
             <Wifi size={28} className="text-accent" />
           </div>
-          <h1 className="text-3xl font-bold text-surface-50 tracking-tight">Web Gajim V3</h1>
+          <h1 className="text-3xl font-bold text-surface-50 tracking-tight">Conjiweb</h1>
           <p className="text-surface-200/50 mt-1 text-sm">Modern Web XMPP Client Platform</p>
         </div>
         <div className="glass rounded-2xl p-8 shadow-2xl">
@@ -70,7 +70,7 @@ export default function LoginPage() {
                 <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type={showPass ? "text" : "password"} value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="••••••••" className="input-field pl-9 pr-10" required />
+                  placeholder="鈥⑩€⑩€⑩€⑩€⑩€⑩€⑩€? className="input-field pl-9 pr-10" required />
                 <button type="button" onClick={() => setShowPass(!showPass)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-200/30 hover:text-surface-200">
                   {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -91,7 +91,7 @@ export default function LoginPage() {
           </form>
           <p className="text-center text-xs text-surface-200/30 mt-6">Your credentials connect directly to your XMPP server.</p>
         </div>
-        <p className="text-center text-xs text-surface-200/20 mt-6">Web Gajim V3 · Open Source · v3.0.0</p>
+        <p className="text-center text-xs text-surface-200/20 mt-6">Conjiweb 路 Open Source 路 v3.0.0</p>
       </div>
     </div>
   );
