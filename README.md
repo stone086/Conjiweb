@@ -14,6 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/install.sh |
 bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain your-domain.com --email your-email@example.com
 ```
 
+执行后会自动完成依赖安装、服务部署和 HTTPS 配置。
+
 ## 安装后常用命令
 
 ```bash
