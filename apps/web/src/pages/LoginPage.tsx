@@ -49,8 +49,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-surface-950 bg-[radial-gradient(ellipse_at_top,rgba(124,106,247,0.08),transparent_60%)]">
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
-            <Wifi size={28} className="text-accent" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mb-4 overflow-hidden">
+            <img src="/app-logo.png" alt="Conjiweb" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-300 via-emerald-300 via-yellow-300 via-orange-300 to-pink-300 bg-clip-text text-transparent">
             Conjiweb
