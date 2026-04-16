@@ -423,6 +423,8 @@ MINIO_BUCKET=conjiweb-files
 MINIO_SECURE=false
 SECRET_KEY=${SECRET_KEY}
 CORS_ORIGINS=["https://${DOMAIN}"]
+XMPP_DOMAIN=${XMPP_DOMAIN}
+XMPP_REGISTRATION_ENABLED=true
 EOF
 
   # Alembic uses alembic.ini sqlalchemy.url (not app .env), keep them in sync.

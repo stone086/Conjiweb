@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
     CORS_ORIGINS: List[str] = ["http://localhost:5173"]
+    XMPP_DOMAIN: str = "localhost"
+    XMPP_REGISTRATION_ENABLED: bool = True
 
     class Config:
         env_file = ".env"

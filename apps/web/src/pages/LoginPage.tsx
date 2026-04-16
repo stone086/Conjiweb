@@ -3,10 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
-import { accountsApi } from "@/services/api";
+import { accountsApi, authApi } from "@/services/api";
 import { requestNotificationPermission } from "@/stores/notificationStore";
 import toast from "react-hot-toast";
-import { Wifi, Lock, User, Eye, EyeOff } from "lucide-react";
+import { Wifi, Lock, User, Eye, EyeOff, UserPlus } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 
 export default function LoginPage() {
@@ -21,27 +21,57 @@ export default function LoginPage() {
   });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [registering, setRegistering] = useState(false);
+
+  const connectWithCurrentForm = async (jidOverride?: string) => {
+    const jid = jidOverride ?? form.jid;
+    const id = crypto.randomUUID();
+    const domain = jid.split("@")[1] ?? "localhost";
+    addAccount({ id, jid, domain, password: form.password, displayName: jid.split("@")[0] });
+    accountsApi.create({ jid, domain }).catch(() => {});
+    const client = createClient({ jid, password: form.password, wsUrl, accountId: id });
+    initXmppBridge(client);
+    try {
+      await client.connect();
+      await requestNotificationPermission();
+      toast.success(`${t("login.connectedAs")}: ${jid}`);
+      navigate("/");
+    } catch (err: any) {
+      useAccountStore.getState().removeAccount(id);
+      throw err;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.jid || !form.password) return;
     setLoading(true);
-    const id = crypto.randomUUID();
-    const domain = form.jid.split("@")[1] ?? "localhost";
     try {
-      addAccount({ id, jid: form.jid, domain, password: form.password, displayName: form.jid.split("@")[0] });
-      accountsApi.create({ jid: form.jid, domain }).catch(() => {});
-      const client = createClient({ jid: form.jid, password: form.password, wsUrl, accountId: id });
-      initXmppBridge(client);
-      await client.connect();
-      await requestNotificationPermission();
-      toast.success(`${t("login.connectedAs")}: ${form.jid}`);
-      navigate("/");
+      await connectWithCurrentForm();
     } catch (err: any) {
-      useAccountStore.getState().removeAccount(id);
       toast.error(err.message ?? t("login.connectionFailed"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!form.jid || !form.password) {
+      toast.error(t("toast.jidRequired"));
+      return;
+    }
+    setRegistering(true);
+    try {
+      const reg = await authApi.register({ jid: form.jid, password: form.password });
+      const effectiveJid = reg?.jid ?? form.jid;
+      setForm((prev) => ({ ...prev, jid: effectiveJid }));
+      toast.success(t("login.registerSuccess"));
+      await connectWithCurrentForm(effectiveJid);
+    } catch (err: any) {
+      const message = err?.response?.data?.detail ?? err?.message ?? t("login.registerFailed");
+      toast.error(message);
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -52,10 +82,6 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mb-4 overflow-hidden">
             <img src="/app-logo.png" alt="Conjiweb" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-300 via-emerald-300 via-yellow-300 via-orange-300 to-pink-300 bg-clip-text text-transparent">
-            Conjiweb
-          </h1>
-          <p className="text-surface-200/50 mt-1 text-sm">{t("login.subtitle")}</p>
         </div>
         <div className="glass rounded-2xl p-8 shadow-2xl">
           <h2 className="text-lg font-semibold text-surface-50 mb-6">{t("login.connectAccount")}</h2>
@@ -81,9 +107,20 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="btn-primary mt-2 flex items-center justify-center gap-2">
-              {loading ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t("login.connecting")}</>) : (<><Wifi size={16} />{t("login.connect")}</>)}
-            </button>
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <button type="submit" disabled={loading || registering} className="btn-primary flex items-center justify-center gap-2">
+                {loading ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t("login.connecting")}</>) : (<><Wifi size={16} />{t("login.connect")}</>)}
+              </button>
+              <button
+                type="button"
+                disabled={loading || registering}
+                onClick={handleRegister}
+                className="h-12 rounded-xl border border-surface-100/20 bg-surface-900/40 text-surface-50 font-semibold flex items-center justify-center gap-2 hover:bg-surface-900/60 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <UserPlus size={16} />
+                {registering ? t("login.registering") : t("login.register")}
+              </button>
+            </div>
           </form>
         </div>
         <p className="text-center text-xs text-surface-200/20 mt-6">{t("login.version")}</p>

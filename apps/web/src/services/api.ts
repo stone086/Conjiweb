@@ -71,3 +71,9 @@ export const adminApi = {
   login: (username: string, password: string) =>
     api.post("/auth/admin/login", { username, password }).then((r) => r.data),
 };
+
+// Auth
+export const authApi = {
+  register: (data: { jid: string; password: string }) =>
+    api.post("/auth/register", data).then((r) => r.data),
+};
