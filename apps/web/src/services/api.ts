@@ -1,6 +1,37 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "/api";
+function normalizeApiUrl(raw?: string): string {
+  const fallback = "/api";
+  if (!raw) return fallback;
+  const value = raw.trim().replace(/\/+$/, "");
+  if (!value) return fallback;
+
+  // Absolute URL: ensure path ends with /api
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const u = new URL(value);
+      const path = (u.pathname || "/").replace(/\/+$/, "");
+      if (path === "" || path === "/") {
+        u.pathname = "/api";
+      } else if (!path.endsWith("/api")) {
+        u.pathname = `${path}/api`;
+      }
+      return u.toString().replace(/\/+$/, "");
+    } catch {
+      return fallback;
+    }
+  }
+
+  // Relative path: ensure /api suffix
+  if (value.startsWith("/")) {
+    if (value === "/api" || value.endsWith("/api")) return value;
+    return `${value}/api`.replace(/\/{2,}/g, "/");
+  }
+
+  return fallback;
+}
+
+const API_URL = normalizeApiUrl(import.meta.env.VITE_API_URL as string | undefined);
 
 export const api = axios.create({
   baseURL: API_URL,
