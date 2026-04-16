@@ -41,6 +41,10 @@ BRANCH="main"
 PROJECT_PATH=""
 TARGET_DIR="/opt/conjiweb-src"
 SSH_PORT="${SSH_PORT:-}"
+XMPP_ADMIN_USER="admin"
+XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-}"
+XMPP_ADMIN_CREATED=0
+XMPP_ADMIN_JID=""
 
 bootstrap_usage() {
   cat <<'EOF'
@@ -180,6 +184,7 @@ load_config() {
   MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
   SECRET_KEY="${SECRET_KEY:-$(openssl rand -hex 32)}"
   XMPP_DOMAIN="${XMPP_DOMAIN:-localhost}"
+  XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-$(openssl rand -hex 12)}"
 
   # Strip accidental CR characters from sourced values.
   DOMAIN="${DOMAIN//$'\r'/}"
@@ -190,6 +195,7 @@ load_config() {
   MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD//$'\r'/}"
   SECRET_KEY="${SECRET_KEY//$'\r'/}"
   XMPP_DOMAIN="${XMPP_DOMAIN//$'\r'/}"
+  XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS//$'\r'/}"
 
   DB_PASS_SQL_ESCAPED="${DB_PASS//\'/\'\'}"
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
@@ -210,6 +216,11 @@ load_config() {
   sed -i "s|^REDIS_PASS=.*|REDIS_PASS=${REDIS_PASS}|" .env
   sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}|" .env
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET_KEY}|" .env
+  if grep -qE '^XMPP_ADMIN_PASS=' .env; then
+    sed -i "s|^XMPP_ADMIN_PASS=.*|XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}|" .env
+  else
+    echo "XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}" >> .env
+  fi
 }
 
 # ── 1. 系统检查 ────────────────────────────────────────────────────────────────
@@ -338,6 +349,19 @@ install_prosody() {
   prosodyctl check config 2>/dev/null || true
   systemctl enable prosody
   systemctl restart prosody
+
+  XMPP_ADMIN_JID="${XMPP_ADMIN_USER}@${XMPP_DOMAIN}"
+  if prosodyctl register "${XMPP_ADMIN_USER}" "${XMPP_DOMAIN}" "${XMPP_ADMIN_PASS}" >/tmp/conjiweb-prosody-admin.log 2>&1; then
+    XMPP_ADMIN_CREATED=1
+  else
+    if grep -Eiq "exists|already" /tmp/conjiweb-prosody-admin.log; then
+      warn "默认账号 ${XMPP_ADMIN_JID} 已存在，保留现有密码"
+      XMPP_ADMIN_CREATED=0
+    else
+      cat /tmp/conjiweb-prosody-admin.log >&2 || true
+      error "创建默认 XMPP 管理员账号失败: ${XMPP_ADMIN_JID}"
+    fi
+  fi
   success "Prosody 安装完成，域名: ${XMPP_DOMAIN}"
 }
 
@@ -864,8 +888,13 @@ print_summary() {
   echo -e "  ${CYAN}XMPP 域名：${NC} ${XMPP_DOMAIN}"
   echo -e "  ${CYAN}WebSocket：${NC} wss://${DOMAIN}/xmpp-websocket"
   echo ""
-  echo -e "  ${YELLOW}下一步：创建 XMPP 用户${NC}"
-  echo -e "  prosodyctl adduser yourname@${XMPP_DOMAIN}"
+  echo -e "  ${YELLOW}默认 XMPP 登录账号：${NC}"
+  echo -e "  JID: ${XMPP_ADMIN_JID:-${XMPP_ADMIN_USER}@${XMPP_DOMAIN}}"
+  if [[ "${XMPP_ADMIN_CREATED}" = "1" ]]; then
+    echo -e "  密码: ${XMPP_ADMIN_PASS}"
+  else
+    echo -e "  密码: （已存在账号，保持原密码）"
+  fi
   echo ""
   echo -e "  ${YELLOW}常用管理命令：${NC}"
   echo -e "  systemctl status conjiweb-api   # 查看 API 状态"
