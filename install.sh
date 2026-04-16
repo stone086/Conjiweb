@@ -589,17 +589,37 @@ setup_firewall() {
     local prompt="$1"
     local default_no="${2:-1}"
     local reply=""
-    if [[ ! -t 0 ]]; then
-      # Non-interactive mode defaults to "no" for safety.
-      return 1
-    fi
-    if [[ "$default_no" -eq 1 ]]; then
-      read -rp "${prompt} [yes/NO]: " reply
+    if [[ -r /dev/tty ]]; then
+      if [[ "$default_no" -eq 1 ]]; then
+        read -r -p "${prompt} [yes/NO]: " reply < /dev/tty
+      else
+        read -r -p "${prompt} [YES/no]: " reply < /dev/tty
+      fi
+    elif [[ -t 0 ]]; then
+      if [[ "$default_no" -eq 1 ]]; then
+        read -r -p "${prompt} [yes/NO]: " reply
+      else
+        read -r -p "${prompt} [YES/no]: " reply
+      fi
     else
-      read -rp "${prompt} [YES/no]: " reply
+      warn "当前会话不可交互，默认按 no 处理: ${prompt}"
+      return 1
     fi
     reply="${reply// /}"
     [[ "${reply,,}" == "yes" ]]
+  }
+
+  prompt_input() {
+    local prompt="$1"
+    local reply=""
+    if [[ -r /dev/tty ]]; then
+      read -r -p "${prompt}" reply < /dev/tty
+    elif [[ -t 0 ]]; then
+      read -r -p "${prompt}" reply
+    else
+      return 1
+    fi
+    echo "$reply"
   }
 
   apply_sshd_dropin_and_reload() {
@@ -703,7 +723,8 @@ EOF
   if [[ "$has_port_22" -eq 1 ]] && prompt_yes_no "检测到 SSH 端口包含 22，是否改成其它登录端口？"; then
     local new_ssh_port=""
     while true; do
-      read -rp "请输入新的 SSH 端口号: " new_ssh_port
+      new_ssh_port="$(prompt_input "请输入新的 SSH 端口号: " || true)"
+      [[ -n "$new_ssh_port" ]] || { warn "未读取到端口输入，请重试"; continue; }
       new_ssh_port="${new_ssh_port// /}"
       validate_port "$new_ssh_port" || { warn "端口无效，请重新输入"; continue; }
       [[ "$new_ssh_port" != "22" ]] || { warn "新端口不能是 22，请重新输入"; continue; }
