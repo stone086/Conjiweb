@@ -593,6 +593,82 @@ setup_firewall() {
     [[ "${reply,,}" == "yes" ]]
   }
 
+  apply_sshd_dropin_and_reload() {
+    mkdir -p /etc/ssh/sshd_config.d
+    cat > /etc/ssh/sshd_config.d/99-conjiweb-auth.conf <<'EOF'
+PasswordAuthentication yes
+PubkeyAuthentication yes
+EOF
+
+    if command -v sshd >/dev/null 2>&1; then
+      sshd -t
+    elif [[ -x /usr/sbin/sshd ]]; then
+      /usr/sbin/sshd -t
+    else
+      error "sshd binary not found, cannot validate SSH config"
+    fi
+
+    systemctl reload ssh 2>/dev/null || \
+    systemctl reload sshd 2>/dev/null || \
+    systemctl restart ssh 2>/dev/null || \
+    systemctl restart sshd 2>/dev/null || \
+    error "failed to reload ssh service"
+  }
+
+  apply_sshd_port() {
+    local new_port="$1"
+    mkdir -p /etc/ssh/sshd_config.d
+    cat > /etc/ssh/sshd_config.d/99-conjiweb-port.conf <<EOF
+Port ${new_port}
+EOF
+    apply_sshd_dropin_and_reload
+  }
+
+  detect_or_create_local_public_key() {
+    local ssh_dir="${HOME}/.ssh"
+    local priv=""
+    local pub=""
+    mkdir -p "$ssh_dir"
+    chmod 700 "$ssh_dir"
+
+    if [[ -n "${SSH_AUTH_SOCK:-}" ]] && command -v ssh-add >/dev/null 2>&1; then
+      local agent_key
+      agent_key="$(ssh-add -L 2>/dev/null | awk '/^(ssh-ed25519|ssh-rsa|ecdsa-sha2-)/ {print; exit}' || true)"
+      if [[ -n "$agent_key" ]]; then
+        echo "$agent_key"
+        return 0
+      fi
+    fi
+
+    for priv in "$ssh_dir/id_ed25519" "$ssh_dir/id_ecdsa" "$ssh_dir/id_rsa"; do
+      if [[ -f "$priv" ]]; then
+        pub="${priv}.pub"
+        if [[ ! -f "$pub" ]]; then
+          ssh-keygen -y -f "$priv" > "$pub"
+          chmod 644 "$pub"
+        fi
+        cat "$pub"
+        return 0
+      fi
+    done
+
+    info "未检测到现有 SSH 私钥，自动创建 ${ssh_dir}/id_ed25519"
+    ssh-keygen -t ed25519 -f "${ssh_dir}/id_ed25519" -N "" -C "conjiweb@$(hostname)-$(date +%F)" >/dev/null
+    cat "${ssh_dir}/id_ed25519.pub"
+  }
+
+  add_key_to_authorized_keys() {
+    local key_line="$1"
+    local auth_file="${HOME}/.ssh/authorized_keys"
+    mkdir -p "${HOME}/.ssh"
+    chmod 700 "${HOME}/.ssh"
+    touch "$auth_file"
+    chmod 600 "$auth_file"
+    if ! grep -qxF "$key_line" "$auth_file" 2>/dev/null; then
+      echo "$key_line" >> "$auth_file"
+    fi
+  }
+
   step "配置防火墙 (ufw)"
   local ssh_ports_raw
   ssh_ports_raw="$(detect_ssh_ports)"
@@ -607,6 +683,37 @@ setup_firewall() {
     validate_port "$p" || error "无效 SSH 端口: ${p}"
   done
   info "自动扫描到 SSH 端口: ${SSH_PORT}"
+
+  local has_port_22=0
+  for p in $SSH_PORT; do
+    if [[ "$p" == "22" ]]; then
+      has_port_22=1
+      break
+    fi
+  done
+  if [[ "$has_port_22" -eq 1 ]] && prompt_yes_no "检测到 SSH 端口包含 22，是否改成其它登录端口？"; then
+    local new_ssh_port=""
+    while true; do
+      read -rp "请输入新的 SSH 端口号: " new_ssh_port
+      new_ssh_port="${new_ssh_port// /}"
+      validate_port "$new_ssh_port" || { warn "端口无效，请重新输入"; continue; }
+      [[ "$new_ssh_port" != "22" ]] || { warn "新端口不能是 22，请重新输入"; continue; }
+      break
+    done
+    apply_sshd_port "$new_ssh_port"
+    SSH_PORT="$new_ssh_port"
+    info "SSH 登录端口已切换为: ${SSH_PORT}"
+  fi
+
+  if prompt_yes_no "是否自动配置 SSH 密钥登录（并保留密码登录）？"; then
+    local detected_pub_key=""
+    detected_pub_key="$(detect_or_create_local_public_key)"
+    [[ -n "$detected_pub_key" ]] || error "未能获取可用公钥"
+    add_key_to_authorized_keys "$detected_pub_key"
+    apply_sshd_dropin_and_reload
+    success "已配置密钥登录，并明确保留密码登录"
+  fi
+
   if ! prompt_yes_no "确认按上述 SSH 端口配置 UFW，并仅放行 80/443/5222/5269？"; then
     warn "已取消防火墙改动（未输入 yes）"
     return 0
