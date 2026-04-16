@@ -79,7 +79,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-surface-950 bg-[radial-gradient(ellipse_at_top,rgba(124,106,247,0.08),transparent_60%)]">
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mb-4 overflow-hidden">
+          <div className="inline-flex items-center justify-center w-32 h-32 rounded-3xl bg-accent/10 border border-accent/20 mb-4 overflow-hidden">
             <img src="/app-logo.png" alt="Conjiweb" className="w-full h-full object-cover" />
           </div>
         </div>
