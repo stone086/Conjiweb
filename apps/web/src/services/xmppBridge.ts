@@ -29,9 +29,22 @@ export function initXmppBridge(client: XmppClient) {
         name: c.name,
         groups: c.groups,
         subscription: c.subscription as any,
+        pendingIncoming: false,
         presence: "unavailable",
         isBlocked: false,
       });
+    });
+  });
+
+  client.on("subscription.request", (data: any) => {
+    const jid = data.jid as string;
+    if (!jid) return;
+    useRosterStore.getState().markPendingIncoming(jid);
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Subscription request",
+      body: `${jid} wants to add you`,
+      accountId,
     });
   });
 
@@ -45,6 +58,19 @@ export function initXmppBridge(client: XmppClient) {
   client.on("message.received", (data: any) => {
     const { message } = data;
     const from = message.from.split("/")[0];
+    const existingContact = useRosterStore.getState().contacts[from];
+    if (existingContact?.isBlocked) return;
+
+    if (!existingContact) {
+      useRosterStore.getState().upsertContact({
+        jid: from,
+        groups: [],
+        subscription: "none",
+        pendingIncoming: true,
+        presence: "unavailable",
+        isBlocked: false,
+      });
+    }
 
     // Find or create conversation
     const convId = `${accountId}:${from}`;

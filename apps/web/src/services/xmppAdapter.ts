@@ -14,6 +14,7 @@ export type XmppEvent =
   | "connection.changed"
   | "roster.updated"
   | "presence.updated"
+  | "subscription.request"
   | "message.received"
   | "message.sent"
   | "room.joined"
@@ -176,6 +177,10 @@ export class XmppClient {
     conn.addHandler((stanza: Element) => {
       const from = stanza.getAttribute("from") ?? "";
       const type = stanza.getAttribute("type") ?? "available";
+      if (type === "subscribe") {
+        this.emit("subscription.request", { accountId: this.config.accountId, jid: from.split("/")[0] });
+        return true;
+      }
       const show = stanza.querySelector("show")?.textContent
         ?? (type === "unavailable" ? "unavailable" : "available");
       const status = stanza.querySelector("status")?.textContent ?? undefined;
@@ -249,6 +254,34 @@ export class XmppClient {
       this._$iq({ type: "set" })
         .c("query", { xmlns: "jabber:iq:roster" })
         .c("item", { jid, ...(name ? { name } : {}) })
+    );
+  }
+
+  approveSubscription(jid: string) {
+    if (!this._connection) return;
+    this._connection.send(this._$pres({ to: jid, type: "subscribed" }));
+  }
+
+  denySubscription(jid: string) {
+    if (!this._connection) return;
+    this._connection.send(this._$pres({ to: jid, type: "unsubscribed" }));
+  }
+
+  blockJid(jid: string) {
+    if (!this._connection) return;
+    this._connection.send(
+      this._$iq({ type: "set" })
+        .c("block", { xmlns: "urn:xmpp:blocking" })
+        .c("item", { jid })
+    );
+  }
+
+  unblockJid(jid: string) {
+    if (!this._connection) return;
+    this._connection.send(
+      this._$iq({ type: "set" })
+        .c("unblock", { xmlns: "urn:xmpp:blocking" })
+        .c("item", { jid })
     );
   }
 

@@ -27,6 +27,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const blockContact = useRosterStore((s) => s.blockContact);
+  const upsertContact = useRosterStore((s) => s.upsertContact);
   const removeContact = useRosterStore((s) => s.removeContact);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
 
@@ -36,6 +37,28 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     client?.removeContact(contact.jid);
     removeContact(contact.jid);
     toast.success(t("roster.contactRemoved"));
+  };
+
+  const handleAccept = () => {
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    client?.approveSubscription(contact.jid);
+    client?.addContact(contact.jid, contact.name);
+    upsertContact({
+      ...contact,
+      subscription: "both",
+      pendingIncoming: false,
+    });
+    toast.success(t("roster.accepted"));
+  };
+
+  const handleBlock = () => {
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    client?.denySubscription(contact.jid);
+    client?.blockJid(contact.jid);
+    blockContact(contact.jid);
+    toast.success(t("roster.blockedDone"));
   };
 
   return (
@@ -63,6 +86,18 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
       {/* Actions */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
         onClick={(e) => e.stopPropagation()}>
+        {contact.pendingIncoming && !contact.isBlocked && (
+          <>
+            <button onClick={handleAccept}
+              className="px-2 py-1 rounded bg-success/20 text-success text-[10px] font-semibold hover:bg-success/30">
+              {t("roster.accept")}
+            </button>
+            <button onClick={handleBlock}
+              className="px-2 py-1 rounded bg-danger/20 text-danger text-[10px] font-semibold hover:bg-danger/30">
+              {t("roster.block")}
+            </button>
+          </>
+        )}
         <button onClick={() => onChat(contact.jid)}
           className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
           <MessageSquare size={13} />
@@ -89,6 +124,9 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
 
       {contact.isBlocked && (
         <span className="text-[10px] text-danger/70 flex-shrink-0">{t("roster.blocked")}</span>
+      )}
+      {!contact.isBlocked && contact.pendingIncoming && (
+        <span className="text-[10px] text-yellow-300/80 flex-shrink-0">{t("roster.pending")}</span>
       )}
     </div>
   );

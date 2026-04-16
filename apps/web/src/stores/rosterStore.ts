@@ -8,6 +8,7 @@ export interface RosterContact {
   name?: string;
   groups: string[];
   subscription: SubscriptionState;
+  pendingIncoming?: boolean;
   presence: "available" | "away" | "dnd" | "xa" | "unavailable";
   statusText?: string;
   avatarUrl?: string;
@@ -23,6 +24,7 @@ interface RosterState {
   removeContact: (jid: string) => void;
   blockContact: (jid: string) => void;
   unblockContact: (jid: string) => void;
+  markPendingIncoming: (jid: string) => void;
 }
 
 export const useRosterStore = create<RosterState>()(
@@ -48,9 +50,18 @@ export const useRosterStore = create<RosterState>()(
         }),
 
       upsertContact: (contact) =>
-        set((s) => ({
-          contacts: { ...s.contacts, [contact.jid]: contact },
-        })),
+        set((s) => {
+          const existing = s.contacts[contact.jid];
+          return {
+            contacts: {
+              ...s.contacts,
+              [contact.jid]: {
+                ...(existing ?? {}),
+                ...contact,
+              },
+            },
+          };
+        }),
 
       removeContact: (jid) =>
         set((s) => {
@@ -62,7 +73,7 @@ export const useRosterStore = create<RosterState>()(
       blockContact: (jid) =>
         set((s) => ({
           contacts: s.contacts[jid]
-            ? { ...s.contacts, [jid]: { ...s.contacts[jid], isBlocked: true } }
+            ? { ...s.contacts, [jid]: { ...s.contacts[jid], isBlocked: true, pendingIncoming: false } }
             : s.contacts,
         })),
 
@@ -71,6 +82,22 @@ export const useRosterStore = create<RosterState>()(
           contacts: s.contacts[jid]
             ? { ...s.contacts, [jid]: { ...s.contacts[jid], isBlocked: false } }
             : s.contacts,
+        })),
+
+      markPendingIncoming: (jid) =>
+        set((s) => ({
+          contacts: {
+            ...s.contacts,
+            [jid]: {
+              ...(s.contacts[jid] ?? {}),
+              jid,
+              groups: [],
+              subscription: s.contacts[jid]?.subscription ?? "none",
+              presence: s.contacts[jid]?.presence ?? "unavailable",
+              isBlocked: s.contacts[jid]?.isBlocked ?? false,
+              pendingIncoming: true,
+            },
+          },
         })),
     }),
     { name: "conjiweb-roster" }
