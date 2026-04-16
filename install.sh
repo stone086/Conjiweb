@@ -538,14 +538,25 @@ setup_ssl() {
   step "申请 Let's Encrypt SSL 证书"
   apt install -y -qq certbot python3-certbot-nginx
 
-  certbot certonly --nginx \
-    -d "${DOMAIN}" \
-    --email "${EMAIL}" \
-    --agree-tos \
-    --non-interactive \
-    --redirect
+  local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
+  local cert_fullchain="${cert_dir}/fullchain.pem"
+  local cert_privkey="${cert_dir}/privkey.pem"
+  local has_usable_cert=0
+  if [[ -f "$cert_fullchain" && -f "$cert_privkey" ]]; then
+    if openssl x509 -checkend 86400 -noout -in "$cert_fullchain" >/dev/null 2>&1; then
+      has_usable_cert=1
+      info "检测到可用证书，跳过重新申请"
+    fi
+  fi
 
-  success "SSL 证书申请成功"
+  if [[ "$has_usable_cert" -eq 0 ]]; then
+    certbot certonly --nginx \
+      -d "${DOMAIN}" \
+      --email "${EMAIL}" \
+      --agree-tos \
+      --non-interactive
+    success "SSL 证书申请成功"
+  fi
 
   # 写入正式 HTTPS Nginx 配置
   cp configs/nginx/conjiweb.conf /etc/nginx/sites-available/conjiweb
