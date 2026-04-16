@@ -106,7 +106,7 @@ cmd_update_front() {
 
   if [[ -n "${DOMAIN:-}" ]]; then
     cat > .env.production <<EOF
-VITE_API_URL=https://${DOMAIN}
+VITE_API_URL=https://${DOMAIN}/api
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
 EOF
   fi
@@ -199,4 +199,3 @@ case "${1:-}" in
   mem-usage)       cmd_mem_usage ;;
   *)               usage ;;
 esac
-

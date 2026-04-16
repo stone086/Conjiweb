@@ -513,7 +513,7 @@ deploy_frontend() {
 
   # 写入前端环境变量
   cat > .env.production << EOF
-VITE_API_URL=https://${DOMAIN}
+VITE_API_URL=https://${DOMAIN}/api
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
 EOF
 
