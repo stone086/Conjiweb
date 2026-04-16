@@ -240,6 +240,15 @@ EOF
   success "apt 源已切换到日本理化学研究所镜像"
 }
 
+# ── 3. 自动升级系统包 ─────────────────────────────────────────────────────────
+upgrade_system_packages() {
+  step "自动升级系统包"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get -y -qq upgrade
+  success "系统包升级完成"
+}
+
 # ── 3. 安装系统依赖 ────────────────────────────────────────────────────────────
 install_deps() {
   step "安装系统依赖"
@@ -860,6 +869,7 @@ main() {
   setup_quick_check
   check_system
   setup_apt_mirror
+  upgrade_system_packages
   install_deps
   install_postgres
   install_redis
