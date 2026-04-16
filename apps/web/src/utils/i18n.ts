@@ -49,10 +49,8 @@ const messages: Record<Language, Record<string, string>> = {
     "login.connectAccount": "Connect your account",
     "login.jid": "XMPP Address (JID)",
     "login.password": "Password",
-    "login.wsUrl": "WebSocket URL",
     "login.connecting": "Connecting...",
-    "login.connect": "Connect",
-    "login.credentialTip": "Your credentials connect directly to your XMPP server.",
+    "login.connect": "Log in",
     "login.connectedAs": "Connected as",
     "login.connectionFailed": "Connection failed",
     "login.version": "Conjiweb · Open Source · v3.0.0",
@@ -262,10 +260,8 @@ const messages: Record<Language, Record<string, string>> = {
     "login.connectAccount": "连接你的账号",
     "login.jid": "XMPP 地址（JID）",
     "login.password": "密码",
-    "login.wsUrl": "WebSocket 地址",
     "login.connecting": "连接中...",
-    "login.connect": "连接",
-    "login.credentialTip": "你的凭据会直接连接到 XMPP 服务器。",
+    "login.connect": "登陆",
     "login.connectedAs": "已连接账号",
     "login.connectionFailed": "连接失败",
     "login.version": "Conjiweb · 开源版 · v3.0.0",
@@ -470,4 +466,3 @@ export function useLanguage() {
 
   return { lang, t, setLanguage };
 }
-

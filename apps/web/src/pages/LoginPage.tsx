@@ -6,18 +6,18 @@ import { initXmppBridge } from "@/services/xmppBridge";
 import { accountsApi } from "@/services/api";
 import { requestNotificationPermission } from "@/stores/notificationStore";
 import toast from "react-hot-toast";
-import { Wifi, Lock, User, Server, Eye, EyeOff } from "lucide-react";
+import { Wifi, Lock, User, Eye, EyeOff } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 
 export default function LoginPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const addAccount = useAccountStore((s) => s.addAccount);
+  const wsUrl = (import.meta.env.VITE_XMPP_WS_URL as string) ?? "ws://localhost:5280/xmpp-websocket";
 
   const [form, setForm] = useState({
     jid: "",
     password: "",
-    wsUrl: (import.meta.env.VITE_XMPP_WS_URL as string) ?? "ws://localhost:5280/xmpp-websocket",
   });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ export default function LoginPage() {
     try {
       addAccount({ id, jid: form.jid, domain, password: form.password, displayName: form.jid.split("@")[0] });
       accountsApi.create({ jid: form.jid, domain }).catch(() => {});
-      const client = createClient({ jid: form.jid, password: form.password, wsUrl: form.wsUrl, accountId: id });
+      const client = createClient({ jid: form.jid, password: form.password, wsUrl, accountId: id });
       initXmppBridge(client);
       await client.connect();
       await requestNotificationPermission();
@@ -81,19 +81,10 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.wsUrl")}</label>
-              <div className="relative">
-                <Server size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
-                <input type="text" value={form.wsUrl} onChange={(e) => setForm({ ...form, wsUrl: e.target.value })}
-                  placeholder="ws://xmpp.example.com:5280/xmpp-websocket" className="input-field pl-9 text-xs" />
-              </div>
-            </div>
             <button type="submit" disabled={loading} className="btn-primary mt-2 flex items-center justify-center gap-2">
               {loading ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t("login.connecting")}</>) : (<><Wifi size={16} />{t("login.connect")}</>)}
             </button>
           </form>
-          <p className="text-center text-xs text-surface-200/30 mt-6">{t("login.credentialTip")}</p>
         </div>
         <p className="text-center text-xs text-surface-200/20 mt-6">{t("login.version")}</p>
       </div>
