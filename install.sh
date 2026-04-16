@@ -40,6 +40,7 @@ REPO_URL=""
 BRANCH="main"
 PROJECT_PATH=""
 TARGET_DIR="/opt/conjiweb-src"
+SSH_PORT="${SSH_PORT:-}"
 
 bootstrap_usage() {
   cat <<'EOF'
@@ -55,6 +56,7 @@ Optional:
   --branch    Git branch to install from (default: main)
   --path      Project path inside repo; auto-detected if omitted
   --target    Clone target directory (default: /opt/conjiweb-src)
+  --ssh-port  SSH port(s) to keep open in UFW, supports comma/space list (default: auto-detect)
   --run-local Internal mode. Do not set manually.
   --help      Show this help
 EOF
@@ -75,6 +77,7 @@ parse_bootstrap_args() {
       --branch) BRANCH="${2:-}"; shift 2 ;;
       --path) PROJECT_PATH="${2:-}"; shift 2 ;;
       --target) TARGET_DIR="${2:-}"; shift 2 ;;
+      --ssh-port) SSH_PORT="${2:-}"; shift 2 ;;
       --run-local) RUN_LOCAL=1; shift ;;
       --help|-h) bootstrap_usage; exit 0 ;;
       *) error "Unknown option: $1" ;;
@@ -153,6 +156,9 @@ bootstrap_if_needed() {
 
   chmod +x install.sh manage.sh
   info "Starting install in $install_src"
+  if [[ -n "${SSH_PORT:-}" ]]; then
+    exec bash install.sh --run-local --ssh-port "$SSH_PORT"
+  fi
   exec bash install.sh --run-local
 }
 
@@ -547,11 +553,71 @@ setup_ssl() {
 
 # ── 13. 配置防火墙 ────────────────────────────────────────────────────────────
 setup_firewall() {
+  detect_ssh_ports() {
+    local ports=""
+    if command -v ss >/dev/null 2>&1; then
+      ports="$(ss -H -tnlp 2>/dev/null | awk '/sshd/ {split($4,a,":"); p=a[length(a)]; if (p ~ /^[0-9]+$/) print p}' | sort -n | uniq | paste -sd' ' -)"
+    fi
+    if [[ -z "$ports" ]]; then
+      ports="$(awk '/^[[:space:]]*Port[[:space:]]+[0-9]+/ {print $2}' /etc/ssh/sshd_config 2>/dev/null | sort -n | uniq | paste -sd' ' -)"
+    fi
+    if [[ -z "$ports" ]] && compgen -G "/etc/ssh/sshd_config.d/*.conf" >/dev/null; then
+      ports="$(awk '/^[[:space:]]*Port[[:space:]]+[0-9]+/ {print $2}' /etc/ssh/sshd_config.d/*.conf 2>/dev/null | sort -n | uniq | paste -sd' ' -)"
+    fi
+    if [[ -z "$ports" ]]; then
+      ports="22"
+    fi
+    echo "$ports"
+  }
+
+  validate_port() {
+    local p="$1"
+    [[ "$p" =~ ^[0-9]+$ ]] || return 1
+    (( p >= 1 && p <= 65535 ))
+  }
+
+  prompt_yes_no() {
+    local prompt="$1"
+    local default_no="${2:-1}"
+    local reply=""
+    if [[ ! -t 0 ]]; then
+      # Non-interactive mode defaults to "no" for safety.
+      return 1
+    fi
+    if [[ "$default_no" -eq 1 ]]; then
+      read -rp "${prompt} [yes/NO]: " reply
+    else
+      read -rp "${prompt} [YES/no]: " reply
+    fi
+    reply="${reply// /}"
+    [[ "${reply,,}" == "yes" ]]
+  }
+
   step "配置防火墙 (ufw)"
+  local ssh_ports_raw
+  ssh_ports_raw="$(detect_ssh_ports)"
+  if [[ -z "${SSH_PORT:-}" ]]; then
+    SSH_PORT="$ssh_ports_raw"
+  fi
+  SSH_PORT="${SSH_PORT//,/ }"
+  SSH_PORT="$(echo "$SSH_PORT" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+  [[ -n "$SSH_PORT" ]] || error "无法确定 SSH 端口，请通过 --ssh-port 手动指定"
+  local p
+  for p in $SSH_PORT; do
+    validate_port "$p" || error "无效 SSH 端口: ${p}"
+  done
+  info "自动扫描到 SSH 端口: ${SSH_PORT}"
+  if ! prompt_yes_no "确认按上述 SSH 端口配置 UFW，并仅放行 80/443/5222/5269？"; then
+    warn "已取消防火墙改动（未输入 yes）"
+    return 0
+  fi
+
   ufw --force reset
   ufw default deny incoming
   ufw default allow outgoing
-  ufw allow ssh
+  for p in $SSH_PORT; do
+    ufw allow "${p}/tcp"
+  done
   ufw allow 80/tcp
   ufw allow 443/tcp
   ufw allow 5222/tcp   # XMPP TCP
