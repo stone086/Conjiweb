@@ -93,6 +93,14 @@ const messages: Record<Language, Record<string, string>> = {
     "settings.historyCleared": "History cleared",
     "settings.historyRetentionSaved": "History retention updated",
     "settings.days": "days",
+    "settings.omemo": "OMEMO Fingerprints",
+    "settings.omemoDesc": "Use fingerprints to verify end-to-end encrypted identity across devices.",
+    "settings.copyFingerprint": "Copy fingerprint",
+    "settings.omemoFingerprintCopied": "OMEMO fingerprint copied",
+    "settings.copied": "Copied",
+    "settings.copyFailed": "Copy failed",
+    "settings.omemoStatusOn": "Status: enabled (lock icon on top bar)",
+    "settings.omemoStatusOff": "Status: disabled (unlock icon on top bar)",
 
     "plugins.title": "Plugins",
     "plugins.subtitle": "Extend Conjiweb with powerful add-ons",
@@ -321,6 +329,12 @@ const messages: Record<Language, Record<string, string>> = {
     "settings.historyCleared": "历史消息已清空",
     "settings.historyRetentionSaved": "历史保留设置已更新",
     "settings.days": "天",
+    "settings.omemo": "OMEMO 指纹",
+    "settings.omemoDesc": "使用指纹核对设备端到端加密身份。",
+    "settings.copyFingerprint": "复制指纹",
+    "settings.omemoFingerprintCopied": "OMEMO 指纹已复制",
+    "settings.copied": "已复制",
+    "settings.copyFailed": "复制失败",
 
     "plugins.title": "插件",
     "plugins.subtitle": "通过插件扩展 Conjiweb 功能",
@@ -465,13 +479,13 @@ const messages: Record<Language, Record<string, string>> = {
 };
 
 export function getStoredLanguage(): Language {
-  const saved = localStorage.getItem(LANGUAGE_KEY);
-  return saved === "zh-CN" ? "zh-CN" : "en-US";
+  return "en-US";
 }
 
 export function setLanguage(lang: Language) {
-  localStorage.setItem(LANGUAGE_KEY, lang);
-  window.dispatchEvent(new CustomEvent(LANGUAGE_EVENT, { detail: lang }));
+  const enforced: Language = "en-US";
+  localStorage.setItem(LANGUAGE_KEY, enforced);
+  window.dispatchEvent(new CustomEvent(LANGUAGE_EVENT, { detail: enforced }));
 }
 
 export function useLanguage() {

@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useLanguage } from "@/utils/i18n";
+import { generateConversationId } from "@/utils/helpers";
 
 export interface MucRoom {
   jid: string;
@@ -76,7 +77,7 @@ function RoomCard({ room }: { room: MucRoom }) {
     const client = getClient(activeAccountId);
     client?.joinRoom(room.jid, room.nickname);
     upsertRoom({ ...room, joined: true });
-    const convId = `${activeAccountId}:${room.jid}`;
+    const convId = generateConversationId(activeAccountId, room.jid);
     upsertConversation({
       id: convId,
       accountId: activeAccountId,

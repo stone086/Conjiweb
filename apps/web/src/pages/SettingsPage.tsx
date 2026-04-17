@@ -2,12 +2,14 @@
 import { useSearchParams } from "react-router-dom";
 import { useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
-import { Trash2, Plus, Wifi, WifiOff, ChevronDown } from "lucide-react";
+import { Trash2, Plus, Wifi, WifiOff, Copy, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
 import { getStoredLanguage, Language, setLanguage, useLanguage } from "@/utils/i18n";
 import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDays, setStoredHistoryRetentionDays } from "@/services/historyRetention";
+import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
+import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
 
 function AccountCard({ account }: { account: XmppAccount }) {
   const { t } = useLanguage();
@@ -122,6 +124,9 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
   const [language, setLanguageState] = useState<Language>(getStoredLanguage());
   const [historyRetentionDays, setHistoryRetentionDays] = useState<number>(getStoredHistoryRetentionDays());
+  const [omemoFingerprints, setOmemoFingerprints] = useState<Record<string, string>>({});
+  const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
+  const [omemoEnabled, setOmemoEnabledState] = useState<boolean>(getOmemoEnabled());
 
   useEffect(() => {
     if (searchParams.get("add") === "1") {
@@ -129,6 +134,22 @@ export default function SettingsPage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const entries = await Promise.all(
+        accounts.map(async (acc) => [acc.id, await getOmemoFingerprintForJid(acc.jid)] as const)
+      );
+      if (!cancelled) setOmemoFingerprints(Object.fromEntries(entries));
+    };
+    run().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts]);
+
+  useEffect(() => onOmemoEnabledChange(setOmemoEnabledState), []);
 
   const handleAdd = () => {
     if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
@@ -155,6 +176,19 @@ export default function SettingsPage() {
     if (!window.confirm(t("settings.clearHistoryConfirm"))) return;
     await clearAllHistoryNow();
     toast.success(t("settings.historyCleared"));
+  };
+
+  const handleCopyFingerprint = async (accountId: string, fingerprint: string) => {
+    try {
+      await navigator.clipboard.writeText(fingerprint.replace(/\s+/g, ""));
+      setCopiedAccountId(accountId);
+      toast.success(t("settings.omemoFingerprintCopied"));
+      window.setTimeout(() => {
+        setCopiedAccountId((prev) => (prev === accountId ? null : prev));
+      }, 1400);
+    } catch {
+      toast.error(t("settings.copyFailed"));
+    }
   };
 
   return (
@@ -228,6 +262,7 @@ export default function SettingsPage() {
               <select
                 className="input-field w-auto text-sm"
                 value={language}
+                disabled
                 onChange={(e) => {
                   const next = e.target.value as Language;
                   setLanguageState(next);
@@ -235,7 +270,6 @@ export default function SettingsPage() {
                 }}
               >
                 <option value="en-US">{t("settings.languageEn")}</option>
-                <option value="zh-CN">{t("settings.languageZh")}</option>
               </select>
             </div>
             <div className="flex items-center justify-between">
@@ -294,6 +328,43 @@ export default function SettingsPage() {
                 {t("settings.clearHistory")}
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* OMEMO */}
+        <section>
+          <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide mb-3">
+            {t("settings.omemo")}
+          </h2>
+          <div className="glass rounded-xl p-4 flex flex-col gap-3">
+            <div className="text-xs text-surface-200/60">{t("settings.omemoDesc")}</div>
+            <div className="text-xs text-surface-200/50">
+              {omemoEnabled ? t("settings.omemoStatusOn") : t("settings.omemoStatusOff")}
+            </div>
+            {accounts.length === 0 ? (
+              <p className="text-sm text-surface-200/30 py-2 text-center">{t("settings.noAccounts")}</p>
+            ) : (
+              accounts.map((acc) => {
+                const fingerprint = omemoFingerprints[acc.id] ?? "-";
+                const copied = copiedAccountId === acc.id;
+                return (
+                  <div key={acc.id} className="rounded-lg border border-white/10 bg-white/5 p-3 flex flex-col gap-2">
+                    <div className="text-xs text-surface-200/70">{acc.jid}</div>
+                    <div className="font-mono text-xs tracking-wide text-surface-50 break-all">{fingerprint}</div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => handleCopyFingerprint(acc.id, fingerprint)}
+                        disabled={!omemoEnabled}
+                        className="btn-ghost text-xs py-1.5 px-2.5 flex items-center gap-1.5"
+                      >
+                        {copied ? <Check size={12} /> : <Copy size={12} />}
+                        {copied ? t("settings.copied") : t("settings.copyFingerprint")}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </section>
 

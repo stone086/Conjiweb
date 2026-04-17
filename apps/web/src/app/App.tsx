@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
 import { useAccountStore } from "@/stores/accountStore";
+import { useChatStore } from "@/stores/chatStore";
 import { useXmppReconnect } from "@/hooks/useXmppReconnect";
 import { usePWA } from "@/hooks/usePWA";
 import MainLayout from "@/layouts/MainLayout";
@@ -19,6 +21,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 function AppInner() {
   useXmppReconnect();
   usePWA();
+  const mergeDuplicatePrivateConversations = useChatStore((s) => s.mergeDuplicatePrivateConversations);
+
+  useEffect(() => {
+    mergeDuplicatePrivateConversations();
+  }, [mergeDuplicatePrivateConversations]);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

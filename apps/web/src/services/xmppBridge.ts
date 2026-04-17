@@ -10,6 +10,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { cacheMessages } from "./localDb";
+import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
 export function initXmppBridge(client: XmppClient) {
   const accountId = client.config.accountId;
@@ -57,7 +58,7 @@ export function initXmppBridge(client: XmppClient) {
   // Incoming messages → ChatStore + notifications
   client.on("message.received", (data: any) => {
     const { message } = data;
-    const from = message.from.split("/")[0];
+    const from = normalizeBareJid(message.from);
     const existingContact = useRosterStore.getState().contacts[from];
     if (existingContact?.isBlocked) return;
 
@@ -73,7 +74,7 @@ export function initXmppBridge(client: XmppClient) {
     }
 
     // Find or create conversation
-    const convId = `${accountId}:${from}`;
+    const convId = generateConversationId(accountId, from);
     const existingConv = useChatStore.getState().conversations[convId];
 
     if (!existingConv) {
@@ -92,7 +93,7 @@ export function initXmppBridge(client: XmppClient) {
     const chatMsg = {
       id: message.id,
       conversationId: convId,
-      senderJid: message.from,
+      senderJid: from,
       body: message.body,
       bodyType: "text" as const,
       direction: "in" as const,
@@ -122,15 +123,16 @@ export function initXmppBridge(client: XmppClient) {
   // MAM history messages
   client.on("mam.message", (data: any) => {
     const { message } = data;
-    const from = message.from.split("/")[0];
-    const isOwn = from === client.config.jid.split("/")[0];
-    const peerJid = isOwn ? message.to.split("/")[0] : from;
-    const convId = `${accountId}:${peerJid}`;
+    const from = normalizeBareJid(message.from);
+    const ownJid = normalizeBareJid(client.config.jid);
+    const isOwn = from === ownJid;
+    const peerJid = isOwn ? normalizeBareJid(message.to) : from;
+    const convId = generateConversationId(accountId, peerJid);
 
     const chatMsg = {
       id: message.id,
       conversationId: convId,
-      senderJid: message.from,
+      senderJid: from,
       body: message.body,
       bodyType: "text" as const,
       direction: isOwn ? ("out" as const) : ("in" as const),

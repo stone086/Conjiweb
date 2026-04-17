@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Search, Bell, Moon, Sun, PanelRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search, Bell, Moon, Sun, PanelRight, Lock, Unlock } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -7,6 +7,7 @@ import NotificationPanel from "@/modules/notification/NotificationPanel";
 import GlobalSearch from "@/modules/search/GlobalSearch";
 import { applyTheme, getStoredTheme } from "@/utils/theme";
 import { useLanguage } from "@/utils/i18n";
+import { getOmemoEnabled, onOmemoEnabledChange, setOmemoEnabled } from "@/services/omemoSettings";
 
 interface TopBarProps {
   onToggleRight?: () => void;
@@ -18,12 +19,15 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
   const [theme, setTheme] = useState(getStoredTheme());
   const [showNotifs, setShowNotifs] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [omemoEnabled, setOmemoEnabledState] = useState(getOmemoEnabled());
   const dark = useMemo(() => {
     if (theme === "system") return !window.matchMedia("(prefers-color-scheme: light)").matches;
     return theme === "dark";
   }, [theme]);
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === s.activeAccountId));
   const totalUnread = useNotificationStore((s) => s.totalUnread);
+
+  useEffect(() => onOmemoEnabledChange(setOmemoEnabledState), []);
 
   useKeyboardShortcuts({
     "ctrl+k": () => setShowSearch(true),
@@ -48,6 +52,13 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
           </kbd>
         </button>
         <div className="flex-1" />
+        <button
+          onClick={() => setOmemoEnabled(!omemoEnabled)}
+          className="btn-ghost p-2"
+          title={omemoEnabled ? "OMEMO enabled" : "OMEMO disabled"}
+        >
+          {omemoEnabled ? <Lock size={16} /> : <Unlock size={16} />}
+        </button>
         {showRightToggle && (
           <button onClick={onToggleRight} className="btn-ghost p-2" title={t("topbar.toggleInfo")}>
             <PanelRight size={16} />
@@ -89,4 +100,3 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
     </>
   );
 }
-

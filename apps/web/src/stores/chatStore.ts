@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
 export type MessageDirection = "in" | "out" | "system";
 export type ConversationType = "private" | "group" | "system";
@@ -50,6 +51,7 @@ interface ChatState {
   clearMessages: (conversationId: string) => void;
   clearAllHistory: () => void;
   pruneHistoryOlderThan: (cutoffTs: number) => void;
+  mergeDuplicatePrivateConversations: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -78,9 +80,19 @@ export const useChatStore = create<ChatState>()(
         }),
 
       upsertConversation: (conv) =>
-        set((s) => ({
-          conversations: { ...s.conversations, [conv.id]: conv },
-        })),
+        set((s) => {
+          const normalizedConv =
+            conv.type === "private"
+              ? {
+                  ...conv,
+                  peerJid: normalizeBareJid(conv.peerJid),
+                  id: generateConversationId(conv.accountId, conv.peerJid),
+                }
+              : conv;
+          return {
+            conversations: { ...s.conversations, [normalizedConv.id]: normalizedConv },
+          };
+        }),
 
       addMessage: (msg) =>
         set((s) => {
@@ -168,6 +180,62 @@ export const useChatStore = create<ChatState>()(
           return {
             messages: nextMessages,
             conversations: nextConversations,
+          };
+        }),
+
+      mergeDuplicatePrivateConversations: () =>
+        set((s) => {
+          const nextConversations: Record<string, Conversation> = { ...s.conversations };
+          const nextMessages: Record<string, ChatMessage[]> = { ...s.messages };
+          let nextActiveId = s.activeConversationId;
+
+          Object.values(s.conversations).forEach((conv) => {
+            if (conv.type !== "private") return;
+
+            const canonicalPeerJid = normalizeBareJid(conv.peerJid);
+            const canonicalId = generateConversationId(conv.accountId, canonicalPeerJid);
+            const sourceId = conv.id;
+
+            const sourceMessages = nextMessages[sourceId] ?? [];
+            const targetMessages = nextMessages[canonicalId] ?? [];
+
+            const mergedMessageMap = new Map<string, ChatMessage>();
+            [...targetMessages, ...sourceMessages].forEach((m) => {
+              mergedMessageMap.set(m.id, {
+                ...m,
+                conversationId: canonicalId,
+                senderJid: normalizeBareJid(m.senderJid),
+              });
+            });
+            const mergedMessages = Array.from(mergedMessageMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+            if (mergedMessages.length > 0) nextMessages[canonicalId] = mergedMessages;
+
+            const targetConv = nextConversations[canonicalId];
+            const mergedConv: Conversation = {
+              ...(targetConv ?? conv),
+              id: canonicalId,
+              peerJid: canonicalPeerJid,
+              accountId: conv.accountId,
+              type: "private",
+              lastMessageAt: Math.max(targetConv?.lastMessageAt ?? 0, conv.lastMessageAt ?? 0) || undefined,
+              lastMessage: (targetConv?.lastMessageAt ?? 0) >= (conv.lastMessageAt ?? 0)
+                ? targetConv?.lastMessage ?? conv.lastMessage
+                : conv.lastMessage ?? targetConv?.lastMessage,
+              unreadCount: (targetConv?.unreadCount ?? 0) + (conv.unreadCount ?? 0),
+            };
+            nextConversations[canonicalId] = mergedConv;
+
+            if (sourceId !== canonicalId) {
+              delete nextConversations[sourceId];
+              delete nextMessages[sourceId];
+              if (nextActiveId === sourceId) nextActiveId = canonicalId;
+            }
+          });
+
+          return {
+            conversations: nextConversations,
+            messages: nextMessages,
+            activeConversationId: nextActiveId,
           };
         }),
     }),

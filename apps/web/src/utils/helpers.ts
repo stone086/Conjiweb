@@ -10,12 +10,16 @@ export function parseJID(jid: string) {
   return { local: local ?? "", domain: domain ?? localDomain, resource };
 }
 
+export function normalizeBareJid(jid: string): string {
+  return (jid ?? "").split("/")[0].trim().toLowerCase();
+}
+
 export function getInitials(name: string): string {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
 export function generateConversationId(accountId: string, peerJid: string): string {
-  return `${accountId}:${peerJid}`;
+  return `${accountId}:${normalizeBareJid(peerJid)}`;
 }
 
 export function sleep(ms: number): Promise<void> {

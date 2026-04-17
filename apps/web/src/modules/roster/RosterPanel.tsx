@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
+import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
 function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
   const colors: Record<string, string> = {
@@ -179,14 +180,15 @@ export default function RosterPanel() {
 
   const startChat = (jid: string) => {
     if (!activeAccountId) return;
-    const convId = `${activeAccountId}:${jid}`;
-    const contact = contacts.find((c) => c.jid === jid);
+    const normalizedJid = normalizeBareJid(jid);
+    const convId = generateConversationId(activeAccountId, normalizedJid);
+    const contact = contacts.find((c) => normalizeBareJid(c.jid) === normalizedJid);
     upsertConversation({
       id: convId,
       accountId: activeAccountId,
       type: "private",
-      peerJid: jid,
-      title: contact?.name ?? jid.split("@")[0],
+      peerJid: normalizedJid,
+      title: contact?.name ?? normalizedJid.split("@")[0],
       unreadCount: 0,
       pinned: false,
     });
