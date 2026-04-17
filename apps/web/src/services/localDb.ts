@@ -16,8 +16,12 @@ interface CachedContact {
   updatedAt: number;
 }
 
+interface CachedMessage extends ChatMessage {
+  cacheKey: string;
+}
+
 class WGajimDB extends Dexie {
-  messages!: Table<ChatMessage>;
+  messages!: Table<CachedMessage>;
   conversations!: Table<Conversation>;
   drafts!: Table<Draft>;
   contacts!: Table<CachedContact>;
@@ -30,6 +34,12 @@ class WGajimDB extends Dexie {
       drafts: "conversationId",
       contacts: "[jid+accountId], accountId",
     });
+    this.version(2).stores({
+      messages: "cacheKey, [conversationId+id], conversationId, timestamp, id",
+      conversations: "id, accountId, peerJid, lastMessageAt",
+      drafts: "conversationId",
+      contacts: "[jid+accountId], accountId",
+    });
   }
 }
 
@@ -37,16 +47,23 @@ export const db = new WGajimDB();
 
 // Helper functions
 export async function cacheMessages(messages: ChatMessage[]) {
-  await db.messages.bulkPut(messages);
+  const rows: CachedMessage[] = messages.map((m) => ({
+    ...m,
+    cacheKey: `${m.conversationId}:${m.id}`,
+  }));
+  await db.messages.bulkPut(rows);
 }
 
 export async function getLocalMessages(conversationId: string, limit = 50) {
-  return db.messages
+  const rows = await db.messages
     .where("conversationId")
     .equals(conversationId)
     .reverse()
     .limit(limit)
     .toArray();
+  return rows
+    .map(({ cacheKey: _cacheKey, ...msg }) => msg)
+    .sort((a, b) => a.timestamp - b.timestamp);
 }
 
 export async function saveDraft(conversationId: string, body: string) {

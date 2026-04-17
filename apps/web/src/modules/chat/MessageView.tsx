@@ -5,6 +5,7 @@ import { getClient } from "@/services/xmppAdapter";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMAM } from "@/hooks/useMAM";
 import { FileUploadZone, UploadedFile, ImagePreview, FileCard } from "@/modules/media/FileUpload";
+import { cacheMessages, getLocalMessages } from "@/services/localDb";
 import { format, isSameDay } from "date-fns";
 import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader } from "lucide-react";
@@ -126,8 +127,26 @@ export default function MessageView({ conversationId }: { conversationId: string
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
 
   useEffect(() => {
-    if (conversation && messages.length === 0) fetchHistory();
-  }, [conversationId]);
+    let cancelled = false;
+    const bootstrap = async () => {
+      if (!conversation) return;
+      if (messages.length > 0) return;
+
+      const localMessages = await getLocalMessages(conversationId, 200);
+      if (!cancelled && localMessages.length > 0) {
+        localMessages.forEach((m) => addMessage(m));
+      }
+
+      if (!cancelled && localMessages.length === 0) {
+        await fetchHistory();
+      }
+    };
+
+    bootstrap().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, conversation, messages.length, addMessage, fetchHistory]);
 
   useEffect(() => {
     const c = containerRef.current;
@@ -154,7 +173,7 @@ export default function MessageView({ conversationId }: { conversationId: string
     const id = body
       ? client.sendMessage(conversation?.peerJid ?? conversationId, body, conversation?.type === "group" ? "groupchat" : "chat")
       : crypto.randomUUID();
-    addMessage({
+    const outgoingMessage: ChatMessage = {
       id,
       conversationId,
       senderJid: client.config.jid,
@@ -171,7 +190,9 @@ export default function MessageView({ conversationId }: { conversationId: string
         downloadUrl: f.downloadUrl,
         sizeBytes: f.sizeBytes,
       })),
-    });
+    };
+    addMessage(outgoingMessage);
+    cacheMessages([outgoingMessage]).catch(() => {});
     setInput("");
     setReplyTo(null);
     setPendingFiles([]);
@@ -291,4 +312,3 @@ export default function MessageView({ conversationId }: { conversationId: string
     </div>
   );
 }
-
