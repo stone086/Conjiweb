@@ -6,6 +6,8 @@ import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMAM } from "@/hooks/useMAM";
 import { FileUploadZone, UploadedFile, ImagePreview, FileCard } from "@/modules/media/FileUpload";
 import { cacheMessages, getLocalMessages } from "@/services/localDb";
+import { getChatToolbarActions } from "@/plugins/host";
+import type { ChatToolbarAction } from "@/plugins/sdk";
 import { format, isSameDay } from "date-fns";
 import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader } from "lucide-react";
@@ -112,6 +114,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const { t } = useLanguage();
   const [input, setInput] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+  const [pluginToolbarActions, setPluginToolbarActions] = useState<ChatToolbarAction[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -147,6 +150,43 @@ export default function MessageView({ conversationId }: { conversationId: string
       cancelled = true;
     };
   }, [conversationId, conversation, messages.length, addMessage, fetchHistory]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadActions = async () => {
+      if (!conversation) {
+        if (!cancelled) setPluginToolbarActions([]);
+        return;
+      }
+      const actions = await getChatToolbarActions({
+        accountId: activeAccountId,
+        conversationId,
+        peerJid: conversation.peerJid,
+        messages,
+        addSystemMessage: (body: string) => {
+          const systemMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            conversationId,
+            senderJid: "system",
+            body,
+            bodyType: "text",
+            direction: "system",
+            status: "delivered",
+            timestamp: Date.now(),
+          };
+          addMessage(systemMessage);
+          cacheMessages([systemMessage]).catch(() => {});
+        },
+      });
+      if (!cancelled) setPluginToolbarActions(actions);
+    };
+    loadActions().catch(() => {
+      if (!cancelled) setPluginToolbarActions([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAccountId, conversationId, conversation, messages, addMessage]);
 
   useEffect(() => {
     const c = containerRef.current;
@@ -279,6 +319,40 @@ export default function MessageView({ conversationId }: { conversationId: string
       {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} title={t("chat.replyingTo")} />}
 
       <div className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0">
+        {pluginToolbarActions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {pluginToolbarActions.map((action) => (
+              <button
+                key={action.id}
+                onClick={() =>
+                  action.onClick({
+                    accountId: activeAccountId,
+                    conversationId,
+                    peerJid: conversation.peerJid,
+                    messages,
+                    addSystemMessage: (body: string) => {
+                      const systemMessage: ChatMessage = {
+                        id: crypto.randomUUID(),
+                        conversationId,
+                        senderJid: "system",
+                        body,
+                        bodyType: "text",
+                        direction: "system",
+                        status: "delivered",
+                        timestamp: Date.now(),
+                      };
+                      addMessage(systemMessage);
+                      cacheMessages([systemMessage]).catch(() => {});
+                    },
+                  })
+                }
+                className="px-2.5 py-1 rounded-lg text-xs border border-white/10 bg-white/5 text-surface-200/80 hover:text-surface-50 hover:bg-white/10"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <button
             onClick={() => setShowUpload(!showUpload)}
