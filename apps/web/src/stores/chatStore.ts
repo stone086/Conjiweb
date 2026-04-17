@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type MessageDirection = "in" | "out" | "system";
 export type ConversationType = "private" | "group" | "system";
@@ -49,74 +50,89 @@ interface ChatState {
   clearMessages: (conversationId: string) => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
-  conversations: {},
-  messages: {},
-  activeConversationId: null,
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set) => ({
+      conversations: {},
+      messages: {},
+      activeConversationId: null,
 
-  setActiveConversation: (id) =>
-    set((s) => {
-      if (id) {
-        // Auto mark read
-        const conv = s.conversations[id];
-        if (conv) {
+      setActiveConversation: (id) =>
+        set((s) => {
+          if (id) {
+            // Auto mark read
+            const conv = s.conversations[id];
+            if (conv) {
+              return {
+                activeConversationId: id,
+                conversations: {
+                  ...s.conversations,
+                  [id]: { ...conv, unreadCount: 0 },
+                },
+              };
+            }
+          }
+          return { activeConversationId: id };
+        }),
+
+      upsertConversation: (conv) =>
+        set((s) => ({
+          conversations: { ...s.conversations, [conv.id]: conv },
+        })),
+
+      addMessage: (msg) =>
+        set((s) => {
+          const existing = s.messages[msg.conversationId] ?? [];
+          if (existing.some((m) => m.id === msg.id)) {
+            return s;
+          }
+          const conv = s.conversations[msg.conversationId];
           return {
-            activeConversationId: id,
+            messages: {
+              ...s.messages,
+              [msg.conversationId]: [...existing, msg],
+            },
+            conversations: conv
+              ? {
+                  ...s.conversations,
+                  [msg.conversationId]: {
+                    ...conv,
+                    lastMessage: msg.body,
+                    lastMessageAt: msg.timestamp,
+                    unreadCount:
+                      s.activeConversationId === msg.conversationId
+                        ? 0
+                        : (conv.unreadCount ?? 0) + (msg.direction === "in" ? 1 : 0),
+                  },
+                }
+              : s.conversations,
+          };
+        }),
+
+      markRead: (conversationId) =>
+        set((s) => {
+          const conv = s.conversations[conversationId];
+          if (!conv) return s;
+          return {
             conversations: {
               ...s.conversations,
-              [id]: { ...conv, unreadCount: 0 },
+              [conversationId]: { ...conv, unreadCount: 0 },
             },
           };
-        }
-      }
-      return { activeConversationId: id };
+        }),
+
+      clearMessages: (conversationId) =>
+        set((s) => ({
+          messages: { ...s.messages, [conversationId]: [] },
+        })),
     }),
-
-  upsertConversation: (conv) =>
-    set((s) => ({
-      conversations: { ...s.conversations, [conv.id]: conv },
-    })),
-
-  addMessage: (msg) =>
-    set((s) => {
-      const existing = s.messages[msg.conversationId] ?? [];
-      const conv = s.conversations[msg.conversationId];
-      return {
-        messages: {
-          ...s.messages,
-          [msg.conversationId]: [...existing, msg],
-        },
-        conversations: conv
-          ? {
-              ...s.conversations,
-              [msg.conversationId]: {
-                ...conv,
-                lastMessage: msg.body,
-                lastMessageAt: msg.timestamp,
-                unreadCount:
-                  s.activeConversationId === msg.conversationId
-                    ? 0
-                    : (conv.unreadCount ?? 0) + (msg.direction === "in" ? 1 : 0),
-              },
-            }
-          : s.conversations,
-      };
-    }),
-
-  markRead: (conversationId) =>
-    set((s) => {
-      const conv = s.conversations[conversationId];
-      if (!conv) return s;
-      return {
-        conversations: {
-          ...s.conversations,
-          [conversationId]: { ...conv, unreadCount: 0 },
-        },
-      };
-    }),
-
-  clearMessages: (conversationId) =>
-    set((s) => ({
-      messages: { ...s.messages, [conversationId]: [] },
-    })),
-}));
+    {
+      name: "conjiweb-chat",
+      partialize: (s) => ({
+        conversations: s.conversations,
+        messages: s.messages,
+        activeConversationId: s.activeConversationId,
+      }),
+    }
+  )
+);
