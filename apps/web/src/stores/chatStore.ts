@@ -52,6 +52,7 @@ interface ChatState {
   clearAllHistory: () => void;
   pruneHistoryOlderThan: (cutoffTs: number) => void;
   mergeDuplicatePrivateConversations: () => void;
+  deleteConversation: (conversationId: string) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -236,6 +237,19 @@ export const useChatStore = create<ChatState>()(
             conversations: nextConversations,
             messages: nextMessages,
             activeConversationId: nextActiveId,
+          };
+        }),
+
+      deleteConversation: (conversationId) =>
+        set((s) => {
+          const nextConversations = { ...s.conversations };
+          const nextMessages = { ...s.messages };
+          delete nextConversations[conversationId];
+          delete nextMessages[conversationId];
+          return {
+            conversations: nextConversations,
+            messages: nextMessages,
+            activeConversationId: s.activeConversationId === conversationId ? null : s.activeConversationId,
           };
         }),
     }),

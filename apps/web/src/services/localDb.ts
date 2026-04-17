@@ -98,3 +98,9 @@ export async function clearLocalMessageHistory() {
 export async function pruneLocalMessagesBefore(cutoffTs: number) {
   await db.messages.where("timestamp").below(cutoffTs).delete();
 }
+
+export async function deleteLocalConversationData(conversationId: string) {
+  await db.messages.where("conversationId").equals(conversationId).delete();
+  await db.drafts.delete(conversationId);
+  await db.conversations.delete(conversationId);
+}

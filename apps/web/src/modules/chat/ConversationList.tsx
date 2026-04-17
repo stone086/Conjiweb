@@ -4,8 +4,9 @@ import { useAccountStore } from "@/stores/accountStore";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { clsx } from "clsx";
-import { Users, User, MessageSquare } from "lucide-react";
+import { Users, User, MessageSquare, Trash2 } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
+import { deleteLocalConversationData } from "@/services/localDb";
 
 function ConvIcon({ type }: { type: string }) {
   if (type === "group") return <Users size={14} />;
@@ -18,6 +19,7 @@ export default function ConversationList() {
   const navigate = useNavigate();
   const conversations = useChatStore((s) => Object.values(s.conversations));
   const setActive = useChatStore((s) => s.setActiveConversation);
+  const deleteConversation = useChatStore((s) => s.deleteConversation);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
 
   const filtered = conversations
@@ -27,6 +29,15 @@ export default function ConversationList() {
   const handleSelect = (id: string) => {
     setActive(id);
     navigate(`/chat/${id}`);
+  };
+
+  const handleDelete = async (id: string) => {
+    deleteConversation(id);
+    if (conversationId === id) {
+      setActive(null);
+      navigate("/chat");
+    }
+    await deleteLocalConversationData(id).catch(() => {});
   };
 
   return (
@@ -50,7 +61,7 @@ export default function ConversationList() {
               key={conv.id}
               onClick={() => handleSelect(conv.id)}
               className={clsx(
-                "w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-100 text-left",
+                "group w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-100 text-left",
                 conversationId === conv.id
                   ? "bg-accent/10 border-r-2 border-accent"
                   : "hover:bg-white/4"
@@ -88,6 +99,18 @@ export default function ConversationList() {
                     <span className="badge flex-shrink-0 ml-1">{conv.unreadCount}</span>
                   )}
                 </div>
+              </div>
+
+              <div
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDelete(conv.id);
+                }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
+                title="Delete conversation"
+              >
+                <Trash2 size={13} />
               </div>
             </button>
           ))
