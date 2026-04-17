@@ -73,3 +73,11 @@ export async function getLocalConversations(accountId: string) {
     .reverse()
     .sortBy("lastMessageAt");
 }
+
+export async function clearLocalMessageHistory() {
+  await db.messages.clear();
+}
+
+export async function pruneLocalMessagesBefore(cutoffTs: number) {
+  await db.messages.where("timestamp").below(cutoffTs).delete();
+}

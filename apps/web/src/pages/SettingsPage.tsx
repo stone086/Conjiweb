@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
 import { getStoredLanguage, Language, setLanguage, useLanguage } from "@/utils/i18n";
+import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDays, setStoredHistoryRetentionDays } from "@/services/historyRetention";
 
 function AccountCard({ account }: { account: XmppAccount }) {
   const { t } = useLanguage();
@@ -120,6 +121,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState({ jid: "", password: "", wsUrl: "" });
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
   const [language, setLanguageState] = useState<Language>(getStoredLanguage());
+  const [historyRetentionDays, setHistoryRetentionDays] = useState<number>(getStoredHistoryRetentionDays());
 
   useEffect(() => {
     if (searchParams.get("add") === "1") {
@@ -140,6 +142,19 @@ export default function SettingsPage() {
     setForm({ jid: "", password: "", wsUrl: "" });
     setShowAdd(false);
     toast.success(t("toast.accountAdded"));
+  };
+
+  const handleChangeHistoryRetention = async (days: number) => {
+    setHistoryRetentionDays(days);
+    setStoredHistoryRetentionDays(days);
+    await applyHistoryRetention(days);
+    toast.success(t("settings.historyRetentionSaved"));
+  };
+
+  const handleClearHistory = async () => {
+    if (!window.confirm(t("settings.clearHistoryConfirm"))) return;
+    await clearAllHistoryNow();
+    toast.success(t("settings.historyCleared"));
   };
 
   return (
@@ -249,6 +264,36 @@ export default function SettingsPage() {
                 <input type="checkbox" defaultChecked className="w-4 h-4 accent-[#7c6af7]" />
               </label>
             ))}
+          </div>
+        </section>
+
+        {/* Message history */}
+        <section>
+          <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide mb-3">
+            {t("settings.history")}
+          </h2>
+          <div className="glass rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-surface-200">{t("settings.historyRetention")}</span>
+              <select
+                className="input-field w-auto text-sm"
+                value={historyRetentionDays}
+                onChange={(e) => handleChangeHistoryRetention(Number(e.target.value))}
+              >
+                <option value={0}>{t("settings.historyRetentionNever")}</option>
+                <option value={7}>7 {t("settings.days")}</option>
+                <option value={30}>30 {t("settings.days")}</option>
+                <option value={90}>90 {t("settings.days")}</option>
+                <option value={180}>180 {t("settings.days")}</option>
+                <option value={365}>365 {t("settings.days")}</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-surface-200">{t("settings.clearHistory")}</span>
+              <button onClick={handleClearHistory} className="btn-ghost text-xs py-1.5 px-3 text-danger">
+                {t("settings.clearHistory")}
+              </button>
+            </div>
           </div>
         </section>
 

@@ -48,6 +48,8 @@ interface ChatState {
   addMessage: (msg: ChatMessage) => void;
   markRead: (conversationId: string) => void;
   clearMessages: (conversationId: string) => void;
+  clearAllHistory: () => void;
+  pruneHistoryOlderThan: (cutoffTs: number) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -125,6 +127,49 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           messages: { ...s.messages, [conversationId]: [] },
         })),
+
+      clearAllHistory: () =>
+        set((s) => {
+          const nextConversations: Record<string, Conversation> = {};
+          Object.entries(s.conversations).forEach(([id, conv]) => {
+            nextConversations[id] = {
+              ...conv,
+              lastMessage: undefined,
+              lastMessageAt: undefined,
+              unreadCount: 0,
+            };
+          });
+          return {
+            messages: {},
+            conversations: nextConversations,
+          };
+        }),
+
+      pruneHistoryOlderThan: (cutoffTs) =>
+        set((s) => {
+          const nextMessages: Record<string, ChatMessage[]> = {};
+          Object.entries(s.messages).forEach(([convId, list]) => {
+            const kept = list.filter((m) => m.timestamp >= cutoffTs);
+            if (kept.length > 0) nextMessages[convId] = kept;
+          });
+
+          const nextConversations: Record<string, Conversation> = {};
+          Object.entries(s.conversations).forEach(([id, conv]) => {
+            const convMsgs = nextMessages[id] ?? [];
+            const last = convMsgs.length > 0 ? convMsgs[convMsgs.length - 1] : null;
+            nextConversations[id] = {
+              ...conv,
+              lastMessage: last?.body,
+              lastMessageAt: last?.timestamp,
+              unreadCount: last ? conv.unreadCount : 0,
+            };
+          });
+
+          return {
+            messages: nextMessages,
+            conversations: nextConversations,
+          };
+        }),
     }),
     {
       name: "conjiweb-chat",

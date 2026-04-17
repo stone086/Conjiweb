@@ -7,12 +7,14 @@ import App from "./app/App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/globals.css";
 import { applyTheme, getStoredTheme } from "./utils/theme";
+import { applyConfiguredHistoryRetention } from "./services/historyRetention";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 60 * 5, retry: 1 } },
 });
 
 applyTheme(getStoredTheme());
+applyConfiguredHistoryRetention().catch(() => {});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
