@@ -10,6 +10,10 @@ import { getStoredLanguage, Language, setLanguage, useLanguage } from "@/utils/i
 import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDays, setStoredHistoryRetentionDays } from "@/services/historyRetention";
 import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
 import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
+import { useNotificationStore } from "@/stores/notificationStore";
+import { accountsApi } from "@/services/api";
+
+const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
 
 function AccountCard({ account }: { account: XmppAccount }) {
   const { t } = useLanguage();
@@ -117,13 +121,19 @@ function AccountCard({ account }: { account: XmppAccount }) {
 export default function SettingsPage() {
   const { t } = useLanguage();
   const accounts = useAccountStore((s) => s.accounts);
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const addAccount = useAccountStore((s) => s.addAccount);
+  const soundEnabled = useNotificationStore((s) => s.soundEnabled);
+  const browserEnabled = useNotificationStore((s) => s.browserEnabled);
+  const setSoundEnabled = useNotificationStore((s) => s.setSoundEnabled);
+  const setBrowserEnabled = useNotificationStore((s) => s.setBrowserEnabled);
   const [searchParams, setSearchParams] = useSearchParams();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ jid: "", password: "", wsUrl: "" });
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
   const [language, setLanguageState] = useState<Language>(getStoredLanguage());
   const [historyRetentionDays, setHistoryRetentionDays] = useState<number>(getStoredHistoryRetentionDays());
+  const [notifyMentionEnabled, setNotifyMentionEnabled] = useState<boolean>(() => localStorage.getItem(MENTION_NOTIFY_KEY) !== "0");
   const [omemoFingerprints, setOmemoFingerprints] = useState<Record<string, string>>({});
   const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
   const [omemoEnabled, setOmemoEnabledState] = useState<boolean>(getOmemoEnabled());
@@ -150,6 +160,36 @@ export default function SettingsPage() {
   }, [accounts]);
 
   useEffect(() => onOmemoEnabledChange(setOmemoEnabledState), []);
+
+  useEffect(() => {
+    localStorage.setItem(MENTION_NOTIFY_KEY, notifyMentionEnabled ? "1" : "0");
+  }, [notifyMentionEnabled]);
+
+  useEffect(() => {
+    if (!activeAccountId) return;
+    accountsApi
+      .getPreferences(activeAccountId)
+      .then((pref) => {
+        if (typeof pref?.theme_override === "string" && pref.theme_override) {
+          const savedTheme = pref.theme_override as ThemeMode;
+          setTheme(savedTheme);
+          applyTheme(savedTheme);
+        }
+        if (typeof pref?.notifications_enabled === "boolean") {
+          setBrowserEnabled(pref.notifications_enabled);
+        }
+      })
+      .catch(() => {});
+  }, [activeAccountId, setBrowserEnabled]);
+
+  const syncPreferencesPatch = async (patch: Record<string, any>) => {
+    if (!activeAccountId) return;
+    try {
+      await accountsApi.updatePreferences(activeAccountId, patch);
+    } catch {
+      // keep UX responsive even if backend is temporarily unavailable
+    }
+  };
 
   const handleAdd = () => {
     if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
@@ -250,6 +290,7 @@ export default function SettingsPage() {
                   const next = e.target.value as ThemeMode;
                   setTheme(next);
                   applyTheme(next);
+                  syncPreferencesPatch({ theme_override: next });
                 }}
               >
                 <option value="dark">{t("settings.themeDark")}</option>
@@ -295,7 +336,22 @@ export default function SettingsPage() {
             ].map(({ label, key }) => (
               <label key={key} className="flex items-center justify-between cursor-pointer">
                 <span className="text-sm text-surface-200">{label}</span>
-                <input type="checkbox" defaultChecked className="w-4 h-4 accent-[#7c6af7]" />
+                <input
+                  type="checkbox"
+                  checked={key === "browser" ? browserEnabled : key === "sound" ? soundEnabled : notifyMentionEnabled}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    if (key === "browser") {
+                      setBrowserEnabled(checked);
+                      syncPreferencesPatch({ notifications_enabled: checked });
+                    } else if (key === "sound") {
+                      setSoundEnabled(checked);
+                    } else {
+                      setNotifyMentionEnabled(checked);
+                    }
+                  }}
+                  className="w-4 h-4 accent-[#7c6af7]"
+                />
               </label>
             ))}
           </div>

@@ -27,6 +27,22 @@ class AccountResponse(BaseModel):
         from_attributes = True
 
 
+class AccountPreferenceResponse(BaseModel):
+    auto_login: bool
+    default_presence: str
+    theme_override: Optional[str] = None
+    notifications_enabled: bool
+    config_json: dict
+
+
+class AccountPreferenceUpdate(BaseModel):
+    auto_login: Optional[bool] = None
+    default_presence: Optional[str] = None
+    theme_override: Optional[str] = None
+    notifications_enabled: Optional[bool] = None
+    config_json: Optional[dict] = None
+
+
 @router.get("/", response_model=List[AccountResponse])
 async def list_accounts(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Account).where(Account.is_enabled == True))
@@ -67,3 +83,42 @@ async def delete_account(account_id: str, db: AsyncSession = Depends(get_db)):
     account.is_enabled = False
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/{account_id}/preferences", response_model=AccountPreferenceResponse)
+async def get_account_preferences(account_id: str, db: AsyncSession = Depends(get_db)):
+    account_result = await db.execute(select(Account).where(Account.id == account_id))
+    account = account_result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    result = await db.execute(select(AccountPreference).where(AccountPreference.account_id == account_id))
+    pref = result.scalar_one_or_none()
+    if not pref:
+        pref = AccountPreference(account_id=account_id)
+        db.add(pref)
+        await db.commit()
+        await db.refresh(pref)
+    return pref
+
+
+@router.put("/{account_id}/preferences", response_model=AccountPreferenceResponse)
+async def update_account_preferences(account_id: str, data: AccountPreferenceUpdate, db: AsyncSession = Depends(get_db)):
+    account_result = await db.execute(select(Account).where(Account.id == account_id))
+    account = account_result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    result = await db.execute(select(AccountPreference).where(AccountPreference.account_id == account_id))
+    pref = result.scalar_one_or_none()
+    if not pref:
+        pref = AccountPreference(account_id=account_id)
+        db.add(pref)
+
+    patch = data.model_dump(exclude_unset=True)
+    for key, value in patch.items():
+        setattr(pref, key, value)
+
+    await db.commit()
+    await db.refresh(pref)
+    return pref

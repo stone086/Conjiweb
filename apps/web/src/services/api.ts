@@ -50,6 +50,18 @@ export const accountsApi = {
   create: (data: { jid: string; domain: string; display_name?: string }) =>
     api.post("/accounts/", data).then((r) => r.data),
   delete: (id: string) => api.delete(`/accounts/${id}`).then((r) => r.data),
+  getPreferences: (accountId: string) =>
+    api.get(`/accounts/${accountId}/preferences`).then((r) => r.data),
+  updatePreferences: (
+    accountId: string,
+    data: {
+      auto_login?: boolean;
+      default_presence?: string;
+      theme_override?: string | null;
+      notifications_enabled?: boolean;
+      config_json?: Record<string, any>;
+    }
+  ) => api.put(`/accounts/${accountId}/preferences`, data).then((r) => r.data),
 };
 
 // Messages
