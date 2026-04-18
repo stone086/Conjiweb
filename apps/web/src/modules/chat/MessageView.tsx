@@ -31,12 +31,16 @@ function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; today
 
 function MessageBubble({
   msg,
+  replyPreview,
+  replySender,
   isOwn,
   onReply,
   sentLabel,
   readLabel,
 }: {
   msg: ChatMessage;
+  replyPreview?: string;
+  replySender?: string;
   isOwn: boolean;
   onReply: (m: ChatMessage) => void;
   sentLabel: string;
@@ -57,6 +61,14 @@ function MessageBubble({
       <div className={clsx("flex flex-col gap-1 max-w-[70%]", isOwn ? "items-end" : "items-start")}>
         {!isOwn && <span className="text-[10px] text-surface-200/40 px-1">{msg.senderJid.split("@")[0]}</span>}
         <div className={isOwn ? "msg-bubble-out" : "msg-bubble-in"}>
+          {msg.replyToId && (
+            <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-white/30 bg-black/15">
+              <p className="text-[10px] text-surface-200/60">{replySender ?? "Reply"}</p>
+              <p className="text-xs text-surface-200/70 line-clamp-2 break-words">
+                {replyPreview ?? "Original message not available"}
+              </p>
+            </div>
+          )}
           {msg.body && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>}
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
@@ -126,6 +138,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const conversation = useChatStore((s) => s.conversations[conversationId]);
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
   const addMessage = useChatStore((s) => s.addMessage);
+  const messageMap = new Map<string, ChatMessage>(messages.map((m) => [m.id, m]));
   const { peerIsTyping, onInputChange, onBlur } = useTypingIndicator(conversation?.peerJid ?? "");
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
 
@@ -211,7 +224,14 @@ export default function MessageView({ conversationId }: { conversationId: string
       return;
     }
     const id = body
-      ? client.sendMessage(conversation?.peerJid ?? conversationId, body, conversation?.type === "group" ? "groupchat" : "chat")
+      ? client.sendMessage(
+          conversation?.peerJid ?? conversationId,
+          body,
+          conversation?.type === "group" ? "groupchat" : "chat",
+          replyTo
+            ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid }
+            : undefined
+        )
       : crypto.randomUUID();
     const outgoingMessage: ChatMessage = {
       id,
@@ -279,7 +299,15 @@ export default function MessageView({ conversationId }: { conversationId: string
               {msg.direction === "system" ? (
                 <div className="msg-bubble-system">{msg.body}</div>
               ) : (
-                <MessageBubble msg={msg} isOwn={isOwn} onReply={setReplyTo} sentLabel={t("chat.sentSent")} readLabel={t("chat.sentRead")} />
+                <MessageBubble
+                  msg={msg}
+                  replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
+                  replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
+                  isOwn={isOwn}
+                  onReply={setReplyTo}
+                  sentLabel={t("chat.sentSent")}
+                  readLabel={t("chat.sentRead")}
+                />
               )}
             </div>
           );

@@ -40,6 +40,11 @@ export interface XmppMessage {
   replyTo?: string;
 }
 
+interface SendMessageOptions {
+  replyToId?: string;
+  replyToJid?: string;
+}
+
 export interface RosterContact {
   jid: string;
   name?: string;
@@ -146,6 +151,7 @@ export class XmppClient {
       }
 
       if (body) {
+        const replyNode = stanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
         const msg: XmppMessage = {
           id,
           from,
@@ -153,6 +159,7 @@ export class XmppClient {
           body,
           timestamp: Date.now(),
           type: type as "chat" | "groupchat",
+          replyTo: replyNode?.getAttribute("id") ?? undefined,
         };
         this.emit("message.received", { accountId: this.config.accountId, message: msg });
       }
@@ -220,16 +227,31 @@ export class XmppClient {
     );
   }
 
-  sendMessage(toJid: string, body: string, type: "chat" | "groupchat" = "chat"): string {
+  sendMessage(toJid: string, body: string, type: "chat" | "groupchat" = "chat", options?: SendMessageOptions): string {
     if (!this._connection || !this._connected) throw new Error("Not connected");
     const id = crypto.randomUUID();
-    this._connection.send(
-      this._$msg({ to: toJid, type, id })
-        .c("body").t(body)
-        .up()
-        .c("request", { xmlns: "urn:xmpp:receipts" })
-    );
-    const msg: XmppMessage = { id, from: this.config.jid, to: toJid, body, timestamp: Date.now(), type };
+    const stanza = this._$msg({ to: toJid, type, id })
+      .c("body").t(body)
+      .up()
+      .c("request", { xmlns: "urn:xmpp:receipts" })
+      .up();
+    if (options?.replyToId) {
+      stanza.c("reply", {
+        xmlns: "urn:xmpp:reply:0",
+        id: options.replyToId,
+        to: options.replyToJid ?? toJid,
+      });
+    }
+    this._connection.send(stanza);
+    const msg: XmppMessage = {
+      id,
+      from: this.config.jid,
+      to: toJid,
+      body,
+      timestamp: Date.now(),
+      type,
+      replyTo: options?.replyToId,
+    };
     this.emit("message.sent", { accountId: this.config.accountId, message: msg });
     return id;
   }
@@ -343,6 +365,7 @@ export class XmppClient {
         timestamp: Date.now(),
         type: (msg.getAttribute("type") ?? "chat") as "chat" | "groupchat",
         stanzaId: result.getAttribute("id") ?? undefined,
+        replyTo: msg.querySelector('reply[xmlns="urn:xmpp:reply:0"]')?.getAttribute("id") ?? undefined,
       };
       this.emit("mam.message", { accountId: this.config.accountId, message: xmppMsg, queryId });
       return true;

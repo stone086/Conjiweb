@@ -111,6 +111,7 @@ export function initXmppBridge(client: XmppClient) {
       direction: "in" as const,
       status: "delivered" as const,
       timestamp: message.timestamp,
+      replyToId: message.replyTo,
     };
 
     useChatStore.getState().addMessage(chatMsg);
@@ -150,6 +151,7 @@ export function initXmppBridge(client: XmppClient) {
       direction: isOwn ? ("out" as const) : ("in" as const),
       status: "delivered" as const,
       timestamp: message.timestamp,
+      replyToId: message.replyTo,
     };
 
     useChatStore.getState().addMessage(chatMsg, { countAsUnread: false });
