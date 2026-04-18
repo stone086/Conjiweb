@@ -105,10 +105,10 @@
 
 /* Message bubbles */
 .msg-bubble-out {
-  @apply bg-accent/20 border border-accent/20 rounded-2xl rounded-tr-sm px-4 py-2 max-w-[70%] ml-auto;
+  @apply bg-accent/20 border border-accent/20 rounded-2xl rounded-tr-sm px-4 py-2 w-fit max-w-full min-w-[3.5rem];
 }
 .msg-bubble-in {
-  @apply bg-surface-800 border border-white/5 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[70%];
+  @apply bg-surface-800 border border-white/5 rounded-2xl rounded-tl-sm px-4 py-2 w-fit max-w-full min-w-[3.5rem];
 }
 .msg-bubble-system {
   @apply text-center text-xs text-surface-200/50 py-2;
