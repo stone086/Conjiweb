@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Bell, Moon, Sun, PanelRight, PanelLeft, Lock, Unlock } from "lucide-react";
+import { Search, Bell, Moon, Sun, PanelRight, Lock, Unlock } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -10,13 +10,11 @@ import { useLanguage } from "@/utils/i18n";
 import { getOmemoEnabled, onOmemoEnabledChange, setOmemoEnabled } from "@/services/omemoSettings";
 
 interface TopBarProps {
-  onToggleLeft?: () => void;
-  showLeftToggle?: boolean;
   onToggleRight?: () => void;
   showRightToggle?: boolean;
 }
 
-export default function TopBar({ onToggleLeft, showLeftToggle, onToggleRight, showRightToggle }: TopBarProps) {
+export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) {
   const { t } = useLanguage();
   const [theme, setTheme] = useState(getStoredTheme());
   const [showNotifs, setShowNotifs] = useState(false);
@@ -43,14 +41,9 @@ export default function TopBar({ onToggleLeft, showLeftToggle, onToggleRight, sh
   return (
     <>
       <header className="h-12 flex items-center gap-3 px-4 border-b border-white/5 bg-surface-950/80 backdrop-blur-sm flex-shrink-0 relative z-20">
-        {showLeftToggle && (
-          <button onClick={onToggleLeft} className="btn-ghost p-2 md:hidden" title="Open conversations">
-            <PanelLeft size={16} />
-          </button>
-        )}
         <button
           onClick={() => setShowSearch(true)}
-          className="flex items-center gap-2 flex-1 md:max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border border-white/5 text-surface-200/30 hover:border-white/10 transition-colors cursor-text"
+          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border border-white/5 text-surface-200/30 hover:border-white/10 transition-colors cursor-text"
         >
           <Search size={13} />
           <span className="text-xs flex-1 text-left">{t("topbar.searchPlaceholder")}</span>
