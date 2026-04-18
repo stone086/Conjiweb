@@ -54,6 +54,23 @@ export interface RosterContact {
 
 type EventHandler = (data: unknown) => void;
 
+function sanitizeXmlText(input: string): string {
+  if (!input) return "";
+  let output = "";
+  for (const ch of input) {
+    const code = ch.codePointAt(0) ?? 0;
+    const valid =
+      code === 0x9
+      || code === 0xa
+      || code === 0xd
+      || (code >= 0x20 && code <= 0xd7ff)
+      || (code >= 0xe000 && code <= 0xfffd)
+      || (code >= 0x10000 && code <= 0x10ffff);
+    if (valid) output += ch;
+  }
+  return output;
+}
+
 export class XmppClient {
   readonly config: XmppClientConfig;
   private handlers: Map<XmppEvent, EventHandler[]> = new Map();
@@ -229,9 +246,11 @@ export class XmppClient {
 
   sendMessage(toJid: string, body: string, type: "chat" | "groupchat" = "chat", options?: SendMessageOptions): string {
     if (!this._connection || !this._connected) throw new Error("Not connected");
+    const safeBody = sanitizeXmlText(body);
+    if (!safeBody.trim()) throw new Error("Message contains unsupported characters");
     const id = crypto.randomUUID();
     const stanza = this._$msg({ to: toJid, type, id })
-      .c("body").t(body)
+      .c("body").t(safeBody)
       .up()
       .c("request", { xmlns: "urn:xmpp:receipts" })
       .up();
@@ -247,7 +266,7 @@ export class XmppClient {
       id,
       from: this.config.jid,
       to: toJid,
-      body,
+      body: safeBody,
       timestamp: Date.now(),
       type,
       replyTo: options?.replyToId,

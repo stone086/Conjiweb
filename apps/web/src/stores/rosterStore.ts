@@ -60,6 +60,7 @@ export const useRosterStore = create<RosterState>()(
         set((s) => {
           const jid = normalizeBareJid(contact.jid);
           const existing = s.contacts[jid];
+          const nextSubscription = (contact.subscription ?? existing?.subscription ?? "none") as SubscriptionState;
           return {
             contacts: {
               ...s.contacts,
@@ -67,6 +68,11 @@ export const useRosterStore = create<RosterState>()(
                 ...(existing ?? {}),
                 ...contact,
                 jid,
+                subscription: nextSubscription,
+                pendingIncoming:
+                  nextSubscription === "none"
+                    ? (contact.pendingIncoming ?? existing?.pendingIncoming ?? false)
+                    : false,
               },
             },
           };
@@ -101,20 +107,25 @@ export const useRosterStore = create<RosterState>()(
         }),
 
       markPendingIncoming: (jid) =>
-        set((s) => ({
-          contacts: {
-            ...s.contacts,
-            [normalizeBareJid(jid)]: {
-              ...(s.contacts[normalizeBareJid(jid)] ?? {}),
-              jid: normalizeBareJid(jid),
-              groups: [],
-              subscription: s.contacts[normalizeBareJid(jid)]?.subscription ?? "none",
-              presence: s.contacts[normalizeBareJid(jid)]?.presence ?? "unavailable",
-              isBlocked: s.contacts[normalizeBareJid(jid)]?.isBlocked ?? false,
-              pendingIncoming: true,
+        set((s) => {
+          const key = normalizeBareJid(jid);
+          const existing = s.contacts[key];
+          if (existing?.subscription && existing.subscription !== "none") return s;
+          return {
+            contacts: {
+              ...s.contacts,
+              [key]: {
+                ...(existing ?? {}),
+                jid: key,
+                groups: existing?.groups ?? [],
+                subscription: existing?.subscription ?? "none",
+                presence: existing?.presence ?? "unavailable",
+                isBlocked: existing?.isBlocked ?? false,
+                pendingIncoming: true,
+              },
             },
-          },
-        })),
+          };
+        }),
     }),
     { name: "conjiweb-roster" }
   )

@@ -223,16 +223,22 @@ export default function MessageView({ conversationId }: { conversationId: string
       toast.error(t("chat.notConnected"));
       return;
     }
-    const id = body
-      ? client.sendMessage(
-          conversation?.peerJid ?? conversationId,
-          body,
-          conversation?.type === "group" ? "groupchat" : "chat",
-          replyTo
-            ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid }
-            : undefined
-        )
-      : crypto.randomUUID();
+    let id: string;
+    try {
+      id = body
+        ? client.sendMessage(
+            conversation?.peerJid ?? conversationId,
+            body,
+            conversation?.type === "group" ? "groupchat" : "chat",
+            replyTo
+              ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid }
+              : undefined
+          )
+        : crypto.randomUUID();
+    } catch (error: any) {
+      toast.error(error?.message ?? t("chat.sendFailed"));
+      return;
+    }
     const outgoingMessage: ChatMessage = {
       id,
       conversationId,
