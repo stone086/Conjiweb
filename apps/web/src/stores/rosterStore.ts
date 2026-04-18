@@ -35,7 +35,12 @@ export const useRosterStore = create<RosterState>()(
 
       setContacts: (contacts) =>
         set({
-          contacts: Object.fromEntries(contacts.map((c) => [c.jid, c])),
+          contacts: Object.fromEntries(
+            contacts.map((c) => {
+              const jid = normalizeBareJid(c.jid);
+              return [jid, { ...c, jid }];
+            })
+          ),
         }),
 
       updatePresence: (jid, presence, statusText) =>
@@ -69,36 +74,43 @@ export const useRosterStore = create<RosterState>()(
 
       removeContact: (jid) =>
         set((s) => {
+          const key = normalizeBareJid(jid);
           const next = { ...s.contacts };
-          delete next[jid];
+          delete next[key];
           return { contacts: next };
         }),
 
       blockContact: (jid) =>
-        set((s) => ({
-          contacts: s.contacts[jid]
-            ? { ...s.contacts, [jid]: { ...s.contacts[jid], isBlocked: true, pendingIncoming: false } }
-            : s.contacts,
-        })),
+        set((s) => {
+          const key = normalizeBareJid(jid);
+          return {
+            contacts: s.contacts[key]
+              ? { ...s.contacts, [key]: { ...s.contacts[key], isBlocked: true, pendingIncoming: false } }
+              : s.contacts,
+          };
+        }),
 
       unblockContact: (jid) =>
-        set((s) => ({
-          contacts: s.contacts[jid]
-            ? { ...s.contacts, [jid]: { ...s.contacts[jid], isBlocked: false } }
-            : s.contacts,
-        })),
+        set((s) => {
+          const key = normalizeBareJid(jid);
+          return {
+            contacts: s.contacts[key]
+              ? { ...s.contacts, [key]: { ...s.contacts[key], isBlocked: false } }
+              : s.contacts,
+          };
+        }),
 
       markPendingIncoming: (jid) =>
         set((s) => ({
           contacts: {
             ...s.contacts,
-            [jid]: {
-              ...(s.contacts[jid] ?? {}),
-              jid,
+            [normalizeBareJid(jid)]: {
+              ...(s.contacts[normalizeBareJid(jid)] ?? {}),
+              jid: normalizeBareJid(jid),
               groups: [],
-              subscription: s.contacts[jid]?.subscription ?? "none",
-              presence: s.contacts[jid]?.presence ?? "unavailable",
-              isBlocked: s.contacts[jid]?.isBlocked ?? false,
+              subscription: s.contacts[normalizeBareJid(jid)]?.subscription ?? "none",
+              presence: s.contacts[normalizeBareJid(jid)]?.presence ?? "unavailable",
+              isBlocked: s.contacts[normalizeBareJid(jid)]?.isBlocked ?? false,
               pendingIncoming: true,
             },
           },

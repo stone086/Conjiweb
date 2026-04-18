@@ -49,11 +49,14 @@ export function initXmppBridge(client: XmppClient) {
   client.on("subscription.request", (data: any) => {
     const jid = data.jid as string;
     if (!jid) return;
-    useRosterStore.getState().markPendingIncoming(jid);
+    const normalizedJid = normalizeBareJid(jid);
+    const existing = useRosterStore.getState().contacts[normalizedJid];
+    if (existing?.subscription === "both" || existing?.subscription === "to") return;
+    useRosterStore.getState().markPendingIncoming(normalizedJid);
     useNotificationStore.getState().addNotification({
       type: "system",
       title: "Subscription request",
-      body: `${jid} wants to add you`,
+      body: `${normalizedJid} wants to add you`,
       accountId,
     });
   });
