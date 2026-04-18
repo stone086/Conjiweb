@@ -4,6 +4,7 @@ import { useRosterStore, RosterContact } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
 import { getClient } from "@/services/xmppAdapter";
+import { deleteLocalConversationData } from "@/services/localDb";
 import { clsx } from "clsx";
 import {
   Search, UserPlus, MoreVertical, MessageSquare,
@@ -31,7 +32,15 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
   const unblockContact = useRosterStore((s) => s.unblockContact);
   const upsertContact = useRosterStore((s) => s.upsertContact);
   const removeContact = useRosterStore((s) => s.removeContact);
+  const deleteConversation = useChatStore((s) => s.deleteConversation);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
+
+  const cancelConversation = (jid: string) => {
+    if (!activeAccountId) return;
+    const convId = generateConversationId(activeAccountId, normalizeBareJid(jid));
+    deleteConversation(convId);
+    deleteLocalConversationData(convId).catch(() => {});
+  };
 
   const handleRemove = () => {
     if (!activeAccountId) return;
@@ -65,6 +74,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     client?.denySubscription(contact.jid);
     client?.blockJid(contact.jid);
     blockContact(contact.jid);
+    cancelConversation(contact.jid);
     toast.success(t("roster.blockedDone"));
   };
 
@@ -74,6 +84,19 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     client?.unblockJid(contact.jid);
     unblockContact(contact.jid);
     toast.success(t("roster.unblockedDone"));
+  };
+
+  const handleReject = () => {
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    client?.denySubscription(contact.jid);
+    upsertContact({
+      ...contact,
+      subscription: "none",
+      pendingIncoming: false,
+    });
+    cancelConversation(contact.jid);
+    toast.success(t("roster.rejectedDone"));
   };
 
   return (
@@ -106,6 +129,10 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
             <button onClick={handleAccept}
               className="px-2 py-1 rounded bg-success/20 text-success text-[10px] font-semibold hover:bg-success/30">
               {t("roster.accept")}
+            </button>
+            <button onClick={handleReject}
+              className="px-2 py-1 rounded bg-white/10 text-surface-100 text-[10px] font-semibold hover:bg-white/20">
+              {t("roster.reject")}
             </button>
             <button onClick={handleBlock}
               className="px-2 py-1 rounded bg-danger/20 text-danger text-[10px] font-semibold hover:bg-danger/30">

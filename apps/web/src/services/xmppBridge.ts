@@ -9,7 +9,7 @@ import { useRosterStore } from "@/stores/rosterStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useAccountStore } from "@/stores/accountStore";
-import { cacheMessages } from "./localDb";
+import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
@@ -61,6 +61,52 @@ export function initXmppBridge(client: XmppClient) {
       type: "system",
       title: "Subscription request",
       body: `${normalizedJid} wants to add you`,
+      accountId,
+    });
+  });
+
+  client.on("subscription.approved", (data: any) => {
+    const normalizedJid = normalizeBareJid(data.jid as string);
+    if (!normalizedJid) return;
+    const existing = useRosterStore.getState().contacts[normalizedJid];
+    useRosterStore.getState().upsertContact({
+      jid: normalizedJid,
+      name: existing?.name,
+      groups: existing?.groups ?? [],
+      subscription: "both",
+      pendingIncoming: false,
+      presence: existing?.presence ?? "unavailable",
+      statusText: existing?.statusText,
+      avatarUrl: existing?.avatarUrl,
+      isBlocked: false,
+    });
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Friend request accepted",
+      body: `${normalizedJid} accepted your friend request`,
+      accountId,
+    });
+  });
+
+  client.on("subscription.denied", (data: any) => {
+    const normalizedJid = normalizeBareJid(data.jid as string);
+    if (!normalizedJid) return;
+    const convId = generateConversationId(accountId, normalizedJid);
+    const existing = useRosterStore.getState().contacts[normalizedJid];
+    if (existing) {
+      useRosterStore.getState().upsertContact({
+        ...existing,
+        jid: normalizedJid,
+        subscription: "none",
+        pendingIncoming: false,
+      });
+    }
+    useChatStore.getState().deleteConversation(convId);
+    deleteLocalConversationData(convId).catch(() => {});
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Friend request rejected",
+      body: `${normalizedJid} rejected your friend request`,
       accountId,
     });
   });

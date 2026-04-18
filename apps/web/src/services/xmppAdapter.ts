@@ -15,6 +15,8 @@ export type XmppEvent =
   | "roster.updated"
   | "presence.updated"
   | "subscription.request"
+  | "subscription.approved"
+  | "subscription.denied"
   | "message.received"
   | "message.sent"
   | "room.joined"
@@ -203,6 +205,14 @@ export class XmppClient {
       const type = stanza.getAttribute("type") ?? "available";
       if (type === "subscribe") {
         this.emit("subscription.request", { accountId: this.config.accountId, jid: from.split("/")[0] });
+        return true;
+      }
+      if (type === "subscribed") {
+        this.emit("subscription.approved", { accountId: this.config.accountId, jid: from.split("/")[0] });
+        return true;
+      }
+      if (type === "unsubscribed") {
+        this.emit("subscription.denied", { accountId: this.config.accountId, jid: from.split("/")[0] });
         return true;
       }
       const show = stanza.querySelector("show")?.textContent
