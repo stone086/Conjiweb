@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { normalizeBareJid } from "@/utils/helpers";
 
 export type SubscriptionState = "both" | "from" | "to" | "none" | "remove";
 
@@ -39,25 +40,28 @@ export const useRosterStore = create<RosterState>()(
 
       updatePresence: (jid, presence, statusText) =>
         set((s) => {
-          const existing = s.contacts[jid];
+          const key = normalizeBareJid(jid);
+          const existing = s.contacts[key];
           if (!existing) return s;
           return {
             contacts: {
               ...s.contacts,
-              [jid]: { ...existing, presence, statusText, lastSeenAt: Date.now() },
+              [key]: { ...existing, presence, statusText, lastSeenAt: Date.now() },
             },
           };
         }),
 
       upsertContact: (contact) =>
         set((s) => {
-          const existing = s.contacts[contact.jid];
+          const jid = normalizeBareJid(contact.jid);
+          const existing = s.contacts[jid];
           return {
             contacts: {
               ...s.contacts,
-              [contact.jid]: {
+              [jid]: {
                 ...(existing ?? {}),
                 ...contact,
+                jid,
               },
             },
           };

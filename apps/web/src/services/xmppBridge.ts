@@ -12,6 +12,15 @@ import { useAccountStore } from "@/stores/accountStore";
 import { cacheMessages } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
+function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
+  const value = (show ?? "").toLowerCase();
+  if (value === "away") return "away";
+  if (value === "dnd") return "dnd";
+  if (value === "xa") return "xa";
+  if (value === "unavailable" || value === "offline") return "unavailable";
+  return "available";
+}
+
 export function initXmppBridge(client: XmppClient) {
   const accountId = client.config.accountId;
 
@@ -52,7 +61,7 @@ export function initXmppBridge(client: XmppClient) {
   // Presence updates → RosterStore
   client.on("presence.updated", (data: any) => {
     const { jid, show, status } = data;
-    useRosterStore.getState().updatePresence(jid, show, status);
+    useRosterStore.getState().updatePresence(normalizeBareJid(jid), normalizePresence(show), status);
   });
 
   // Incoming messages → ChatStore + notifications
