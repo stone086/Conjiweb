@@ -8,7 +8,7 @@ import { deleteLocalConversationData } from "@/services/localDb";
 import { clsx } from "clsx";
 import {
   Search, UserPlus, MoreVertical, MessageSquare,
-  Ban, Trash2, ChevronDown, ChevronRight, Users,
+  Ban, Trash2, ChevronDown, ChevronRight, Users, Unlock,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
@@ -154,7 +154,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
               {contact.isBlocked ? (
                 <button onClick={() => { handleUnblock(); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-success hover:bg-white/5">
-                  <Ban size={12} /> {t("roster.unblock")}
+                  <Unlock size={12} /> {t("roster.unblock")}
                 </button>
               ) : (
                 <button onClick={() => { handleBlock(); setMenuOpen(false); }}
@@ -217,8 +217,16 @@ export default function RosterPanel() {
     ), [contacts, query]);
 
   const grouped = useMemo(() => {
-    const groups: Record<string, RosterContact[]> = { [t("roster.groupOnline")]: [], [t("roster.groupOffline")]: [] };
+    const groups: Record<string, RosterContact[]> = {
+      [t("roster.groupOnline")]: [],
+      [t("roster.groupOffline")]: [],
+      [t("roster.groupBlocked")]: [],
+    };
     filtered.forEach((c) => {
+      if (c.isBlocked) {
+        groups[t("roster.groupBlocked")].push(c);
+        return;
+      }
       const g = c.groups[0] ?? (c.presence === "available" ? t("roster.groupOnline") : t("roster.groupOffline"));
       if (!groups[g]) groups[g] = [];
       groups[g].push(c);
