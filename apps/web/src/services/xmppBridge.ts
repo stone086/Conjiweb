@@ -140,7 +140,7 @@ export function initXmppBridge(client: XmppClient) {
       timestamp: message.timestamp,
     };
 
-    useChatStore.getState().addMessage(chatMsg);
+    useChatStore.getState().addMessage(chatMsg, { countAsUnread: false });
     cacheMessages([chatMsg]).catch(() => {});
   });
 

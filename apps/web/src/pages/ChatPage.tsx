@@ -1,11 +1,18 @@
+import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import MessageView from "@/modules/chat/MessageView";
 import { MessageSquare } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
+import { useChatStore } from "@/stores/chatStore";
 
 export default function ChatPage() {
   const { t } = useLanguage();
   const { conversationId } = useParams();
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+
+  useEffect(() => {
+    setActiveConversation(conversationId ?? null);
+  }, [conversationId, setActiveConversation]);
 
   if (!conversationId) {
     return (

@@ -46,7 +46,7 @@ interface ChatState {
 
   setActiveConversation: (id: string | null) => void;
   upsertConversation: (conv: Conversation) => void;
-  addMessage: (msg: ChatMessage) => void;
+  addMessage: (msg: ChatMessage, options?: { countAsUnread?: boolean }) => void;
   markRead: (conversationId: string) => void;
   clearMessages: (conversationId: string) => void;
   clearAllHistory: () => void;
@@ -95,8 +95,9 @@ export const useChatStore = create<ChatState>()(
           };
         }),
 
-      addMessage: (msg) =>
+      addMessage: (msg, options) =>
         set((s) => {
+          const countAsUnread = options?.countAsUnread ?? true;
           const existing = s.messages[msg.conversationId] ?? [];
           if (existing.some((m) => m.id === msg.id)) {
             return s;
@@ -117,7 +118,7 @@ export const useChatStore = create<ChatState>()(
                     unreadCount:
                       s.activeConversationId === msg.conversationId
                         ? 0
-                        : (conv.unreadCount ?? 0) + (msg.direction === "in" ? 1 : 0),
+                        : (conv.unreadCount ?? 0) + (countAsUnread && msg.direction === "in" ? 1 : 0),
                   },
                 }
               : s.conversations,

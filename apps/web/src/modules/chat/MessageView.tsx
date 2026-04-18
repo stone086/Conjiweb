@@ -137,7 +137,7 @@ export default function MessageView({ conversationId }: { conversationId: string
 
       const localMessages = await getLocalMessages(conversationId, 200);
       if (!cancelled && localMessages.length > 0) {
-        localMessages.forEach((m) => addMessage(m));
+        localMessages.forEach((m) => addMessage(m, { countAsUnread: false }));
       }
 
       if (!cancelled && localMessages.length === 0) {
