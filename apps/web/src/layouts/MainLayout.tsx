@@ -1,5 +1,6 @@
 import { Outlet, useParams } from "react-router-dom";
 import { useState } from "react";
+import { clsx } from "clsx";
 import Sidebar from "@/components/Sidebar";
 import ConversationList from "@/modules/chat/ConversationList";
 import RosterPanel from "@/modules/roster/RosterPanel";
@@ -15,12 +16,18 @@ export default function MainLayout() {
   const [leftTab, setLeftTab] = useState<LeftTab>("chats");
   const [showRight, setShowRight] = useState(false);
   const { conversationId } = useParams();
+  const hasActiveConversation = !!conversationId;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface-950">
       <Sidebar />
 
-      <div className="w-72 flex-shrink-0 flex flex-col border-r border-white/5 bg-surface-900/50">
+      <div
+        className={clsx(
+          "w-72 flex-shrink-0 flex-col border-r border-white/5 bg-surface-900/50",
+          hasActiveConversation ? "hidden md:flex" : "flex"
+        )}
+      >
         <div className="flex border-b border-white/5 flex-shrink-0">
           {(["chats", "contacts", "groups"] as LeftTab[]).map((tab) => (
             <button
