@@ -28,6 +28,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const blockContact = useRosterStore((s) => s.blockContact);
+  const unblockContact = useRosterStore((s) => s.unblockContact);
   const upsertContact = useRosterStore((s) => s.upsertContact);
   const removeContact = useRosterStore((s) => s.removeContact);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -43,11 +44,16 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
   const handleAccept = () => {
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
+    if (contact.isBlocked) {
+      client?.unblockJid(contact.jid);
+      unblockContact(contact.jid);
+    }
     client?.approveSubscription(contact.jid);
     client?.addContact(contact.jid, contact.name);
     upsertContact({
       ...contact,
       subscription: "both",
+      isBlocked: false,
       pendingIncoming: false,
     });
     toast.success(t("roster.accepted"));
@@ -60,6 +66,14 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     client?.blockJid(contact.jid);
     blockContact(contact.jid);
     toast.success(t("roster.blockedDone"));
+  };
+
+  const handleUnblock = () => {
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    client?.unblockJid(contact.jid);
+    unblockContact(contact.jid);
+    toast.success(t("roster.unblockedDone"));
   };
 
   return (
@@ -110,10 +124,17 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-6 z-50 glass rounded-lg py-1 w-36 shadow-xl border border-white/10">
-              <button onClick={() => { blockContact(contact.jid); setMenuOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-surface-200 hover:bg-white/5">
-                <Ban size={12} /> {t("roster.block")}
-              </button>
+              {contact.isBlocked ? (
+                <button onClick={() => { handleUnblock(); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-success hover:bg-white/5">
+                  <Ban size={12} /> {t("roster.unblock")}
+                </button>
+              ) : (
+                <button onClick={() => { handleBlock(); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-surface-200 hover:bg-white/5">
+                  <Ban size={12} /> {t("roster.block")}
+                </button>
+              )}
               <button onClick={() => { handleRemove(); setMenuOpen(false); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover:bg-white/5">
                 <Trash2 size={12} /> {t("roster.remove")}

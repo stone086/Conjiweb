@@ -175,6 +175,7 @@ const messages: Record<Language, Record<string, string>> = {
     "roster.title": "Contacts",
     "roster.contactRemoved": "Contact removed",
     "roster.block": "Block",
+    "roster.unblock": "Unblock",
     "roster.remove": "Remove",
     "roster.blocked": "Blocked",
     "roster.pending": "Pending",
@@ -185,6 +186,7 @@ const messages: Record<Language, Record<string, string>> = {
     "roster.accept": "Accept",
     "roster.accepted": "Contact accepted",
     "roster.blockedDone": "Blocked and added to blacklist",
+    "roster.unblockedDone": "Removed from blacklist",
     "roster.searchPlaceholder": "Search contacts...",
     "roster.empty": "No contacts yet",
 
@@ -410,6 +412,7 @@ const messages: Record<Language, Record<string, string>> = {
     "roster.title": "联系人",
     "roster.contactRemoved": "联系人已移除",
     "roster.block": "拉黑",
+    "roster.unblock": "解除拉黑",
     "roster.remove": "移除",
     "roster.blocked": "已拉黑",
     "roster.pending": "待处理",
@@ -420,6 +423,7 @@ const messages: Record<Language, Record<string, string>> = {
     "roster.accept": "加好友",
     "roster.accepted": "已通过好友请求",
     "roster.blockedDone": "已拉黑并加入黑名单",
+    "roster.unblockedDone": "已解除拉黑",
     "roster.searchPlaceholder": "搜索联系人...",
     "roster.empty": "还没有联系人",
 
