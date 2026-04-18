@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Bell, Moon, Sun, PanelRight, Lock, Unlock } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useNotificationStore } from "@/stores/notificationStore";
@@ -26,6 +26,7 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
   }, [theme]);
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === s.activeAccountId));
   const totalUnread = useNotificationStore((s) => s.totalUnread);
+  const notifWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => onOmemoEnabledChange(setOmemoEnabledState), []);
 
@@ -37,6 +38,24 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
       setShowNotifs(false);
     },
   });
+
+  useEffect(() => {
+    if (!showNotifs) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (notifWrapRef.current?.contains(target)) return;
+      setShowNotifs(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [showNotifs]);
 
   return (
     <>
@@ -74,7 +93,7 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
         >
           {dark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <div className="relative">
+        <div ref={notifWrapRef} className="relative">
           <button onClick={() => setShowNotifs(!showNotifs)} className="btn-ghost p-2 relative">
             <Bell size={16} />
             {totalUnread > 0 && (
