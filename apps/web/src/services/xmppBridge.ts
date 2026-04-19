@@ -122,7 +122,17 @@ export function initXmppBridge(client: XmppClient) {
     const { message } = data;
     const from = normalizeBareJid(message.from);
     const existingContact = useRosterStore.getState().contacts[from];
-    if (existingContact?.isBlocked) return;
+
+    // Do not hard-drop messages on client-side "blocked" state.
+    // Server-side blocking is the source of truth. If a message arrives,
+    // the contact is effectively reachable, so clear stale local block state.
+    if (existingContact?.isBlocked) {
+      useRosterStore.getState().upsertContact({
+        ...existingContact,
+        jid: from,
+        isBlocked: false,
+      });
+    }
 
     if (!existingContact) {
       useRosterStore.getState().upsertContact({
