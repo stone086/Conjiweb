@@ -1,12 +1,10 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # =============================================================================
-#  Conjiweb 鈥?Install Script
 #  Target: Debian/Linux VPS (root)
 #  Usage:  bash install.sh --repo <repo_url> --domain <domain> --email <email>
 # =============================================================================
 set -euo pipefail
 
-# 鈹€鈹€ 棰滆壊杈撳嚭 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
@@ -29,7 +27,6 @@ is_placeholder_email() {
   esac
 }
 
-# 鈹€鈹€ 閰嶇疆鍙橀噺锛堝畨瑁呭墠鑷姩璇诲彇 .env锛?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 INSTALL_DIR="/opt/conjiweb"
 APP_USER="conjiweb"
 MINIO_USER="minio-user"
@@ -177,7 +174,6 @@ bootstrap_if_needed() {
   exec bash install.sh --run-local
 }
 
-# 鈹€鈹€ 璇诲彇閰嶇疆鏂囦欢 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 load_config() {
   if [ ! -f ".env" ]; then
     error ".env 鏂囦欢涓嶅瓨鍦紝璇峰厛澶嶅埗: cp .env.example .env 骞跺～鍐欓厤缃?
@@ -223,7 +219,8 @@ load_config() {
   is_placeholder_domain "$DOMAIN" && error "璇峰湪 .env 涓缃湡瀹?DOMAIN锛堝綋鍓? ${DOMAIN:-绌簘)"
   is_placeholder_email "$EMAIL" && error "璇峰湪 .env 涓缃湡瀹?EMAIL锛堝綋鍓? ${EMAIL:-绌簘)"
 
-  # 鏇存柊 .env 鍐欏洖闅忔満鐢熸垚鐨勫€?  sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
+  # Persist generated secrets back to .env.
+  sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
   sed -i "s|^REDIS_PASS=.*|REDIS_PASS=${REDIS_PASS}|" .env
   sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}|" .env
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET_KEY}|" .env
@@ -240,7 +237,6 @@ load_config() {
   chmod 600 .env
 }
 
-# 鈹€鈹€ 1. 绯荤粺妫€鏌?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 check_system() {
   step "绯荤粺妫€鏌?
   [ "$(id -u)" -eq 0 ] || error "璇蜂娇鐢?root 鐢ㄦ埛杩愯"
@@ -256,7 +252,6 @@ check_system() {
   success "绯荤粺妫€鏌ラ€氳繃"
 }
 
-# 鈹€鈹€ 2. 鎹㈡棩鏈?apt 婧愶紙鐞嗗寲瀛︾爺绌舵墍闀滃儚锛岄€熷害蹇級 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_apt_mirror() {
   step "Configure apt mirror"
   cat > /etc/apt/sources.list << 'EOF'
@@ -268,7 +263,6 @@ EOF
   success "apt mirror configured (geo-aware deb.debian.org)"
 }
 
-# 鈹€鈹€ 3. 鑷姩鍗囩骇绯荤粺鍖?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 upgrade_system_packages() {
   step "Upgrade system packages"
   export DEBIAN_FRONTEND=noninteractive
@@ -282,7 +276,6 @@ upgrade_system_packages() {
   success "System package upgrade completed"
 }
 
-# 鈹€鈹€ 3. 瀹夎绯荤粺渚濊禆 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_deps() {
   step "瀹夎绯荤粺渚濊禆"
   apt install -y -qq \
@@ -294,10 +287,8 @@ install_deps() {
   success "绯荤粺渚濊禆瀹夎瀹屾垚"
 }
 
-# 鈹€鈹€ 4. 瀹夎 PostgreSQL 16 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_postgres() {
   step "瀹夎 PostgreSQL 16"
-  # 瀹樻柟鏃ユ湰闀滃儚
   if [ ! -f /etc/apt/keyrings/postgresql.gpg ]; then
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
       gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
@@ -348,7 +339,6 @@ install_postgres() {
   success "PostgreSQL 16 瀹夎瀹屾垚锛屾暟鎹簱: ${APP_USER}"
 }
 
-# 鈹€鈹€ 5. 瀹夎 Redis 7 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_redis() {
   step "瀹夎 Redis 7"
   apt install -y -qq redis-server
@@ -357,21 +347,19 @@ install_redis() {
   sed -i "s|# requirepass foobared|requirepass ${REDIS_PASS}|" "$REDIS_CONF"
   sed -i "s|# maxmemory <bytes>|maxmemory 256mb|" "$REDIS_CONF"
   sed -i "s|# maxmemory-policy noeviction|maxmemory-policy allkeys-lru|" "$REDIS_CONF"
-  # 缁戝畾浠呮湰鍦?  sed -i "s|^bind 127.0.0.1 ::1|bind 127.0.0.1|" "$REDIS_CONF"
+  # Bind Redis to localhost only.
+  sed -i "s|^bind 127.0.0.1 ::1|bind 127.0.0.1|" "$REDIS_CONF"
 
   systemctl enable redis-server
   systemctl restart redis-server
   success "Redis 7 瀹夎瀹屾垚"
 }
 
-# 鈹€鈹€ 6. 瀹夎 Prosody XMPP 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_prosody() {
   step "瀹夎 Prosody XMPP 鏈嶅姟鍣?
   apt install -y -qq prosody lua-dbi-postgresql
 
-  # 鍐欏叆閰嶇疆
   cp configs/prosody/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
-  # 鏇挎崲鍩熷悕
   sed -i "s|XMPP_DOMAIN|${XMPP_DOMAIN}|g" /etc/prosody/prosody.cfg.lua
 
   prosodyctl check config 2>/dev/null || true
@@ -393,7 +381,6 @@ install_prosody() {
   success "Prosody 瀹夎瀹屾垚锛屽煙鍚? ${XMPP_DOMAIN}"
 }
 
-# 鈹€鈹€ 7. 瀹夎 MinIO 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_minio() {
   step "瀹夎 MinIO 瀵硅薄瀛樺偍"
   systemctl stop minio 2>/dev/null || true
@@ -430,10 +417,8 @@ EOF
   systemctl enable minio
   systemctl start minio
 
-  # 绛夊緟 MinIO 鍚姩
   sleep 3
 
-  # 鍒涘缓榛樿 bucket
   wget -q https://dl.min.io/client/mc/release/linux-amd64/mc \
     -O /usr/local/bin/mc
   chmod +x /usr/local/bin/mc
@@ -445,7 +430,6 @@ EOF
   success "MinIO 瀹夎瀹屾垚锛孊ucket: conjiweb-files"
 }
 
-# 鈹€鈹€ 8. 瀹夎 Node.js 20 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_nodejs() {
   step "瀹夎 Node.js 20"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
@@ -453,7 +437,6 @@ install_nodejs() {
   success "Node.js $(node --version) 瀹夎瀹屾垚"
 }
 
-# 鈹€鈹€ 9. 閮ㄧ讲鍚庣 API 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 deploy_api() {
   step "閮ㄧ讲 FastAPI 鍚庣"
   mkdir -p "${INSTALL_DIR}"
@@ -466,7 +449,6 @@ deploy_api() {
   .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
 
-  # 鐢熸垚 API .env
   cat > "${INSTALL_DIR}/api/.env" << EOF
 DATABASE_URL=postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}
 REDIS_URL=redis://:${REDIS_PASS}@127.0.0.1:6379/0
@@ -487,7 +469,8 @@ EOF
   sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}|" \
     "${INSTALL_DIR}/api/alembic.ini"
 
-  # 杩愯鏁版嵁搴撹縼绉?  cd "${INSTALL_DIR}/api"
+  # Run database migrations.
+  cd "${INSTALL_DIR}/api"
   DB_HAS_ACCOUNTS="$(
     PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" -tAc \
       "SELECT CASE WHEN to_regclass('public.accounts') IS NULL THEN '0' ELSE '1' END;" 2>/dev/null || echo "0"
@@ -503,7 +486,6 @@ EOF
   fi
   .venv/bin/alembic upgrade head
 
-  # 鍒涘缓 systemd 鏈嶅姟
   NPROC="$(nproc || echo 1)"
   UVICORN_WORKERS=$(( NPROC * 2 + 1 ))
   (( UVICORN_WORKERS > 8 )) && UVICORN_WORKERS=8
@@ -540,14 +522,12 @@ EOF
   success "FastAPI 鍚庣閮ㄧ讲瀹屾垚锛岀洃鍚?127.0.0.1:8000"
 }
 
-# 鈹€鈹€ 10. 鏋勫缓骞堕儴缃插墠绔?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 deploy_frontend() {
   step "鏋勫缓鍓嶇锛圧eact + Vite锛?
   rm -rf "${INSTALL_DIR}/web"
   cp -r "${SRC_DIR}/apps/web" "${INSTALL_DIR}/web"
   cd "${INSTALL_DIR}/web"
 
-  # 鍐欏叆鍓嶇鐜鍙橀噺
   cat > .env.production << EOF
 VITE_API_URL=https://${DOMAIN}/api
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
@@ -566,12 +546,12 @@ EOF
   success "鍓嶇鏋勫缓瀹屾垚锛岃緭鍑虹洰褰? ${FRONTEND_DIST}"
 }
 
-# 鈹€鈹€ 11. 瀹夎閰嶇疆 Nginx 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_nginx() {
   step "瀹夎閰嶇疆 Nginx"
   apt install -y -qq nginx
 
-  # 涓存椂 HTTP 閰嶇疆锛堢敤浜?certbot 楠岃瘉锛?  cat > /etc/nginx/sites-available/conjiweb << EOF
+  # Temporary HTTP config for certbot validation.
+  cat > /etc/nginx/sites-available/conjiweb << EOF
 server {
     listen 80;
     listen [::]:80;
@@ -594,7 +574,6 @@ EOF
   success "Nginx 涓存椂閰嶇疆瀹屾垚"
 }
 
-# 鈹€鈹€ 12. 鐢宠 SSL 璇佷功 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_ssl() {
   step "鐢宠 Let's Encrypt SSL 璇佷功"
   apt install -y -qq certbot python3-certbot-nginx
@@ -619,7 +598,6 @@ setup_ssl() {
     success "SSL 璇佷功鐢宠鎴愬姛"
   fi
 
-  # 鍐欏叆姝ｅ紡 HTTPS Nginx 閰嶇疆
   cp configs/nginx/conjiweb.conf /etc/nginx/sites-available/conjiweb
   sed -i "s|DOMAIN|${DOMAIN}|g" /etc/nginx/sites-available/conjiweb
   sed -i "s|INSTALL_DIR|${INSTALL_DIR}|g" /etc/nginx/sites-available/conjiweb
@@ -630,12 +608,10 @@ EOF
   nginx -t && systemctl reload nginx
   success "Nginx HTTPS 閰嶇疆瀹屾垚"
 
-  # 鑷姩缁湡
   systemctl enable certbot.timer
   systemctl start certbot.timer
 }
 
-# 鈹€鈹€ 13. 閰嶇疆闃茬伀澧?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_firewall() {
   detect_ssh_ports() {
     local ports=""
@@ -837,14 +813,10 @@ EOF
   if prompt_yes_no "是否禁用 ICMP ping（安全更严，但不利于网络排障）？"; then
     ufw deny in from any to any proto icmp || warn "ICMP rule not applied by ufw, skipping"
   fi
-  # 涓嶅紑鏀?9000/9001锛圡inIO 浠呭唴閮ㄨ闂級
-  # 涓嶅紑鏀?5432锛圥ostgreSQL 浠呭唴閮ㄨ闂級
-  # 涓嶅紑鏀?6379锛圧edis 浠呭唴閮ㄨ闂級
   ufw --force enable
   success "闃茬伀澧欓厤缃畬鎴?
 }
 
-# 鈹€鈹€ 14. 閰嶇疆 fail2ban 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_fail2ban() {
   step "配置 fail2ban（防暴力破解）"
   cat > /etc/fail2ban/filter.d/conjiweb-api.conf << 'EOF'
@@ -880,7 +852,6 @@ EOF
   success "fail2ban 配置完成"
 }
 
-# 15. 鍒涘缓澶囦唤鑴氭湰 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_backup() {
   step "閰嶇疆鑷姩澶囦唤"
   mkdir -p /root/backups
@@ -957,7 +928,6 @@ EOF
   success "监控告警脚本配置完成（每5分钟）"
 }
 
-# 鈹€鈹€ 16. 鐢熸垚蹇€熼獙鏀跺懡浠?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_quick_check() {
   cat > /usr/local/bin/conjiweb-check << 'CHECK'
 #!/usr/bin/env bash
@@ -995,7 +965,6 @@ EOF
   chmod 600 "${secrets_file}"
 }
 
-# 鈹€鈹€ 17. 杈撳嚭瀹夎鎽樿 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 print_summary() {
   echo ""
   echo -e "${GREEN}鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽${NC}"
@@ -1032,7 +1001,6 @@ print_summary() {
   echo ""
 }
 
-# 鈹€鈹€ 涓绘祦绋?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 main() {
   SRC_DIR="$(pwd -P)"
   [[ -d "${SRC_DIR}/apps/api" ]] || error "缂哄皯婧愮爜鐩綍: ${SRC_DIR}/apps/api"

@@ -55,7 +55,7 @@ async def websocket_endpoint(ws: WebSocket, account_id: str):
         await ws.send_json({"type": "connected", "account_id": account_id})
 
         while True:
-            # Keep alive — client sends pings
+            # Keep alive - client sends pings
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=30)
                 msg = json.loads(data)

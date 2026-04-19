@@ -30,7 +30,7 @@ export function initXmppBridge(client: XmppClient) {
     useAccountStore.getState().setConnected(accountId, data.status === "connected");
   });
 
-  // Roster updates → RosterStore
+  // Roster updates -> RosterStore
   client.on("roster.updated", (data: any) => {
     const { contacts }: { contacts: AdapterContact[] } = data;
     contacts.forEach((c) => {
@@ -117,7 +117,7 @@ export function initXmppBridge(client: XmppClient) {
     });
   });
 
-  // Presence updates → RosterStore
+  // Presence updates -> RosterStore
   client.on("presence.updated", (data: any) => {
     const { jid, show, status } = data;
     const normalizedJid = normalizeBareJid(jid);
@@ -138,7 +138,7 @@ export function initXmppBridge(client: XmppClient) {
     roster.updatePresence(normalizedJid, normalizePresence(show), status);
   });
 
-  // Incoming messages → ChatStore + notifications
+  // Incoming messages -> ChatStore + notifications
   client.on("message.received", (data: any) => {
     const { message } = data;
     const from = normalizeBareJid(message.from);
