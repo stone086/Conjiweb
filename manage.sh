@@ -74,7 +74,17 @@ cmd_status() {
 }
 
 cmd_start() { for svc in "${SERVICES[@]}"; do systemctl start "$svc"; done; }
-cmd_stop() { for svc in nginx conjiweb-api minio prosody redis-server postgresql; do systemctl stop "$svc" 2>/dev/null || true; done; }
+cmd_stop() {
+  echo "Draining nginx connections..."
+  nginx -s quit >/dev/null 2>&1 || true
+  sleep 2
+  echo "Stopping API gracefully..."
+  systemctl stop conjiweb-api 2>/dev/null || true
+  sleep 1
+  for svc in minio prosody redis-server postgresql; do
+    systemctl stop "$svc" 2>/dev/null || true
+  done
+}
 cmd_restart() { for svc in "${SERVICES[@]}"; do systemctl restart "$svc"; done; }
 
 cmd_add_user() {
@@ -152,8 +162,11 @@ cmd_update_api() {
 cmd_update_all() {
   echo -e "${CYAN}[1/4] Pull source${NC}"
   cd "${SRC_DIR}"
+  current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+  current_remote="$(git remote | head -n1)"
+  [[ -n "${current_remote}" ]] || current_remote="origin"
   git fetch --all --prune
-  git reset --hard origin/main
+  git reset --hard "${current_remote}/${current_branch}"
 
   echo -e "${CYAN}[2/4] Update API${NC}"
   cmd_update_api
@@ -178,7 +191,9 @@ cmd_ssl_renew() {
 }
 
 cmd_db_shell() {
-  sudo -u postgres psql conjiweb
+  load_env
+  db_name="${APP_USER:-conjiweb}"
+  sudo -u postgres psql "${db_name}"
 }
 
 cmd_db_history() {

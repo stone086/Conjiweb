@@ -258,23 +258,28 @@ check_system() {
 
 # 鈹€鈹€ 2. 鎹㈡棩鏈?apt 婧愶紙鐞嗗寲瀛︾爺绌舵墍闀滃儚锛岄€熷害蹇級 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_apt_mirror() {
-  step "閰嶇疆鏃ユ湰 apt 闀滃儚婧?
+  step "Configure apt mirror"
   cat > /etc/apt/sources.list << 'EOF'
-deb http://ftp.riken.jp/Linux/debian/debian/ bookworm main contrib non-free non-free-firmware
-deb http://ftp.riken.jp/Linux/debian/debian/ bookworm-updates main contrib non-free non-free-firmware
-deb http://ftp.riken.jp/Linux/debian/debian-security/ bookworm-security main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian/ bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian/ bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
 EOF
   apt update -qq
-  success "apt 婧愬凡鍒囨崲鍒版棩鏈悊鍖栧鐮旂┒鎵€闀滃儚"
+  success "apt mirror configured (geo-aware deb.debian.org)"
 }
 
 # 鈹€鈹€ 3. 鑷姩鍗囩骇绯荤粺鍖?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 upgrade_system_packages() {
-  step "鑷姩鍗囩骇绯荤粺鍖?
+  step "Upgrade system packages"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get -y -qq upgrade
-  success "绯荤粺鍖呭崌绾у畬鎴?
+  if [[ -f /var/run/reboot-required ]]; then
+    warn "A reboot is required after package upgrade."
+    warn "Please reboot and rerun installer: bash install.sh --run-local"
+    exit 1
+  fi
+  success "System package upgrade completed"
 }
 
 # 鈹€鈹€ 3. 瀹夎绯荤粺渚濊禆 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -321,11 +326,19 @@ install_postgres() {
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres \
     -c "GRANT ALL PRIVILEGES ON DATABASE \"${APP_USER}\" TO \"${APP_USER}\";"
 
-  # 鍐呭瓨浼樺寲锛堥€傚悎 2GB VPS锛?  PG_CONF="/etc/postgresql/16/main/postgresql.conf"
-  sed -i "s|#shared_buffers = 128MB|shared_buffers = 256MB|" "$PG_CONF"
-  sed -i "s|#work_mem = 4MB|work_mem = 8MB|" "$PG_CONF"
+  # Dynamic memory tuning based on total RAM.
+  PG_CONF="/etc/postgresql/16/main/postgresql.conf"
+  TOTAL_MEM_MB="$(free -m | awk '/^Mem:/{print $2}')"
+  SHARED_MB=$(( TOTAL_MEM_MB / 4 ))
+  EFFECTIVE_MB=$(( TOTAL_MEM_MB * 3 / 4 ))
+  WORK_MB=$(( TOTAL_MEM_MB / 64 ))
+  (( SHARED_MB < 64 )) && SHARED_MB=64
+  (( WORK_MB < 4 )) && WORK_MB=4
+  (( WORK_MB > 64 )) && WORK_MB=64
+  sed -i "s|#shared_buffers = 128MB|shared_buffers = ${SHARED_MB}MB|" "$PG_CONF"
+  sed -i "s|#work_mem = 4MB|work_mem = ${WORK_MB}MB|" "$PG_CONF"
   sed -i "s|#maintenance_work_mem = 64MB|maintenance_work_mem = 64MB|" "$PG_CONF"
-  sed -i "s|#effective_cache_size = 4GB|effective_cache_size = 512MB|" "$PG_CONF"
+  sed -i "s|#effective_cache_size = 4GB|effective_cache_size = ${EFFECTIVE_MB}MB|" "$PG_CONF"
   systemctl restart postgresql
 
   # Verify that password auth really works before continuing.
@@ -404,7 +417,7 @@ Group=${MINIO_USER}
 Environment="MINIO_ROOT_USER=${MINIO_ROOT_USER}"
 Environment="MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}"
 Environment="MINIO_VOLUMES=/data/minio"
-ExecStart=/usr/local/bin/minio server /data/minio --console-address ":9001" --address ":9000"
+ExecStart=/usr/local/bin/minio server /data/minio --console-address "127.0.0.1:9001" --address "127.0.0.1:9000"
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
@@ -427,7 +440,7 @@ EOF
   /usr/local/bin/mc alias set local http://127.0.0.1:9000 \
     "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}" --quiet 2>/dev/null || true
   /usr/local/bin/mc mb local/conjiweb-files --quiet 2>/dev/null || true
-  /usr/local/bin/mc anonymous set download local/conjiweb-files --quiet 2>/dev/null || true
+  /usr/local/bin/mc anonymous set none local/conjiweb-files --quiet 2>/dev/null || true
 
   success "MinIO 瀹夎瀹屾垚锛孊ucket: conjiweb-files"
 }
@@ -491,6 +504,10 @@ EOF
   .venv/bin/alembic upgrade head
 
   # 鍒涘缓 systemd 鏈嶅姟
+  NPROC="$(nproc || echo 1)"
+  UVICORN_WORKERS=$(( NPROC * 2 + 1 ))
+  (( UVICORN_WORKERS > 8 )) && UVICORN_WORKERS=8
+  (( UVICORN_WORKERS < 2 )) && UVICORN_WORKERS=2
   cat > /etc/systemd/system/conjiweb-api.service << EOF
 [Unit]
 Description=Conjiweb FastAPI Backend
@@ -505,7 +522,7 @@ EnvironmentFile=${INSTALL_DIR}/api/.env
 ExecStart=${INSTALL_DIR}/api/.venv/bin/uvicorn app.main:app \\
     --host 127.0.0.1 \\
     --port 8000 \\
-    --workers 2 \\
+    --workers ${UVICORN_WORKERS} \\
     --log-level info
 Restart=always
 RestartSec=5
