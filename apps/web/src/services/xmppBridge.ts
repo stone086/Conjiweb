@@ -34,14 +34,18 @@ export function initXmppBridge(client: XmppClient) {
     const { contacts }: { contacts: AdapterContact[] } = data;
     contacts.forEach((c) => {
       if (!c.jid) return;
+      const normalizedJid = normalizeBareJid(c.jid);
+      const existing = useRosterStore.getState().contacts[normalizedJid];
       useRosterStore.getState().upsertContact({
-        jid: c.jid,
-        name: c.name,
-        groups: c.groups,
+        jid: normalizedJid,
+        name: c.name ?? existing?.name,
+        groups: c.groups?.length ? c.groups : (existing?.groups ?? []),
         subscription: c.subscription as any,
-        pendingIncoming: false,
-        presence: "unavailable",
-        isBlocked: false,
+        pendingIncoming: c.subscription === "none" ? (existing?.pendingIncoming ?? false) : false,
+        presence: existing?.presence ?? "unavailable",
+        statusText: existing?.statusText,
+        avatarUrl: existing?.avatarUrl,
+        isBlocked: existing?.isBlocked ?? false,
       });
     });
   });
@@ -114,7 +118,21 @@ export function initXmppBridge(client: XmppClient) {
   // Presence updates → RosterStore
   client.on("presence.updated", (data: any) => {
     const { jid, show, status } = data;
-    useRosterStore.getState().updatePresence(normalizeBareJid(jid), normalizePresence(show), status);
+    const normalizedJid = normalizeBareJid(jid);
+    const roster = useRosterStore.getState();
+    if (!roster.contacts[normalizedJid]) {
+      roster.upsertContact({
+        jid: normalizedJid,
+        groups: [],
+        subscription: "none",
+        pendingIncoming: false,
+        presence: normalizePresence(show),
+        statusText: status,
+        isBlocked: false,
+      });
+      return;
+    }
+    roster.updatePresence(normalizedJid, normalizePresence(show), status);
   });
 
   // Incoming messages → ChatStore + notifications
