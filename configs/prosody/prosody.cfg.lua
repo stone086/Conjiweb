@@ -14,7 +14,9 @@ modules_enabled = {
   "carbons";
   "pep";
   "private";
+  "bookmarks";
   "blocklist";
+  "http_upload";
   "vcard4";
   "vcard_legacy";
   "mam";
@@ -40,7 +42,7 @@ s2s_secure_auth = false
 authentication = "internal_hashed"
 storage = "internal"
 
-archive_expires_after = "1y"
+archive_expires_after = "4w"
 default_archive_policy = true
 max_archive_query_results = 100
 
@@ -67,4 +69,3 @@ Component "conference.XMPP_DOMAIN" "muc"
   }
   restrict_room_creation = false
   max_history_messages = 100
-

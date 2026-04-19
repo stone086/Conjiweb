@@ -46,6 +46,7 @@ bash manage.sh check
 - Ops: `backup`, `update`, `update-front`, `update-api`, `ssl-renew`, `db-shell`
 - DB/Migrations: `db-history`, `db-rollback`
 - Health/Inspect: `check`, `cert-info`, `disk-usage`, `top-requests`, `mem-usage`
+- Watchdog: `watchdog`
 
 ## Security Hardening Included
 - UFW with SSH port auto-detection
@@ -75,5 +76,11 @@ bash manage.sh check
 ## Contributing
 Please read [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+## Uninstall
+```bash
+cd /opt/conjiweb-src
+bash uninstall.sh
+```
+
 ## License
-See project license file in this repository.
+MIT, see [`LICENSE`](LICENSE).

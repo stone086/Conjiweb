@@ -834,6 +834,9 @@ EOF
   ufw allow 443/tcp
   ufw allow 5222/tcp   # XMPP TCP
   ufw allow 5269/tcp   # XMPP 鏈嶅姟鍣ㄩ棿
+  if prompt_yes_no "是否禁用 ICMP ping（安全更严，但不利于网络排障）？"; then
+    ufw deny in from any to any proto icmp || warn "ICMP rule not applied by ufw, skipping"
+  fi
   # 涓嶅紑鏀?9000/9001锛圡inIO 浠呭唴閮ㄨ闂級
   # 涓嶅紑鏀?5432锛圥ostgreSQL 浠呭唴閮ㄨ闂級
   # 涓嶅紑鏀?6379锛圧edis 浠呭唴閮ㄨ闂級
@@ -846,7 +849,7 @@ setup_fail2ban() {
   step "配置 fail2ban（防暴力破解）"
   cat > /etc/fail2ban/filter.d/conjiweb-api.conf << 'EOF'
 [Definition]
-failregex = ^<HOST> - .* "(POST|PUT) /api/auth/admin/login HTTP.*" (401|403|429) .*
+failregex = ^<HOST> - .* "POST /api/auth/(admin/login|register) HTTP.*" (4[0-9][0-9]) .*
 ignoreregex =
 EOF
 
@@ -882,6 +885,10 @@ setup_backup() {
   step "閰嶇疆鑷姩澶囦唤"
   mkdir -p /root/backups
   chmod 700 /root/backups
+  if [[ -n "${BACKUP_REMOTE}" ]] && ! command -v rclone >/dev/null 2>&1; then
+    info "BACKUP_REMOTE is set, installing rclone for offsite sync"
+    apt install -y -qq rclone
+  fi
 
   cat > /usr/local/bin/conjiweb-backup.sh << BACKUP
 #!/bin/bash

@@ -50,6 +50,7 @@ usage() {
   echo "  disk-usage      Show disk usage details"
   echo "  top-requests    Top nginx requests from access log"
   echo "  mem-usage       Show process memory usage"
+  echo "  watchdog        Run conjiweb watchdog once"
 }
 
 load_env() {
@@ -208,6 +209,7 @@ cmd_db_rollback() {
   read -rp "Rollback target (revision or -1): " target
   [[ -n "${target:-}" ]] || { echo "No target provided"; exit 1; }
   .venv/bin/alembic downgrade "$target"
+  systemctl restart conjiweb-api
 }
 
 cmd_check() {
@@ -249,8 +251,18 @@ cmd_top_requests() {
     echo "Log not found: $log"
     exit 1
   fi
-  echo "=== Top 30 paths ==="
-  awk '{print $7}' "$log" | sort | uniq -c | sort -rn | head -30
+  echo "=== Top 30 paths (last 10000 lines) ==="
+  tail -n 10000 "$log" | awk '{print $7}' | cut -d'?' -f1 | sort | uniq -c | sort -rn | head -30
+}
+
+cmd_watchdog() {
+  if [[ -x /usr/local/bin/conjiweb-alert.sh ]]; then
+    /usr/local/bin/conjiweb-alert.sh
+    echo "watchdog executed"
+  else
+    echo "watchdog script not found: /usr/local/bin/conjiweb-alert.sh"
+    exit 1
+  fi
 }
 
 case "${1:-}" in
@@ -281,5 +293,6 @@ case "${1:-}" in
   disk-usage)      cmd_disk_usage ;;
   top-requests)    cmd_top_requests ;;
   mem-usage)       cmd_mem_usage ;;
+  watchdog)        cmd_watchdog ;;
   *)               usage ;;
 esac
