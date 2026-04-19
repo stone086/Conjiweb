@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.utils.security import create_access_token
 from app.core.config import settings
+from app.core.rate_limit import limiter
 import os
 import re
 import subprocess
@@ -23,7 +24,8 @@ class RegisterRequest(BaseModel):
 
 
 @router.post("/admin/login")
-async def admin_login(data: AdminLogin):
+@limiter.limit("5/minute")
+async def admin_login(request: Request, data: AdminLogin):
     if data.username != ADMIN_USERNAME or data.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token(data.username)
@@ -49,7 +51,8 @@ def parse_jid(jid: str):
 
 
 @router.post("/register")
-async def register_xmpp_account(data: RegisterRequest):
+@limiter.limit("10/minute")
+async def register_xmpp_account(request: Request, data: RegisterRequest):
     if not settings.XMPP_REGISTRATION_ENABLED:
         raise HTTPException(status_code=403, detail="Registration is disabled")
     if len(data.password or "") < 6:

@@ -1,19 +1,19 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # =============================================================================
-#  Conjiweb — Install Script
+#  Conjiweb 鈥?Install Script
 #  Target: Debian/Linux VPS (root)
 #  Usage:  bash install.sh --repo <repo_url> --domain <domain> --email <email>
 # =============================================================================
 set -euo pipefail
 
-# ── 颜色输出 ──────────────────────────────────────────────────────────────────
+# 鈹€鈹€ 棰滆壊杈撳嚭 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC}   $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERR]${NC}  $*"; exit 1; }
-step()    { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
+step()    { echo -e "\n${CYAN}鈹佲攣鈹?$* 鈹佲攣鈹?{NC}"; }
 
 is_placeholder_domain() {
   case "${1:-}" in
@@ -29,9 +29,10 @@ is_placeholder_email() {
   esac
 }
 
-# ── 配置变量（安装前自动读取 .env） ───────────────────────────────────────────
+# 鈹€鈹€ 閰嶇疆鍙橀噺锛堝畨瑁呭墠鑷姩璇诲彇 .env锛?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 INSTALL_DIR="/opt/conjiweb"
 APP_USER="conjiweb"
+MINIO_USER="minio-user"
 DOMAIN=""
 EMAIL=""
 SRC_DIR=""
@@ -45,6 +46,15 @@ XMPP_ADMIN_USER="admin"
 XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-}"
 XMPP_ADMIN_CREATED=0
 XMPP_ADMIN_JID=""
+
+ensure_service_users() {
+  if ! id -u "${APP_USER}" >/dev/null 2>&1; then
+    useradd -r -s /usr/sbin/nologin "${APP_USER}"
+  fi
+  if ! id -u "${MINIO_USER}" >/dev/null 2>&1; then
+    useradd -r -s /usr/sbin/nologin "${MINIO_USER}"
+  fi
+}
 
 bootstrap_usage() {
   cat <<'EOF'
@@ -96,15 +106,15 @@ bootstrap_if_needed() {
 
   [[ -n "$REPO_URL" ]] || { bootstrap_usage; error "--repo is required"; }
   if is_placeholder_domain "$DOMAIN" && [[ -t 0 ]]; then
-    read -rp "请输入真实域名（例如 chat.yourdomain.com）: " DOMAIN
+    read -rp "璇疯緭鍏ョ湡瀹炲煙鍚嶏紙渚嬪 chat.yourdomain.com锛? " DOMAIN
     DOMAIN="${DOMAIN// /}"
   fi
   if is_placeholder_email "$EMAIL" && [[ -t 0 ]]; then
-    read -rp "请输入邮箱（用于 SSL 证书通知）: " EMAIL
+    read -rp "璇疯緭鍏ラ偖绠憋紙鐢ㄤ簬 SSL 璇佷功閫氱煡锛? " EMAIL
     EMAIL="${EMAIL// /}"
   fi
-  is_placeholder_domain "$DOMAIN" && { bootstrap_usage; error "--domain 缺失或仍是示例值"; }
-  is_placeholder_email "$EMAIL" && { bootstrap_usage; error "--email 缺失或仍是示例值"; }
+  is_placeholder_domain "$DOMAIN" && { bootstrap_usage; error "--domain 缂哄け鎴栦粛鏄ず渚嬪€?; }
+  is_placeholder_email "$EMAIL" && { bootstrap_usage; error "--email 缂哄け鎴栦粛鏄ず渚嬪€?; }
   [[ "$(id -u)" -eq 0 ]] || error "Please run as root"
 
   info "Preparing dependencies..."
@@ -166,10 +176,10 @@ bootstrap_if_needed() {
   exec bash install.sh --run-local
 }
 
-# ── 读取配置文件 ───────────────────────────────────────────────────────────────
+# 鈹€鈹€ 璇诲彇閰嶇疆鏂囦欢 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 load_config() {
   if [ ! -f ".env" ]; then
-    error ".env 文件不存在，请先复制: cp .env.example .env 并填写配置"
+    error ".env 鏂囦欢涓嶅瓨鍦紝璇峰厛澶嶅埗: cp .env.example .env 骞跺～鍐欓厤缃?
   fi
   # Normalize CRLF to LF to avoid hidden '\r' in secrets.
   sed -i 's/\r$//' .env
@@ -201,18 +211,17 @@ load_config() {
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
 
   if is_placeholder_domain "$DOMAIN" && [[ -t 0 ]]; then
-    read -rp "请输入真实域名（例如 chat.yourdomain.com）: " DOMAIN
+    read -rp "璇疯緭鍏ョ湡瀹炲煙鍚嶏紙渚嬪 chat.yourdomain.com锛? " DOMAIN
     DOMAIN="${DOMAIN// /}"
   fi
   if is_placeholder_email "$EMAIL" && [[ -t 0 ]]; then
-    read -rp "请输入邮箱（用于 SSL 证书通知）: " EMAIL
+    read -rp "璇疯緭鍏ラ偖绠憋紙鐢ㄤ簬 SSL 璇佷功閫氱煡锛? " EMAIL
     EMAIL="${EMAIL// /}"
   fi
-  is_placeholder_domain "$DOMAIN" && error "请在 .env 中设置真实 DOMAIN（当前: ${DOMAIN:-空})"
-  is_placeholder_email "$EMAIL" && error "请在 .env 中设置真实 EMAIL（当前: ${EMAIL:-空})"
+  is_placeholder_domain "$DOMAIN" && error "璇峰湪 .env 涓缃湡瀹?DOMAIN锛堝綋鍓? ${DOMAIN:-绌簘)"
+  is_placeholder_email "$EMAIL" && error "璇峰湪 .env 涓缃湡瀹?EMAIL锛堝綋鍓? ${EMAIL:-绌簘)"
 
-  # 更新 .env 写回随机生成的值
-  sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
+  # 鏇存柊 .env 鍐欏洖闅忔満鐢熸垚鐨勫€?  sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
   sed -i "s|^REDIS_PASS=.*|REDIS_PASS=${REDIS_PASS}|" .env
   sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}|" .env
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET_KEY}|" .env
@@ -221,61 +230,62 @@ load_config() {
   else
     echo "XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}" >> .env
   fi
+  chmod 600 .env
 }
 
-# ── 1. 系统检查 ────────────────────────────────────────────────────────────────
+# 鈹€鈹€ 1. 绯荤粺妫€鏌?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 check_system() {
-  step "系统检查"
-  [ "$(id -u)" -eq 0 ] || error "请使用 root 用户运行"
+  step "绯荤粺妫€鏌?
+  [ "$(id -u)" -eq 0 ] || error "璇蜂娇鐢?root 鐢ㄦ埛杩愯"
 
   OS=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
   VER=$(grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"')
-  [ "$OS" = "debian" ] && [ "$VER" = "12" ] || warn "建议在 Debian 12 上运行，当前: $OS $VER"
+  [ "$OS" = "debian" ] && [ "$VER" = "12" ] || warn "寤鸿鍦?Debian 12 涓婅繍琛岋紝褰撳墠: $OS $VER"
 
   MEM=$(free -m | awk '/^Mem:/{print $2}')
-  info "内存: ${MEM}MB"
-  [ "$MEM" -lt 1500 ] && warn "内存不足 1.5GB，可能影响稳定性"
+  info "鍐呭瓨: ${MEM}MB"
+  [ "$MEM" -lt 1500 ] && warn "鍐呭瓨涓嶈冻 1.5GB锛屽彲鑳藉奖鍝嶇ǔ瀹氭€?
 
-  success "系统检查通过"
+  success "绯荤粺妫€鏌ラ€氳繃"
 }
 
-# ── 2. 换日本 apt 源（理化学研究所镜像，速度快） ───────────────────────────────
+# 鈹€鈹€ 2. 鎹㈡棩鏈?apt 婧愶紙鐞嗗寲瀛︾爺绌舵墍闀滃儚锛岄€熷害蹇級 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_apt_mirror() {
-  step "配置日本 apt 镜像源"
+  step "閰嶇疆鏃ユ湰 apt 闀滃儚婧?
   cat > /etc/apt/sources.list << 'EOF'
 deb http://ftp.riken.jp/Linux/debian/debian/ bookworm main contrib non-free non-free-firmware
 deb http://ftp.riken.jp/Linux/debian/debian/ bookworm-updates main contrib non-free non-free-firmware
 deb http://ftp.riken.jp/Linux/debian/debian-security/ bookworm-security main contrib non-free non-free-firmware
 EOF
   apt update -qq
-  success "apt 源已切换到日本理化学研究所镜像"
+  success "apt 婧愬凡鍒囨崲鍒版棩鏈悊鍖栧鐮旂┒鎵€闀滃儚"
 }
 
-# ── 3. 自动升级系统包 ─────────────────────────────────────────────────────────
+# 鈹€鈹€ 3. 鑷姩鍗囩骇绯荤粺鍖?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 upgrade_system_packages() {
-  step "自动升级系统包"
+  step "鑷姩鍗囩骇绯荤粺鍖?
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get -y -qq upgrade
-  success "系统包升级完成"
+  success "绯荤粺鍖呭崌绾у畬鎴?
 }
 
-# ── 3. 安装系统依赖 ────────────────────────────────────────────────────────────
+# 鈹€鈹€ 3. 瀹夎绯荤粺渚濊禆 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_deps() {
-  step "安装系统依赖"
+  step "瀹夎绯荤粺渚濊禆"
   apt install -y -qq \
     curl wget git unzip build-essential \
     ca-certificates gnupg lsb-release \
     openssl htop vim ufw fail2ban \
     python3.11 python3.11-venv python3-pip \
     libpq-dev libssl-dev libffi-dev
-  success "系统依赖安装完成"
+  success "绯荤粺渚濊禆瀹夎瀹屾垚"
 }
 
-# ── 4. 安装 PostgreSQL 16 ──────────────────────────────────────────────────────
+# 鈹€鈹€ 4. 瀹夎 PostgreSQL 16 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_postgres() {
-  step "安装 PostgreSQL 16"
-  # 官方日本镜像
+  step "瀹夎 PostgreSQL 16"
+  # 瀹樻柟鏃ユ湰闀滃儚
   if [ ! -f /etc/apt/keyrings/postgresql.gpg ]; then
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
       gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
@@ -304,8 +314,7 @@ install_postgres() {
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres \
     -c "GRANT ALL PRIVILEGES ON DATABASE \"${APP_USER}\" TO \"${APP_USER}\";"
 
-  # 内存优化（适合 2GB VPS）
-  PG_CONF="/etc/postgresql/16/main/postgresql.conf"
+  # 鍐呭瓨浼樺寲锛堥€傚悎 2GB VPS锛?  PG_CONF="/etc/postgresql/16/main/postgresql.conf"
   sed -i "s|#shared_buffers = 128MB|shared_buffers = 256MB|" "$PG_CONF"
   sed -i "s|#work_mem = 4MB|work_mem = 8MB|" "$PG_CONF"
   sed -i "s|#maintenance_work_mem = 64MB|maintenance_work_mem = 64MB|" "$PG_CONF"
@@ -316,34 +325,33 @@ install_postgres() {
   PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" \
     -c "SELECT 1;" >/dev/null 2>&1 || error "PostgreSQL login check failed for user ${APP_USER}"
 
-  success "PostgreSQL 16 安装完成，数据库: ${APP_USER}"
+  success "PostgreSQL 16 瀹夎瀹屾垚锛屾暟鎹簱: ${APP_USER}"
 }
 
-# ── 5. 安装 Redis 7 ────────────────────────────────────────────────────────────
+# 鈹€鈹€ 5. 瀹夎 Redis 7 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_redis() {
-  step "安装 Redis 7"
+  step "瀹夎 Redis 7"
   apt install -y -qq redis-server
 
   REDIS_CONF="/etc/redis/redis.conf"
   sed -i "s|# requirepass foobared|requirepass ${REDIS_PASS}|" "$REDIS_CONF"
   sed -i "s|# maxmemory <bytes>|maxmemory 256mb|" "$REDIS_CONF"
   sed -i "s|# maxmemory-policy noeviction|maxmemory-policy allkeys-lru|" "$REDIS_CONF"
-  # 绑定仅本地
-  sed -i "s|^bind 127.0.0.1 ::1|bind 127.0.0.1|" "$REDIS_CONF"
+  # 缁戝畾浠呮湰鍦?  sed -i "s|^bind 127.0.0.1 ::1|bind 127.0.0.1|" "$REDIS_CONF"
 
   systemctl enable redis-server
   systemctl restart redis-server
-  success "Redis 7 安装完成"
+  success "Redis 7 瀹夎瀹屾垚"
 }
 
-# ── 6. 安装 Prosody XMPP ──────────────────────────────────────────────────────
+# 鈹€鈹€ 6. 瀹夎 Prosody XMPP 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_prosody() {
-  step "安装 Prosody XMPP 服务器"
+  step "瀹夎 Prosody XMPP 鏈嶅姟鍣?
   apt install -y -qq prosody lua-dbi-postgresql
 
-  # 写入配置
+  # 鍐欏叆閰嶇疆
   cp configs/prosody/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
-  # 替换域名
+  # 鏇挎崲鍩熷悕
   sed -i "s|XMPP_DOMAIN|${XMPP_DOMAIN}|g" /etc/prosody/prosody.cfg.lua
 
   prosodyctl check config 2>/dev/null || true
@@ -355,19 +363,19 @@ install_prosody() {
     XMPP_ADMIN_CREATED=1
   else
     if grep -Eiq "exists|already" /tmp/conjiweb-prosody-admin.log; then
-      warn "默认账号 ${XMPP_ADMIN_JID} 已存在，保留现有密码"
+      warn "榛樿璐﹀彿 ${XMPP_ADMIN_JID} 宸插瓨鍦紝淇濈暀鐜版湁瀵嗙爜"
       XMPP_ADMIN_CREATED=0
     else
       cat /tmp/conjiweb-prosody-admin.log >&2 || true
-      error "创建默认 XMPP 管理员账号失败: ${XMPP_ADMIN_JID}"
+      error "鍒涘缓榛樿 XMPP 绠＄悊鍛樿处鍙峰け璐? ${XMPP_ADMIN_JID}"
     fi
   fi
-  success "Prosody 安装完成，域名: ${XMPP_DOMAIN}"
+  success "Prosody 瀹夎瀹屾垚锛屽煙鍚? ${XMPP_DOMAIN}"
 }
 
-# ── 7. 安装 MinIO ──────────────────────────────────────────────────────────────
+# 鈹€鈹€ 7. 瀹夎 MinIO 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_minio() {
-  step "安装 MinIO 对象存储"
+  step "瀹夎 MinIO 瀵硅薄瀛樺偍"
   systemctl stop minio 2>/dev/null || true
   pkill -f '/usr/local/bin/minio' 2>/dev/null || true
   sleep 1
@@ -376,6 +384,7 @@ install_minio() {
   rm -f /tmp/minio.new
 
   mkdir -p /data/minio
+  chown -R "${MINIO_USER}:${MINIO_USER}" /data/minio
 
   cat > /etc/systemd/system/minio.service << EOF
 [Unit]
@@ -383,8 +392,8 @@ Description=MinIO Object Storage
 After=network.target
 
 [Service]
-User=root
-Group=root
+User=${MINIO_USER}
+Group=${MINIO_USER}
 Environment="MINIO_ROOT_USER=${MINIO_ROOT_USER}"
 Environment="MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}"
 Environment="MINIO_VOLUMES=/data/minio"
@@ -401,10 +410,10 @@ EOF
   systemctl enable minio
   systemctl start minio
 
-  # 等待 MinIO 启动
+  # 绛夊緟 MinIO 鍚姩
   sleep 3
 
-  # 创建默认 bucket
+  # 鍒涘缓榛樿 bucket
   wget -q https://dl.min.io/client/mc/release/linux-amd64/mc \
     -O /usr/local/bin/mc
   chmod +x /usr/local/bin/mc
@@ -413,30 +422,31 @@ EOF
   /usr/local/bin/mc mb local/conjiweb-files --quiet 2>/dev/null || true
   /usr/local/bin/mc anonymous set download local/conjiweb-files --quiet 2>/dev/null || true
 
-  success "MinIO 安装完成，Bucket: conjiweb-files"
+  success "MinIO 瀹夎瀹屾垚锛孊ucket: conjiweb-files"
 }
 
-# ── 8. 安装 Node.js 20 ─────────────────────────────────────────────────────────
+# 鈹€鈹€ 8. 瀹夎 Node.js 20 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_nodejs() {
-  step "安装 Node.js 20"
+  step "瀹夎 Node.js 20"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
   apt install -y -qq nodejs
-  success "Node.js $(node --version) 安装完成"
+  success "Node.js $(node --version) 瀹夎瀹屾垚"
 }
 
-# ── 9. 部署后端 API ───────────────────────────────────────────────────────────
+# 鈹€鈹€ 9. 閮ㄧ讲鍚庣 API 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 deploy_api() {
-  step "部署 FastAPI 后端"
+  step "閮ㄧ讲 FastAPI 鍚庣"
   mkdir -p "${INSTALL_DIR}"
   rm -rf "${INSTALL_DIR}/api"
   cp -r "${SRC_DIR}/apps/api" "${INSTALL_DIR}/api"
+  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api"
 
   cd "${INSTALL_DIR}/api"
   python3.11 -m venv .venv
   .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
 
-  # 生成 API .env
+  # 鐢熸垚 API .env
   cat > "${INSTALL_DIR}/api/.env" << EOF
 DATABASE_URL=postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}
 REDIS_URL=redis://:${REDIS_PASS}@127.0.0.1:6379/0
@@ -450,13 +460,14 @@ CORS_ORIGINS=["https://${DOMAIN}"]
 XMPP_DOMAIN=${XMPP_DOMAIN}
 XMPP_REGISTRATION_ENABLED=true
 EOF
+  chmod 600 "${INSTALL_DIR}/api/.env"
+  chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api/.env"
 
   # Alembic uses alembic.ini sqlalchemy.url (not app .env), keep them in sync.
   sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}|" \
     "${INSTALL_DIR}/api/alembic.ini"
 
-  # 运行数据库迁移
-  cd "${INSTALL_DIR}/api"
+  # 杩愯鏁版嵁搴撹縼绉?  cd "${INSTALL_DIR}/api"
   DB_HAS_ACCOUNTS="$(
     PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" -tAc \
       "SELECT CASE WHEN to_regclass('public.accounts') IS NULL THEN '0' ELSE '1' END;" 2>/dev/null || echo "0"
@@ -472,7 +483,7 @@ EOF
   fi
   .venv/bin/alembic upgrade head
 
-  # 创建 systemd 服务
+  # 鍒涘缓 systemd 鏈嶅姟
   cat > /etc/systemd/system/conjiweb-api.service << EOF
 [Unit]
 Description=Conjiweb FastAPI Backend
@@ -480,7 +491,8 @@ After=network.target postgresql.service redis.service
 Requires=postgresql.service
 
 [Service]
-User=root
+User=${APP_USER}
+Group=${APP_USER}
 WorkingDirectory=${INSTALL_DIR}/api
 EnvironmentFile=${INSTALL_DIR}/api/.env
 ExecStart=${INSTALL_DIR}/api/.venv/bin/uvicorn app.main:app \\
@@ -501,17 +513,17 @@ EOF
   sleep 2
 
   cd "${SRC_DIR}"
-  success "FastAPI 后端部署完成，监听 127.0.0.1:8000"
+  success "FastAPI 鍚庣閮ㄧ讲瀹屾垚锛岀洃鍚?127.0.0.1:8000"
 }
 
-# ── 10. 构建并部署前端 ────────────────────────────────────────────────────────
+# 鈹€鈹€ 10. 鏋勫缓骞堕儴缃插墠绔?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 deploy_frontend() {
-  step "构建前端（React + Vite）"
+  step "鏋勫缓鍓嶇锛圧eact + Vite锛?
   rm -rf "${INSTALL_DIR}/web"
   cp -r "${SRC_DIR}/apps/web" "${INSTALL_DIR}/web"
   cd "${INSTALL_DIR}/web"
 
-  # 写入前端环境变量
+  # 鍐欏叆鍓嶇鐜鍙橀噺
   cat > .env.production << EOF
 VITE_API_URL=https://${DOMAIN}/api
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
@@ -527,16 +539,15 @@ EOF
 
   FRONTEND_DIST="${INSTALL_DIR}/web/dist"
   cd "${SRC_DIR}"
-  success "前端构建完成，输出目录: ${FRONTEND_DIST}"
+  success "鍓嶇鏋勫缓瀹屾垚锛岃緭鍑虹洰褰? ${FRONTEND_DIST}"
 }
 
-# ── 11. 安装配置 Nginx ────────────────────────────────────────────────────────
+# 鈹€鈹€ 11. 瀹夎閰嶇疆 Nginx 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 install_nginx() {
-  step "安装配置 Nginx"
+  step "瀹夎閰嶇疆 Nginx"
   apt install -y -qq nginx
 
-  # 临时 HTTP 配置（用于 certbot 验证）
-  cat > /etc/nginx/sites-available/conjiweb << EOF
+  # 涓存椂 HTTP 閰嶇疆锛堢敤浜?certbot 楠岃瘉锛?  cat > /etc/nginx/sites-available/conjiweb << EOF
 server {
     listen 80;
     listen [::]:80;
@@ -556,12 +567,12 @@ EOF
   ln -sf /etc/nginx/sites-available/conjiweb /etc/nginx/sites-enabled/conjiweb
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl restart nginx
-  success "Nginx 临时配置完成"
+  success "Nginx 涓存椂閰嶇疆瀹屾垚"
 }
 
-# ── 12. 申请 SSL 证书 ─────────────────────────────────────────────────────────
+# 鈹€鈹€ 12. 鐢宠 SSL 璇佷功 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_ssl() {
-  step "申请 Let's Encrypt SSL 证书"
+  step "鐢宠 Let's Encrypt SSL 璇佷功"
   apt install -y -qq certbot python3-certbot-nginx
 
   local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
@@ -571,7 +582,7 @@ setup_ssl() {
   if [[ -f "$cert_fullchain" && -f "$cert_privkey" ]]; then
     if openssl x509 -checkend 86400 -noout -in "$cert_fullchain" >/dev/null 2>&1; then
       has_usable_cert=1
-      info "检测到可用证书，跳过重新申请"
+      info "妫€娴嬪埌鍙敤璇佷功锛岃烦杩囬噸鏂扮敵璇?
     fi
   fi
 
@@ -581,23 +592,26 @@ setup_ssl() {
       --email "${EMAIL}" \
       --agree-tos \
       --non-interactive
-    success "SSL 证书申请成功"
+    success "SSL 璇佷功鐢宠鎴愬姛"
   fi
 
-  # 写入正式 HTTPS Nginx 配置
+  # 鍐欏叆姝ｅ紡 HTTPS Nginx 閰嶇疆
   cp configs/nginx/conjiweb.conf /etc/nginx/sites-available/conjiweb
   sed -i "s|DOMAIN|${DOMAIN}|g" /etc/nginx/sites-available/conjiweb
   sed -i "s|INSTALL_DIR|${INSTALL_DIR}|g" /etc/nginx/sites-available/conjiweb
+  cat > /etc/nginx/conf.d/conjiweb-rate-limit.conf << 'EOF'
+limit_req_zone $binary_remote_addr zone=api_auth:10m rate=30r/m;
+EOF
 
   nginx -t && systemctl reload nginx
-  success "Nginx HTTPS 配置完成"
+  success "Nginx HTTPS 閰嶇疆瀹屾垚"
 
-  # 自动续期
+  # 鑷姩缁湡
   systemctl enable certbot.timer
   systemctl start certbot.timer
 }
 
-# ── 13. 配置防火墙 ────────────────────────────────────────────────────────────
+# 鈹€鈹€ 13. 閰嶇疆闃茬伀澧?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_firewall() {
   detect_ssh_ports() {
     local ports=""
@@ -639,7 +653,7 @@ setup_firewall() {
         read -r -p "${prompt} [YES/no]: " reply
       fi
     else
-      warn "当前会话不可交互，默认按 no 处理: ${prompt}"
+      warn "褰撳墠浼氳瘽涓嶅彲浜や簰锛岄粯璁ゆ寜 no 澶勭悊: ${prompt}"
       return 1
     fi
     reply="${reply// /}"
@@ -718,7 +732,7 @@ EOF
       fi
     done
 
-    info "未检测到现有 SSH 私钥，自动创建 ${ssh_dir}/id_ed25519"
+    info "鏈娴嬪埌鐜版湁 SSH 绉侀挜锛岃嚜鍔ㄥ垱寤?${ssh_dir}/id_ed25519"
     ssh-keygen -t ed25519 -f "${ssh_dir}/id_ed25519" -N "" -C "conjiweb@$(hostname)-$(date +%F)" >/dev/null
     cat "${ssh_dir}/id_ed25519.pub"
   }
@@ -735,7 +749,7 @@ EOF
     fi
   }
 
-  step "配置防火墙 (ufw)"
+  step "閰嶇疆闃茬伀澧?(ufw)"
   local ssh_ports_raw
   ssh_ports_raw="$(detect_ssh_ports)"
   if [[ -z "${SSH_PORT:-}" ]]; then
@@ -743,12 +757,12 @@ EOF
   fi
   SSH_PORT="${SSH_PORT//,/ }"
   SSH_PORT="$(echo "$SSH_PORT" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
-  [[ -n "$SSH_PORT" ]] || error "无法确定 SSH 端口，请通过 --ssh-port 手动指定"
+  [[ -n "$SSH_PORT" ]] || error "鏃犳硶纭畾 SSH 绔彛锛岃閫氳繃 --ssh-port 鎵嬪姩鎸囧畾"
   local p
   for p in $SSH_PORT; do
-    validate_port "$p" || error "无效 SSH 端口: ${p}"
+    validate_port "$p" || error "鏃犳晥 SSH 绔彛: ${p}"
   done
-  info "自动扫描到 SSH 端口: ${SSH_PORT}"
+  info "鑷姩鎵弿鍒?SSH 绔彛: ${SSH_PORT}"
 
   local has_port_22=0
   for p in $SSH_PORT; do
@@ -757,32 +771,32 @@ EOF
       break
     fi
   done
-  if [[ "$has_port_22" -eq 1 ]] && prompt_yes_no "检测到 SSH 端口包含 22，是否改成其它登录端口？"; then
+  if [[ "$has_port_22" -eq 1 ]] && prompt_yes_no "妫€娴嬪埌 SSH 绔彛鍖呭惈 22锛屾槸鍚︽敼鎴愬叾瀹冪櫥褰曠鍙ｏ紵"; then
     local new_ssh_port=""
     while true; do
-      new_ssh_port="$(prompt_input "请输入新的 SSH 端口号: " || true)"
-      [[ -n "$new_ssh_port" ]] || { warn "未读取到端口输入，请重试"; continue; }
+      new_ssh_port="$(prompt_input "璇疯緭鍏ユ柊鐨?SSH 绔彛鍙? " || true)"
+      [[ -n "$new_ssh_port" ]] || { warn "鏈鍙栧埌绔彛杈撳叆锛岃閲嶈瘯"; continue; }
       new_ssh_port="${new_ssh_port// /}"
-      validate_port "$new_ssh_port" || { warn "端口无效，请重新输入"; continue; }
-      [[ "$new_ssh_port" != "22" ]] || { warn "新端口不能是 22，请重新输入"; continue; }
+      validate_port "$new_ssh_port" || { warn "绔彛鏃犳晥锛岃閲嶆柊杈撳叆"; continue; }
+      [[ "$new_ssh_port" != "22" ]] || { warn "鏂扮鍙ｄ笉鑳芥槸 22锛岃閲嶆柊杈撳叆"; continue; }
       break
     done
     apply_sshd_port "$new_ssh_port"
     SSH_PORT="$new_ssh_port"
-    info "SSH 登录端口已切换为: ${SSH_PORT}"
+    info "SSH 鐧诲綍绔彛宸插垏鎹负: ${SSH_PORT}"
   fi
 
-  if prompt_yes_no "是否自动配置 SSH 密钥登录（并保留密码登录）？"; then
+  if prompt_yes_no "鏄惁鑷姩閰嶇疆 SSH 瀵嗛挜鐧诲綍锛堝苟淇濈暀瀵嗙爜鐧诲綍锛夛紵"; then
     local detected_pub_key=""
     detected_pub_key="$(detect_or_create_local_public_key)"
-    [[ -n "$detected_pub_key" ]] || error "未能获取可用公钥"
+    [[ -n "$detected_pub_key" ]] || error "鏈兘鑾峰彇鍙敤鍏挜"
     add_key_to_authorized_keys "$detected_pub_key"
     apply_sshd_dropin_and_reload
-    success "已配置密钥登录，并明确保留密码登录"
+    success "宸查厤缃瘑閽ョ櫥褰曪紝骞舵槑纭繚鐣欏瘑鐮佺櫥褰?
   fi
 
-  if ! prompt_yes_no "确认按上述 SSH 端口配置 UFW，并仅放行 80/443/5222/5269？"; then
-    warn "已取消防火墙改动（未输入 yes）"
+  if ! prompt_yes_no "纭鎸変笂杩?SSH 绔彛閰嶇疆 UFW锛屽苟浠呮斁琛?80/443/5222/5269锛?; then
+    warn "宸插彇娑堥槻鐏鏀瑰姩锛堟湭杈撳叆 yes锛?
     return 0
   fi
 
@@ -795,17 +809,23 @@ EOF
   ufw allow 80/tcp
   ufw allow 443/tcp
   ufw allow 5222/tcp   # XMPP TCP
-  ufw allow 5269/tcp   # XMPP 服务器间
-  # 不开放 9000/9001（MinIO 仅内部访问）
-  # 不开放 5432（PostgreSQL 仅内部访问）
-  # 不开放 6379（Redis 仅内部访问）
+  ufw allow 5269/tcp   # XMPP 鏈嶅姟鍣ㄩ棿
+  # 涓嶅紑鏀?9000/9001锛圡inIO 浠呭唴閮ㄨ闂級
+  # 涓嶅紑鏀?5432锛圥ostgreSQL 浠呭唴閮ㄨ闂級
+  # 涓嶅紑鏀?6379锛圧edis 浠呭唴閮ㄨ闂級
   ufw --force enable
-  success "防火墙配置完成"
+  success "闃茬伀澧欓厤缃畬鎴?
 }
 
-# ── 14. 配置 fail2ban ─────────────────────────────────────────────────────────
+# 鈹€鈹€ 14. 閰嶇疆 fail2ban 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_fail2ban() {
   step "配置 fail2ban（防暴力破解）"
+  cat > /etc/fail2ban/filter.d/conjiweb-api.conf << 'EOF'
+[Definition]
+failregex = ^<HOST> - .* "(POST|PUT) /api/auth/admin/login HTTP.*" (401|403|429) .*
+ignoreregex =
+EOF
+
   cat > /etc/fail2ban/jail.local << 'EOF'
 [DEFAULT]
 bantime  = 3600
@@ -819,16 +839,25 @@ logpath = %(sshd_log)s
 
 [nginx-http-auth]
 enabled = true
+
+[conjiweb-api]
+enabled = true
+port = 443
+filter = conjiweb-api
+logpath = /var/log/nginx/access.log
+maxretry = 5
+bantime = 3600
 EOF
   systemctl enable fail2ban
   systemctl restart fail2ban
   success "fail2ban 配置完成"
 }
 
-# ── 15. 创建备份脚本 ──────────────────────────────────────────────────────────
+# 15. 鍒涘缓澶囦唤鑴氭湰 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_backup() {
-  step "配置自动备份"
+  step "閰嶇疆鑷姩澶囦唤"
   mkdir -p /root/backups
+  chmod 700 /root/backups
 
   cat > /usr/local/bin/conjiweb-backup.sh << 'BACKUP'
 #!/bin/bash
@@ -836,27 +865,24 @@ BACKUP_DIR="/root/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p "$BACKUP_DIR"
 
-# 备份数据库
-sudo -u postgres pg_dump conjiweb | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
+# 澶囦唤鏁版嵁搴?sudo -u postgres pg_dump conjiweb | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
 
-# 备份 MinIO 数据
+# 澶囦唤 MinIO 鏁版嵁
 tar czf "${BACKUP_DIR}/minio_${DATE}.tar.gz" /data/minio/ 2>/dev/null || true
 
-# 保留最近 7 天
-find "$BACKUP_DIR" -name "*.gz" -mtime +7 -delete
+# 淇濈暀鏈€杩?7 澶?find "$BACKUP_DIR" -name "*.gz" -mtime +7 -delete
 
-echo "备份完成: ${DATE}"
+echo "澶囦唤瀹屾垚: ${DATE}"
 BACKUP
   chmod +x /usr/local/bin/conjiweb-backup.sh
 
-  # 每天凌晨 3 点备份
-  echo "0 3 * * * root /usr/local/bin/conjiweb-backup.sh >> /var/log/conjiweb-backup.log 2>&1" \
+  # 姣忓ぉ鍑屾櫒 3 鐐瑰浠?  echo "0 3 * * * root /usr/local/bin/conjiweb-backup.sh >> /var/log/conjiweb-backup.log 2>&1" \
     > /etc/cron.d/conjiweb-backup
 
-  success "备份脚本配置完成（每天 03:00 自动备份）"
+  success "澶囦唤鑴氭湰閰嶇疆瀹屾垚锛堟瘡澶?03:00 鑷姩澶囦唤锛?
 }
 
-# ── 16. 生成快速验收命令 ──────────────────────────────────────────────────────
+# 鈹€鈹€ 16. 鐢熸垚蹇€熼獙鏀跺懡浠?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 setup_quick_check() {
   cat > /usr/local/bin/conjiweb-check << 'CHECK'
 #!/usr/bin/env bash
@@ -876,56 +902,76 @@ CHECK
   chmod +x /usr/local/bin/conjiweb-check
 }
 
-# ── 17. 输出安装摘要 ──────────────────────────────────────────────────────────
+write_secrets_file() {
+  local secrets_file="/root/conjiweb-secrets.txt"
+  cat > "${secrets_file}" <<EOF
+Conjiweb Secrets
+Generated: $(date '+%F %T')
+Domain: ${DOMAIN}
+
+DATABASE_PASSWORD=${DB_PASS}
+REDIS_PASSWORD=${REDIS_PASS}
+MINIO_ROOT_USER=${MINIO_ROOT_USER}
+MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+SECRET_KEY=${SECRET_KEY}
+XMPP_ADMIN_JID=${XMPP_ADMIN_JID:-${XMPP_ADMIN_USER}@${XMPP_DOMAIN}}
+XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}
+EOF
+  chmod 600 "${secrets_file}"
+}
+
+# 鈹€鈹€ 17. 杈撳嚭瀹夎鎽樿 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 print_summary() {
   echo ""
-  echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${GREEN}║            Conjiweb 安装完成！                          ║${NC}"
-  echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+  echo -e "${GREEN}鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽${NC}"
+  echo -e "${GREEN}鈺?           Conjiweb 瀹夎瀹屾垚锛?                         鈺?{NC}"
+  echo -e "${GREEN}鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆${NC}"
   echo ""
-  echo -e "  ${CYAN}前端地址：${NC}   https://${DOMAIN}"
-  echo -e "  ${CYAN}API 文档：${NC}   https://${DOMAIN}/api/docs"
-  echo -e "  ${CYAN}XMPP 域名：${NC} ${XMPP_DOMAIN}"
-  echo -e "  ${CYAN}WebSocket：${NC} wss://${DOMAIN}/xmpp-websocket"
+  echo -e "  ${CYAN}鍓嶇鍦板潃锛?{NC}   https://${DOMAIN}"
+  echo -e "  ${CYAN}API 鏂囨。锛?{NC}   https://${DOMAIN}/api/docs"
+  echo -e "  ${CYAN}XMPP 鍩熷悕锛?{NC} ${XMPP_DOMAIN}"
+  echo -e "  ${CYAN}WebSocket锛?{NC} wss://${DOMAIN}/xmpp-websocket"
   echo ""
-  echo -e "  ${YELLOW}默认 XMPP 登录账号：${NC}"
+  echo -e "  ${YELLOW}榛樿 XMPP 鐧诲綍璐﹀彿锛?{NC}"
   echo -e "  JID: ${XMPP_ADMIN_JID:-${XMPP_ADMIN_USER}@${XMPP_DOMAIN}}"
   if [[ "${XMPP_ADMIN_CREATED}" = "1" ]]; then
-    echo -e "  密码: ${XMPP_ADMIN_PASS}"
+    echo -e "  瀵嗙爜: ${XMPP_ADMIN_PASS}"
   else
-    echo -e "  密码: （已存在账号，保持原密码）"
+    echo -e "  瀵嗙爜: 锛堝凡瀛樺湪璐﹀彿锛屼繚鎸佸師瀵嗙爜锛?
   fi
   echo ""
-  echo -e "  ${YELLOW}常用管理命令：${NC}"
-  echo -e "  systemctl status conjiweb-api   # 查看 API 状态"
-  echo -e "  journalctl -u conjiweb-api -f   # 查看 API 日志"
-  echo -e "  systemctl status prosody        # 查看 XMPP 状态"
-  echo -e "  systemctl status nginx          # 查看 Nginx 状态"
-  echo -e "  conjiweb-backup.sh              # 立即备份"
-  echo -e "  conjiweb-check ${DOMAIN}        # 30秒验收"
+  echo -e "  ${YELLOW}甯哥敤绠＄悊鍛戒护锛?{NC}"
+  echo -e "  systemctl status conjiweb-api   # 鏌ョ湅 API 鐘舵€?
+  echo -e "  journalctl -u conjiweb-api -f   # 鏌ョ湅 API 鏃ュ織"
+  echo -e "  systemctl status prosody        # 鏌ョ湅 XMPP 鐘舵€?
+  echo -e "  systemctl status nginx          # 鏌ョ湅 Nginx 鐘舵€?
+  echo -e "  conjiweb-backup.sh              # 绔嬪嵆澶囦唤"
+  echo -e "  conjiweb-check ${DOMAIN}        # 30绉掗獙鏀?
   echo ""
-  echo -e "  ${RED}请保存以下密码（只显示一次）：${NC}"
-  echo -e "  数据库密码: ${DB_PASS}"
-  echo -e "  Redis 密码: ${REDIS_PASS}"
-  echo -e "  MinIO 密码: ${MINIO_ROOT_PASSWORD}"
+  echo -e "  Secrets file: /root/conjiweb-secrets.txt (chmod 600)"
+  echo ""
+  echo -e "  ${RED}璇蜂繚瀛樹互涓嬪瘑鐮侊紙鍙樉绀轰竴娆★級锛?{NC}"
+  echo -e "  鏁版嵁搴撳瘑鐮? ${DB_PASS}"
+  echo -e "  Redis 瀵嗙爜: ${REDIS_PASS}"
+  echo -e "  MinIO 瀵嗙爜: ${MINIO_ROOT_PASSWORD}"
   echo ""
 }
 
-# ── 主流程 ────────────────────────────────────────────────────────────────────
+# 鈹€鈹€ 涓绘祦绋?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 main() {
   SRC_DIR="$(pwd -P)"
-  [[ -d "${SRC_DIR}/apps/api" ]] || error "缺少源码目录: ${SRC_DIR}/apps/api"
-  [[ -d "${SRC_DIR}/apps/web" ]] || error "缺少源码目录: ${SRC_DIR}/apps/web"
+  [[ -d "${SRC_DIR}/apps/api" ]] || error "缂哄皯婧愮爜鐩綍: ${SRC_DIR}/apps/api"
+  [[ -d "${SRC_DIR}/apps/web" ]] || error "缂哄皯婧愮爜鐩綍: ${SRC_DIR}/apps/web"
 
   echo -e "${CYAN}"
-  echo "   ██████╗ ██████╗ ███╗   ██╗     ██╗██╗██╗    ██╗███████╗██████╗ "
-  echo "  ██╔════╝██╔═══██╗████╗  ██║     ██║██║██║    ██║██╔════╝██╔══██╗"
-  echo "  ██║     ██║   ██║██╔██╗ ██║     ██║██║██║ █╗ ██║█████╗  ██████╔╝"
-  echo "  ██║     ██║   ██║██║╚██╗██║██   ██║██║██║███╗██║██╔══╝  ██╔══██╗"
-  echo "  ╚██████╗╚██████╔╝██║ ╚████║╚█████╔╝██║╚███╔███╔╝███████╗██████╔╝"
-  echo "   ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝ ╚════╝ ╚═╝ ╚══╝╚══╝ ╚══════╝╚═════╝ "
+  echo "   鈻堚枅鈻堚枅鈻堚枅鈺?鈻堚枅鈻堚枅鈻堚枅鈺?鈻堚枅鈻堚晽   鈻堚枅鈺?    鈻堚枅鈺椻枅鈻堚晽鈻堚枅鈺?   鈻堚枅鈺椻枅鈻堚枅鈻堚枅鈻堚枅鈺椻枅鈻堚枅鈻堚枅鈻堚晽 "
+  echo "  鈻堚枅鈺斺晲鈺愨晲鈺愨暆鈻堚枅鈺斺晲鈺愨晲鈻堚枅鈺椻枅鈻堚枅鈻堚晽  鈻堚枅鈺?    鈻堚枅鈺戔枅鈻堚晳鈻堚枅鈺?   鈻堚枅鈺戔枅鈻堚晹鈺愨晲鈺愨晲鈺濃枅鈻堚晹鈺愨晲鈻堚枅鈺?
+  echo "  鈻堚枅鈺?    鈻堚枅鈺?  鈻堚枅鈺戔枅鈻堚晹鈻堚枅鈺?鈻堚枅鈺?    鈻堚枅鈺戔枅鈻堚晳鈻堚枅鈺?鈻堚晽 鈻堚枅鈺戔枅鈻堚枅鈻堚枅鈺? 鈻堚枅鈻堚枅鈻堚枅鈺斺暆"
+  echo "  鈻堚枅鈺?    鈻堚枅鈺?  鈻堚枅鈺戔枅鈻堚晳鈺氣枅鈻堚晽鈻堚枅鈺戔枅鈻?  鈻堚枅鈺戔枅鈻堚晳鈻堚枅鈺戔枅鈻堚枅鈺椻枅鈻堚晳鈻堚枅鈺斺晲鈺愨暆  鈻堚枅鈺斺晲鈺愨枅鈻堚晽"
+  echo "  鈺氣枅鈻堚枅鈻堚枅鈻堚晽鈺氣枅鈻堚枅鈻堚枅鈻堚晹鈺濃枅鈻堚晳 鈺氣枅鈻堚枅鈻堚晳鈺氣枅鈻堚枅鈻堚枅鈺斺暆鈻堚枅鈺戔暁鈻堚枅鈻堚晹鈻堚枅鈻堚晹鈺濃枅鈻堚枅鈻堚枅鈻堚枅鈺椻枅鈻堚枅鈻堚枅鈻堚晹鈺?
+  echo "   鈺氣晲鈺愨晲鈺愨晲鈺?鈺氣晲鈺愨晲鈺愨晲鈺?鈺氣晲鈺? 鈺氣晲鈺愨晲鈺?鈺氣晲鈺愨晲鈺愨暆 鈺氣晲鈺?鈺氣晲鈺愨暆鈺氣晲鈺愨暆 鈺氣晲鈺愨晲鈺愨晲鈺愨暆鈺氣晲鈺愨晲鈺愨晲鈺?"
   echo -e "${NC}"
-  echo -e "  ${BLUE}Conjiweb · Installer${NC}"
+  echo -e "  ${BLUE}Conjiweb 路 Installer${NC}"
   echo ""
 
   load_config
@@ -934,6 +980,7 @@ main() {
   setup_apt_mirror
   upgrade_system_packages
   install_deps
+  ensure_service_users
   install_postgres
   install_redis
   install_prosody
@@ -946,6 +993,7 @@ main() {
   setup_firewall
   setup_fail2ban
   setup_backup
+  write_secrets_file
   print_summary
 }
 

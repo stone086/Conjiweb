@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.core.rate_limit import limiter
 from app.api.routers import (
     accounts, attachments, messages, plugins,
     ai, admin, auth, conversations, contacts,
@@ -24,6 +27,8 @@ app = FastAPI(
     description="Backend API for Conjiweb 鈥?Modern Web XMPP Client Platform",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +51,11 @@ app.include_router(admin.router,         prefix="/admin",          tags=["admin"
 
 @app.get("/health")
 async def health_check():
+    return {"status": "ok", "version": "3.0.0"}
+
+
+@app.get("/api/health")
+async def api_health_check():
     return {"status": "ok", "version": "3.0.0"}
 
 # WebSocket

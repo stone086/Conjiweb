@@ -43,6 +43,12 @@ usage() {
   echo "  update-api      Update API only"
   echo "  ssl-renew       Renew SSL certificates"
   echo "  db-shell        Open PostgreSQL shell"
+  echo "  db-history      Show alembic migration history"
+  echo "  db-rollback     Rollback alembic migration"
+  echo "  check           Quick health check"
+  echo "  cert-info       Show SSL certificate expiry"
+  echo "  disk-usage      Show disk usage details"
+  echo "  top-requests    Top nginx requests from access log"
   echo "  mem-usage       Show process memory usage"
 }
 
@@ -175,6 +181,63 @@ cmd_db_shell() {
   sudo -u postgres psql conjiweb
 }
 
+cmd_db_history() {
+  cd "${INSTALL_DIR}/api"
+  .venv/bin/alembic history
+}
+
+cmd_db_rollback() {
+  cd "${INSTALL_DIR}/api"
+  echo "Current migration:"
+  .venv/bin/alembic current
+  read -rp "Rollback target (revision or -1): " target
+  [[ -n "${target:-}" ]] || { echo "No target provided"; exit 1; }
+  .venv/bin/alembic downgrade "$target"
+}
+
+cmd_check() {
+  load_env
+  if [[ -x /usr/local/bin/conjiweb-check ]]; then
+    /usr/local/bin/conjiweb-check "${DOMAIN:-localhost}"
+  else
+    cmd_status
+  fi
+}
+
+cmd_cert_info() {
+  load_env
+  cert="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+  if [[ ! -f "$cert" ]]; then
+    echo "Certificate not found: $cert"
+    exit 1
+  fi
+  openssl x509 -enddate -startdate -noout -in "$cert"
+}
+
+cmd_disk_usage() {
+  echo "=== Filesystem ==="
+  df -h / /data 2>/dev/null || true
+  echo ""
+  echo "=== Backups ==="
+  du -sh /root/backups/* 2>/dev/null | sort -rh | head -20 || true
+  echo ""
+  echo "=== MinIO ==="
+  du -sh /data/minio 2>/dev/null || true
+  echo ""
+  echo "=== Logs ==="
+  du -sh /var/log/nginx /var/log/prosody /var/log/conjiweb-backup.log 2>/dev/null || true
+}
+
+cmd_top_requests() {
+  local log="/var/log/nginx/access.log"
+  if [[ ! -f "$log" ]]; then
+    echo "Log not found: $log"
+    exit 1
+  fi
+  echo "=== Top 30 paths ==="
+  awk '{print $7}' "$log" | sort | uniq -c | sort -rn | head -30
+}
+
 case "${1:-}" in
   status)          cmd_status ;;
   start)           cmd_start ;;
@@ -196,6 +259,12 @@ case "${1:-}" in
   update-api)      cmd_update_api ;;
   ssl-renew)       cmd_ssl_renew ;;
   db-shell)        cmd_db_shell ;;
+  db-history)      cmd_db_history ;;
+  db-rollback)     cmd_db_rollback ;;
+  check)           cmd_check ;;
+  cert-info)       cmd_cert_info ;;
+  disk-usage)      cmd_disk_usage ;;
+  top-requests)    cmd_top_requests ;;
   mem-usage)       cmd_mem_usage ;;
   *)               usage ;;
 esac
