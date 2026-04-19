@@ -42,7 +42,7 @@ s2s_secure_auth = false
 authentication = "internal_hashed"
 storage = "internal"
 
-archive_expires_after = "4w"
+archive_expires_after = "3d"
 default_archive_policy = true
 max_archive_query_results = 100
 
