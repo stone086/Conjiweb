@@ -46,6 +46,7 @@ XMPP_ADMIN_USER="admin"
 XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-}"
 XMPP_ADMIN_CREATED=0
 XMPP_ADMIN_JID=""
+BACKUP_REMOTE="${BACKUP_REMOTE:-}"
 
 ensure_service_users() {
   if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -206,6 +207,7 @@ load_config() {
   SECRET_KEY="${SECRET_KEY//$'\r'/}"
   XMPP_DOMAIN="${XMPP_DOMAIN//$'\r'/}"
   XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS//$'\r'/}"
+  BACKUP_REMOTE="${BACKUP_REMOTE//$'\r'/}"
 
   DB_PASS_SQL_ESCAPED="${DB_PASS//\'/\'\'}"
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
@@ -229,6 +231,11 @@ load_config() {
     sed -i "s|^XMPP_ADMIN_PASS=.*|XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}|" .env
   else
     echo "XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}" >> .env
+  fi
+  if grep -qE '^BACKUP_REMOTE=' .env; then
+    sed -i "s|^BACKUP_REMOTE=.*|BACKUP_REMOTE=${BACKUP_REMOTE}|" .env
+  else
+    echo "BACKUP_REMOTE=${BACKUP_REMOTE}" >> .env
   fi
   chmod 600 .env
 }
@@ -859,27 +866,71 @@ setup_backup() {
   mkdir -p /root/backups
   chmod 700 /root/backups
 
-  cat > /usr/local/bin/conjiweb-backup.sh << 'BACKUP'
+  cat > /usr/local/bin/conjiweb-backup.sh << BACKUP
 #!/bin/bash
+set -euo pipefail
 BACKUP_DIR="/root/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_REMOTE="${BACKUP_REMOTE}"
 mkdir -p "$BACKUP_DIR"
 
-# 澶囦唤鏁版嵁搴?sudo -u postgres pg_dump conjiweb | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
+# Backup PostgreSQL
+sudo -u postgres pg_dump conjiweb | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
+if ! gzip -t "${BACKUP_DIR}/db_${DATE}.sql.gz"; then
+  echo "backup verification failed: db_${DATE}.sql.gz" >&2
+  exit 1
+fi
 
-# 澶囦唤 MinIO 鏁版嵁
+# Backup MinIO data
 tar czf "${BACKUP_DIR}/minio_${DATE}.tar.gz" /data/minio/ 2>/dev/null || true
 
-# 淇濈暀鏈€杩?7 澶?find "$BACKUP_DIR" -name "*.gz" -mtime +7 -delete
+# Retain backups for 7 days
+find "$BACKUP_DIR" -name "*.gz" -mtime +7 -delete
 
-echo "澶囦唤瀹屾垚: ${DATE}"
+if [[ -n "$BACKUP_REMOTE" ]] && command -v rclone >/dev/null 2>&1; then
+  rclone copy "$BACKUP_DIR/" "$BACKUP_REMOTE" --max-age 7d --transfers 2 --checkers 4 || true
+fi
+
+echo "backup completed: ${DATE}"
 BACKUP
   chmod +x /usr/local/bin/conjiweb-backup.sh
 
-  # 姣忓ぉ鍑屾櫒 3 鐐瑰浠?  echo "0 3 * * * root /usr/local/bin/conjiweb-backup.sh >> /var/log/conjiweb-backup.log 2>&1" \
+  # Run backup daily at 03:00
+  echo "0 3 * * * root /usr/local/bin/conjiweb-backup.sh >> /var/log/conjiweb-backup.log 2>&1" \
     > /etc/cron.d/conjiweb-backup
 
-  success "澶囦唤鑴氭湰閰嶇疆瀹屾垚锛堟瘡澶?03:00 鑷姩澶囦唤锛?
+  success "Backup configured (daily at 03:00)"
+}
+
+setup_logrotate_and_journald() {
+  step "配置日志轮转与 journald 限额"
+  cp "${SRC_DIR}/configs/logrotate/conjiweb" /etc/logrotate.d/conjiweb
+
+  mkdir -p /etc/systemd/journald.conf.d
+  cat > /etc/systemd/journald.conf.d/conjiweb.conf << 'EOF'
+[Journal]
+SystemMaxUse=500M
+EOF
+  systemctl restart systemd-journald || true
+  success "日志轮转配置完成"
+}
+
+setup_monitoring_alert() {
+  step "配置轻量服务监控与自愈脚本"
+  cat > /usr/local/bin/conjiweb-alert.sh << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+services=(postgresql redis-server prosody conjiweb-api nginx)
+for svc in "${services[@]}"; do
+  if ! systemctl is-active --quiet "$svc"; then
+    echo "$(date '+%F %T') WARN service down: $svc" >> /var/log/conjiweb-alert.log
+    systemctl restart "$svc" || true
+  fi
+done
+EOF
+  chmod +x /usr/local/bin/conjiweb-alert.sh
+  echo "*/5 * * * * root /usr/local/bin/conjiweb-alert.sh" > /etc/cron.d/conjiweb-alert
+  success "监控告警脚本配置完成（每5分钟）"
 }
 
 # 鈹€鈹€ 16. 鐢熸垚蹇€熼獙鏀跺懡浠?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -993,6 +1044,8 @@ main() {
   setup_firewall
   setup_fail2ban
   setup_backup
+  setup_logrotate_and_journald
+  setup_monitoring_alert
   write_secrets_file
   print_summary
 }
