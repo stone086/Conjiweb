@@ -208,13 +208,16 @@ export default function RosterPanel() {
   const contacts = useRosterStore((s) => Object.values(s.contacts));
   const upsertContact = useRosterStore((s) => s.upsertContact);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const accounts = useAccountStore((s) => s.accounts);
   const upsertConversation = useChatStore((s) => s.upsertConversation);
   const navigate = useNavigate();
+  const activeAccountJid = normalizeBareJid(accounts.find((a) => a.id === activeAccountId)?.jid ?? "");
 
   const filtered = useMemo(() =>
     contacts.filter((c) =>
-      !query || c.jid.includes(query) || (c.name ?? "").toLowerCase().includes(query.toLowerCase())
-    ), [contacts, query]);
+      normalizeBareJid(c.jid) !== activeAccountJid
+      && (!query || c.jid.includes(query) || (c.name ?? "").toLowerCase().includes(query.toLowerCase()))
+    ), [contacts, query, activeAccountJid]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, RosterContact[]> = {

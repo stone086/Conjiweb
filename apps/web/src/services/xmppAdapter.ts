@@ -363,6 +363,17 @@ export class XmppClient {
     this.emit("room.left", { accountId: this.config.accountId, roomJid });
   }
 
+  inviteToRoom(roomJid: string, inviteeJid: string, reason?: string) {
+    if (!this._connection || !this._connected) throw new Error("Not connected");
+    const cleanInvitee = inviteeJid.trim();
+    if (!cleanInvitee) throw new Error("Invitee JID is required");
+    const msg = this._$msg({ to: roomJid, type: "normal" })
+      .c("x", { xmlns: "http://jabber.org/protocol/muc#user" })
+      .c("invite", { to: cleanInvitee });
+    if (reason?.trim()) msg.c("reason").t(sanitizeXmlText(reason.trim()));
+    this._connection.send(msg);
+  }
+
   fetchMAM(targetJid: string, options: { before?: string; limit?: number; type?: "chat" | "groupchat" } = {}) {
     if (!this._connection) return;
     const queryId = crypto.randomUUID();

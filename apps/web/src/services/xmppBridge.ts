@@ -23,6 +23,7 @@ function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" |
 
 export function initXmppBridge(client: XmppClient) {
   const accountId = client.config.accountId;
+  const ownBareJid = normalizeBareJid(client.config.jid);
 
   // Connection changes
   client.on("connection.changed", (data: any) => {
@@ -35,6 +36,7 @@ export function initXmppBridge(client: XmppClient) {
     contacts.forEach((c) => {
       if (!c.jid) return;
       const normalizedJid = normalizeBareJid(c.jid);
+      if (normalizedJid === ownBareJid) return;
       const existing = useRosterStore.getState().contacts[normalizedJid];
       useRosterStore.getState().upsertContact({
         jid: normalizedJid,
@@ -119,6 +121,7 @@ export function initXmppBridge(client: XmppClient) {
   client.on("presence.updated", (data: any) => {
     const { jid, show, status } = data;
     const normalizedJid = normalizeBareJid(jid);
+    if (normalizedJid === ownBareJid) return;
     const roster = useRosterStore.getState();
     if (!roster.contacts[normalizedJid]) {
       roster.upsertContact({
@@ -139,6 +142,7 @@ export function initXmppBridge(client: XmppClient) {
   client.on("message.received", (data: any) => {
     const { message } = data;
     const from = normalizeBareJid(message.from);
+    if (from === ownBareJid) return;
     const existingContact = useRosterStore.getState().contacts[from];
     if (existingContact?.isBlocked) return;
 
@@ -208,6 +212,7 @@ export function initXmppBridge(client: XmppClient) {
     const ownJid = normalizeBareJid(client.config.jid);
     const isOwn = from === ownJid;
     const peerJid = isOwn ? normalizeBareJid(message.to) : from;
+    if (!peerJid || peerJid === ownJid) return;
     const convId = generateConversationId(accountId, peerJid);
 
     const chatMsg = {

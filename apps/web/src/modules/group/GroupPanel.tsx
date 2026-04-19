@@ -4,7 +4,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
 import { getClient } from "@/services/xmppAdapter";
 import { clsx } from "clsx";
-import { Users, Plus, Hash, LogOut, Settings, Crown, Shield } from "lucide-react";
+import { Users, Plus, Hash, LogOut, Settings, Crown, Shield, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -98,6 +98,20 @@ function RoomCard({ room }: { room: MucRoom }) {
     toast(t("group.leftRoom"));
   };
 
+  const invite = () => {
+    if (!activeAccountId || !room.joined) return;
+    const inviteeJid = window.prompt(t("group.invitePrompt"));
+    if (!inviteeJid?.trim()) return;
+    const reason = window.prompt(t("group.inviteReasonOptional")) ?? "";
+    try {
+      const client = getClient(activeAccountId);
+      client?.inviteToRoom(room.jid, inviteeJid.trim(), reason);
+      toast.success(`${t("group.invited")}: ${inviteeJid.trim()}`);
+    } catch (error: any) {
+      toast.error(error?.message ?? t("group.inviteFailed"));
+    }
+  };
+
   return (
     <div className={clsx(
       "glass rounded-xl p-4 flex items-start gap-3 cursor-pointer hover:bg-white/4 transition-colors",
@@ -120,11 +134,18 @@ function RoomCard({ room }: { room: MucRoom }) {
         )}
       </div>
       {room.joined && (
-        <button onClick={(e) => { e.stopPropagation(); leave(); }}
-          className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger flex-shrink-0"
-          title={t("group.leave")}>
-          <LogOut size={13} />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button onClick={(e) => { e.stopPropagation(); invite(); }}
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-accent-soft"
+            title={t("group.invite")}>
+            <UserPlus size={13} />
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); leave(); }}
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger"
+            title={t("group.leave")}>
+            <LogOut size={13} />
+          </button>
+        </div>
       )}
     </div>
   );

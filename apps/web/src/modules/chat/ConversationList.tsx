@@ -7,6 +7,7 @@ import { clsx } from "clsx";
 import { Users, User, MessageSquare, Trash2 } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 import { deleteLocalConversationData } from "@/services/localDb";
+import { normalizeBareJid } from "@/utils/helpers";
 
 function ConvIcon({ type }: { type: string }) {
   if (type === "group") return <Users size={14} />;
@@ -21,9 +22,12 @@ export default function ConversationList() {
   const setActive = useChatStore((s) => s.setActiveConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const accounts = useAccountStore((s) => s.accounts);
+  const activeAccountJid = normalizeBareJid(accounts.find((a) => a.id === activeAccountId)?.jid ?? "");
 
   const filtered = conversations
     .filter((c) => c.accountId === activeAccountId)
+    .filter((c) => c.type !== "private" || normalizeBareJid(c.peerJid) !== activeAccountJid)
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
 
   const handleSelect = (id: string) => {
