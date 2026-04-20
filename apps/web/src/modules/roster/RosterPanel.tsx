@@ -46,7 +46,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
     client?.removeContact(contact.jid);
-    removeContact(contact.jid);
+    removeContact(activeAccountId, contact.jid);
     toast.success(t("roster.contactRemoved"));
   };
 
@@ -55,7 +55,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     const client = getClient(activeAccountId);
     if (contact.isBlocked) {
       client?.unblockJid(contact.jid);
-      unblockContact(contact.jid);
+      unblockContact(activeAccountId, contact.jid);
     }
     client?.approveSubscription(contact.jid);
     client?.addContact(contact.jid, contact.name);
@@ -73,7 +73,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     const client = getClient(activeAccountId);
     client?.denySubscription(contact.jid);
     client?.blockJid(contact.jid);
-    blockContact(contact.jid);
+    blockContact(activeAccountId, contact.jid);
     cancelConversation(contact.jid);
     toast.success(t("roster.blockedDone"));
   };
@@ -82,7 +82,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
     client?.unblockJid(contact.jid);
-    unblockContact(contact.jid);
+    unblockContact(activeAccountId, contact.jid);
     toast.success(t("roster.unblockedDone"));
   };
 
@@ -122,7 +122,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+      <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
         onClick={(e) => e.stopPropagation()}>
         {contact.pendingIncoming && !contact.isBlocked && (
           <>
@@ -205,7 +205,7 @@ export default function RosterPanel() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newJid, setNewJid] = useState("");
-  const contacts = useRosterStore((s) => Object.values(s.contacts));
+  const contacts = useRosterStore((s) => (activeAccountId ? s.listContacts(activeAccountId) : []));
   const upsertContact = useRosterStore((s) => s.upsertContact);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
@@ -259,6 +259,7 @@ export default function RosterPanel() {
     const client = getClient(activeAccountId);
     client?.addContact(newJid.trim());
     upsertContact({
+      accountId: activeAccountId,
       jid: newJid.trim(),
       groups: [],
       subscription: "none",

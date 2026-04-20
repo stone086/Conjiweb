@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from pydantic import BaseModel
@@ -60,7 +60,19 @@ async def search_messages(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Message).where(Message.body.ilike(f"%{q}%")).limit(limit)
+    if not account_id:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    safe_limit = max(1, min(limit, 100))
+    stmt = (
+        select(Message)
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .where(
+            Message.body.ilike(f"%{q}%"),
+            Conversation.account_id == account_id,
+        )
+        .order_by(Message.created_at.desc())
+        .limit(safe_limit)
+    )
     result = await db.execute(stmt)
     return result.scalars().all()
 

@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = ["http://localhost:5173"]
     XMPP_DOMAIN: str = "localhost"
     XMPP_REGISTRATION_ENABLED: bool = True
+    PUBLIC_DOMAIN: str = "localhost"
+    AI_API_KEY: str = ""
+    AI_BASE_URL: str = ""
+    AI_MODEL: str = ""
+    ALERT_EMAIL: str = ""
 
     class Config:
         env_file = ".env"

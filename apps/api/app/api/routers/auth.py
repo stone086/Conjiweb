@@ -10,7 +10,7 @@ import subprocess
 router = APIRouter()
 
 ADMIN_USERNAME = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASS", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASS")
 
 
 class AdminLogin(BaseModel):
@@ -26,6 +26,8 @@ class RegisterRequest(BaseModel):
 @router.post("/admin/login")
 @limiter.limit("5/minute")
 async def admin_login(request: Request, data: AdminLogin):
+    if not ADMIN_PASSWORD:
+        raise HTTPException(status_code=503, detail="ADMIN_PASS is not configured")
     if data.username != ADMIN_USERNAME or data.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token(data.username)

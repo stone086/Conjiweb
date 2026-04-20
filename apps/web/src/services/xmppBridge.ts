@@ -12,6 +12,9 @@ import { useAccountStore } from "@/stores/accountStore";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
+const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
+const lastSubscriptionRequestAt = new Map<string, number>();
+
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
   const value = (show ?? "").toLowerCase();
   if (value === "away") return "away";
@@ -37,8 +40,9 @@ export function initXmppBridge(client: XmppClient) {
       if (!c.jid) return;
       const normalizedJid = normalizeBareJid(c.jid);
       if (normalizedJid === ownBareJid) return;
-      const existing = useRosterStore.getState().contacts[normalizedJid];
+      const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
       useRosterStore.getState().upsertContact({
+        accountId,
         jid: normalizedJid,
         name: c.name ?? existing?.name,
         groups: c.groups?.length ? c.groups : (existing?.groups ?? []),
@@ -56,13 +60,19 @@ export function initXmppBridge(client: XmppClient) {
     const jid = data.jid as string;
     if (!jid) return;
     const normalizedJid = normalizeBareJid(jid);
-    const existing = useRosterStore.getState().contacts[normalizedJid];
+    const dedupeKey = `${accountId}::${normalizedJid}`;
+    const now = Date.now();
+    const lastAt = lastSubscriptionRequestAt.get(dedupeKey) ?? 0;
+    if (now - lastAt < SUB_REQUEST_DEDUPE_MS) return;
+    lastSubscriptionRequestAt.set(dedupeKey, now);
+
+    const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     const alreadySubscribed =
       existing?.subscription === "both"
       || existing?.subscription === "to"
       || existing?.subscription === "from";
     if (existing?.isBlocked || existing?.pendingIncoming || alreadySubscribed) return;
-    useRosterStore.getState().markPendingIncoming(normalizedJid);
+    useRosterStore.getState().markPendingIncoming(accountId, normalizedJid);
     useNotificationStore.getState().addNotification({
       type: "system",
       title: "Subscription request",
@@ -74,8 +84,9 @@ export function initXmppBridge(client: XmppClient) {
   client.on("subscription.approved", (data: any) => {
     const normalizedJid = normalizeBareJid(data.jid as string);
     if (!normalizedJid) return;
-    const existing = useRosterStore.getState().contacts[normalizedJid];
+    const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     useRosterStore.getState().upsertContact({
+      accountId,
       jid: normalizedJid,
       name: existing?.name,
       groups: existing?.groups ?? [],
@@ -98,10 +109,11 @@ export function initXmppBridge(client: XmppClient) {
     const normalizedJid = normalizeBareJid(data.jid as string);
     if (!normalizedJid) return;
     const convId = generateConversationId(accountId, normalizedJid);
-    const existing = useRosterStore.getState().contacts[normalizedJid];
+    const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     if (existing) {
       useRosterStore.getState().upsertContact({
         ...existing,
+        accountId,
         jid: normalizedJid,
         subscription: "none",
         pendingIncoming: false,
@@ -123,8 +135,9 @@ export function initXmppBridge(client: XmppClient) {
     const normalizedJid = normalizeBareJid(jid);
     if (normalizedJid === ownBareJid) return;
     const roster = useRosterStore.getState();
-    if (!roster.contacts[normalizedJid]) {
+    if (!roster.getContact(accountId, normalizedJid)) {
       roster.upsertContact({
+        accountId,
         jid: normalizedJid,
         groups: [],
         subscription: "none",
@@ -135,7 +148,7 @@ export function initXmppBridge(client: XmppClient) {
       });
       return;
     }
-    roster.updatePresence(normalizedJid, normalizePresence(show), status);
+    roster.updatePresence(accountId, normalizedJid, normalizePresence(show), status);
   });
 
   // Incoming messages -> ChatStore + notifications
@@ -143,11 +156,12 @@ export function initXmppBridge(client: XmppClient) {
     const { message } = data;
     const from = normalizeBareJid(message.from);
     if (from === ownBareJid) return;
-    const existingContact = useRosterStore.getState().contacts[from];
+    const existingContact = useRosterStore.getState().getContact(accountId, from);
     if (existingContact?.isBlocked) return;
 
     if (!existingContact) {
       useRosterStore.getState().upsertContact({
+        accountId,
         jid: from,
         groups: [],
         subscription: "none",
@@ -162,7 +176,7 @@ export function initXmppBridge(client: XmppClient) {
     const existingConv = useChatStore.getState().conversations[convId];
 
     if (!existingConv) {
-      const contact = useRosterStore.getState().contacts[from];
+      const contact = useRosterStore.getState().getContact(accountId, from);
       useChatStore.getState().upsertConversation({
         id: convId,
         accountId,
@@ -192,7 +206,7 @@ export function initXmppBridge(client: XmppClient) {
     cacheMessages([chatMsg]).catch(() => {});
 
     // Notification
-    const contact = useRosterStore.getState().contacts[from];
+    const contact = useRosterStore.getState().getContact(accountId, from);
     const activeConvId = useChatStore.getState().activeConversationId;
     if (activeConvId !== convId) {
       useNotificationStore.getState().addNotification({

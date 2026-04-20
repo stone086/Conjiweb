@@ -75,6 +75,10 @@ function RoomCard({ room }: { room: MucRoom }) {
   const join = () => {
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
+    if (!client) {
+      toast.error("Connect this account first");
+      return;
+    }
     client?.joinRoom(room.jid, room.nickname);
     upsertRoom({ ...room, joined: true });
     const convId = generateConversationId(activeAccountId, room.jid);
@@ -159,42 +163,67 @@ export default function GroupPanel() {
   const [createForm, setCreateForm] = useState({ name: "", server: "conference.localhost" });
   const rooms = useGroupStore((s) => Object.values(s.rooms));
   const upsertRoom = useGroupStore((s) => s.upsertRoom);
+  const upsertConversation = useChatStore((s) => s.upsertConversation);
+  const navigate = useNavigate();
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
   const activeAccount = accounts.find((a) => a.id === activeAccountId);
 
   const defaultNickname = activeAccount?.jid.split("@")[0] ?? "user";
 
+  const joinRoomNow = (roomJid: string, roomName: string, nickname: string) => {
+    if (!activeAccountId) {
+      toast.error("No active account");
+      return false;
+    }
+    const client = getClient(activeAccountId);
+    if (!client) {
+      toast.error("Connect this account first");
+      return false;
+    }
+
+    client.joinRoom(roomJid, nickname);
+    upsertRoom({
+      jid: roomJid,
+      name: roomName,
+      nickname,
+      isPublic: true,
+      joined: true,
+    });
+    const convId = generateConversationId(activeAccountId, roomJid);
+    upsertConversation({
+      id: convId,
+      accountId: activeAccountId,
+      type: "group",
+      peerJid: roomJid,
+      title: roomName,
+      unreadCount: 0,
+      pinned: false,
+    });
+    navigate(`/chat/${convId}`);
+    return true;
+  };
+
   const handleJoin = () => {
     if (!joinForm.jid.trim()) { toast.error(t("group.jidRequired")); return; }
     const nick = joinForm.nickname.trim() || defaultNickname;
-    const room: MucRoom = {
-      jid: joinForm.jid.trim(),
-      name: joinForm.jid.split("@")[0],
-      nickname: nick,
-      isPublic: true,
-      joined: false,
-    };
-    upsertRoom(room);
+    const roomJid = joinForm.jid.trim();
+    const roomName = roomJid.split("@")[0];
+    if (!joinRoomNow(roomJid, roomName, nick)) return;
     setJoinForm({ jid: "", nickname: "" });
     setShowJoin(false);
-    toast.success(t("group.roomAdded"));
+    toast.success(t("group.joined"));
   };
 
   const handleCreate = () => {
     if (!createForm.name.trim()) { toast.error(t("group.nameRequired")); return; }
     const slug = createForm.name.toLowerCase().replace(/\s+/g, "-");
-    const room: MucRoom = {
-      jid: `${slug}@${createForm.server}`,
-      name: createForm.name.trim(),
-      nickname: defaultNickname,
-      isPublic: true,
-      joined: false,
-    };
-    upsertRoom(room);
+    const roomJid = `${slug}@${createForm.server}`;
+    const roomName = createForm.name.trim();
+    if (!joinRoomNow(roomJid, roomName, defaultNickname)) return;
     setCreateForm({ name: "", server: "conference.localhost" });
     setShowCreate(false);
-    toast.success(t("group.roomCreated"));
+    toast.success(t("group.joined"));
   };
 
   return (

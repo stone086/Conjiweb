@@ -8,6 +8,10 @@ from app.models import Attachment
 from minio import Minio
 from minio.error import S3Error
 import uuid, io
+try:
+    import magic
+except Exception:  # pragma: no cover
+    magic = None
 
 router = APIRouter()
 
@@ -43,12 +47,32 @@ async def upload_file(
     db: AsyncSession = Depends(get_db),
 ):
     ensure_bucket()
+    allowed_mime = {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+        "application/zip",
+        "text/plain",
+    }
+    max_size_bytes = 100 * 1024 * 1024
+
     file_id = str(uuid.uuid4())
     ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
     object_key = f"uploads/{file_id}.{ext}"
 
     content = await file.read()
     size = len(content)
+    if size == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if size > max_size_bytes:
+        raise HTTPException(status_code=413, detail="File too large")
+    if magic is None:
+        raise HTTPException(status_code=500, detail="MIME detection is unavailable on server")
+    detected_mime = magic.from_buffer(content, mime=True) or "application/octet-stream"
+    if detected_mime not in allowed_mime:
+        raise HTTPException(status_code=415, detail=f"Unsupported file type: {detected_mime}")
 
     try:
         minio_client.put_object(
@@ -56,19 +80,19 @@ async def upload_file(
             object_key,
             io.BytesIO(content),
             length=size,
-            content_type=file.content_type,
+            content_type=detected_mime,
         )
     except S3Error as e:
         raise HTTPException(status_code=500, detail=f"Storage error: {e}")
 
-    download_url = f"http://{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET}/{object_key}"
+    download_url = f"https://{settings.PUBLIC_DOMAIN}/files/{object_key}"
 
     attachment = Attachment(
         id=file_id,
         message_id=message_id,
         object_key=object_key,
         file_name=file.filename,
-        mime_type=file.content_type,
+        mime_type=detected_mime,
         size_bytes=size,
         download_url=download_url,
     )
@@ -80,7 +104,7 @@ async def upload_file(
         object_key=object_key,
         download_url=download_url,
         file_name=file.filename,
-        mime_type=file.content_type,
+        mime_type=detected_mime,
         size_bytes=size,
     )
 

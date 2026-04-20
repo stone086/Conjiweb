@@ -5,6 +5,7 @@ import { normalizeBareJid } from "@/utils/helpers";
 export type SubscriptionState = "both" | "from" | "to" | "none" | "remove";
 
 export interface RosterContact {
+  accountId: string;
   jid: string;
   name?: string;
   groups: string[];
@@ -18,19 +19,25 @@ export interface RosterContact {
 }
 
 interface RosterState {
-  contacts: Record<string, RosterContact>; // keyed by jid
+  contacts: Record<string, RosterContact>; // keyed by `${accountId}::${bareJid}`
   setContacts: (contacts: RosterContact[]) => void;
-  updatePresence: (jid: string, presence: RosterContact["presence"], statusText?: string) => void;
+  updatePresence: (accountId: string, jid: string, presence: RosterContact["presence"], statusText?: string) => void;
   upsertContact: (contact: RosterContact) => void;
-  removeContact: (jid: string) => void;
-  blockContact: (jid: string) => void;
-  unblockContact: (jid: string) => void;
-  markPendingIncoming: (jid: string) => void;
+  removeContact: (accountId: string, jid: string) => void;
+  blockContact: (accountId: string, jid: string) => void;
+  unblockContact: (accountId: string, jid: string) => void;
+  markPendingIncoming: (accountId: string, jid: string) => void;
+  getContact: (accountId: string, jid: string) => RosterContact | undefined;
+  listContacts: (accountId: string) => RosterContact[];
+}
+
+function contactKey(accountId: string, jid: string) {
+  return `${accountId}::${normalizeBareJid(jid)}`;
 }
 
 export const useRosterStore = create<RosterState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       contacts: {},
 
       setContacts: (contacts) =>
@@ -38,14 +45,14 @@ export const useRosterStore = create<RosterState>()(
           contacts: Object.fromEntries(
             contacts.map((c) => {
               const jid = normalizeBareJid(c.jid);
-              return [jid, { ...c, jid }];
+              return [contactKey(c.accountId, jid), { ...c, jid }];
             })
           ),
         }),
 
-      updatePresence: (jid, presence, statusText) =>
+      updatePresence: (accountId, jid, presence, statusText) =>
         set((s) => {
-          const key = normalizeBareJid(jid);
+          const key = contactKey(accountId, jid);
           const existing = s.contacts[key];
           if (!existing) return s;
           return {
@@ -59,12 +66,13 @@ export const useRosterStore = create<RosterState>()(
       upsertContact: (contact) =>
         set((s) => {
           const jid = normalizeBareJid(contact.jid);
-          const existing = s.contacts[jid];
+          const key = contactKey(contact.accountId, jid);
+          const existing = s.contacts[key];
           const nextSubscription = (contact.subscription ?? existing?.subscription ?? "none") as SubscriptionState;
           return {
             contacts: {
               ...s.contacts,
-              [jid]: {
+              [key]: {
                 ...(existing ?? {}),
                 ...contact,
                 jid,
@@ -78,17 +86,17 @@ export const useRosterStore = create<RosterState>()(
           };
         }),
 
-      removeContact: (jid) =>
+      removeContact: (accountId, jid) =>
         set((s) => {
-          const key = normalizeBareJid(jid);
+          const key = contactKey(accountId, jid);
           const next = { ...s.contacts };
           delete next[key];
           return { contacts: next };
         }),
 
-      blockContact: (jid) =>
+      blockContact: (accountId, jid) =>
         set((s) => {
-          const key = normalizeBareJid(jid);
+          const key = contactKey(accountId, jid);
           return {
             contacts: s.contacts[key]
               ? { ...s.contacts, [key]: { ...s.contacts[key], isBlocked: true, pendingIncoming: false } }
@@ -96,9 +104,9 @@ export const useRosterStore = create<RosterState>()(
           };
         }),
 
-      unblockContact: (jid) =>
+      unblockContact: (accountId, jid) =>
         set((s) => {
-          const key = normalizeBareJid(jid);
+          const key = contactKey(accountId, jid);
           return {
             contacts: s.contacts[key]
               ? { ...s.contacts, [key]: { ...s.contacts[key], isBlocked: false } }
@@ -106,9 +114,9 @@ export const useRosterStore = create<RosterState>()(
           };
         }),
 
-      markPendingIncoming: (jid) =>
+      markPendingIncoming: (accountId, jid) =>
         set((s) => {
-          const key = normalizeBareJid(jid);
+          const key = contactKey(accountId, jid);
           const existing = s.contacts[key];
           if (existing?.subscription && existing.subscription !== "none") return s;
           return {
@@ -116,7 +124,8 @@ export const useRosterStore = create<RosterState>()(
               ...s.contacts,
               [key]: {
                 ...(existing ?? {}),
-                jid: key,
+                accountId,
+                jid: normalizeBareJid(jid),
                 groups: existing?.groups ?? [],
                 subscription: existing?.subscription ?? "none",
                 presence: existing?.presence ?? "unavailable",
@@ -126,6 +135,14 @@ export const useRosterStore = create<RosterState>()(
             },
           };
         }),
+
+      getContact: (accountId, jid) => {
+        const key = contactKey(accountId, jid);
+        return get().contacts[key];
+      },
+
+      listContacts: (accountId) =>
+        Object.values(get().contacts).filter((c) => c.accountId === accountId),
     }),
     { name: "conjiweb-roster" }
   )

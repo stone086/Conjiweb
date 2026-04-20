@@ -44,6 +44,13 @@ XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-}"
 XMPP_ADMIN_CREATED=0
 XMPP_ADMIN_JID=""
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
+PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
+ADMIN_USER="${ADMIN_USER:-admin}"
+ADMIN_PASS="${ADMIN_PASS:-}"
+AI_API_KEY="${AI_API_KEY:-}"
+AI_BASE_URL="${AI_BASE_URL:-}"
+AI_MODEL="${AI_MODEL:-}"
+ALERT_EMAIL="${ALERT_EMAIL:-}"
 
 ensure_service_users() {
   if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -184,6 +191,7 @@ load_config() {
   set -a; source .env; set +a
 
   DOMAIN="${DOMAIN:-}"
+  PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-${DOMAIN}}"
   EMAIL="${EMAIL:-}"
   DB_PASS="${DB_PASS:-$(openssl rand -hex 16)}"
   REDIS_PASS="${REDIS_PASS:-$(openssl rand -hex 16)}"
@@ -192,6 +200,12 @@ load_config() {
   SECRET_KEY="${SECRET_KEY:-$(openssl rand -hex 32)}"
   XMPP_DOMAIN="${XMPP_DOMAIN:-localhost}"
   XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-$(openssl rand -hex 12)}"
+  ADMIN_USER="${ADMIN_USER:-admin}"
+  ADMIN_PASS="${ADMIN_PASS:-$(openssl rand -hex 12)}"
+  AI_API_KEY="${AI_API_KEY:-}"
+  AI_BASE_URL="${AI_BASE_URL:-}"
+  AI_MODEL="${AI_MODEL:-}"
+  ALERT_EMAIL="${ALERT_EMAIL:-}"
 
   # Strip accidental CR characters from sourced values.
   DOMAIN="${DOMAIN//$'\r'/}"
@@ -204,6 +218,13 @@ load_config() {
   XMPP_DOMAIN="${XMPP_DOMAIN//$'\r'/}"
   XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS//$'\r'/}"
   BACKUP_REMOTE="${BACKUP_REMOTE//$'\r'/}"
+  PUBLIC_DOMAIN="${PUBLIC_DOMAIN//$'\r'/}"
+  ADMIN_USER="${ADMIN_USER//$'\r'/}"
+  ADMIN_PASS="${ADMIN_PASS//$'\r'/}"
+  AI_API_KEY="${AI_API_KEY//$'\r'/}"
+  AI_BASE_URL="${AI_BASE_URL//$'\r'/}"
+  AI_MODEL="${AI_MODEL//$'\r'/}"
+  ALERT_EMAIL="${ALERT_EMAIL//$'\r'/}"
 
   DB_PASS_SQL_ESCAPED="${DB_PASS//\'/\'\'}"
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
@@ -233,6 +254,41 @@ load_config() {
     sed -i "s|^BACKUP_REMOTE=.*|BACKUP_REMOTE=${BACKUP_REMOTE}|" .env
   else
     echo "BACKUP_REMOTE=${BACKUP_REMOTE}" >> .env
+  fi
+  if grep -qE '^PUBLIC_DOMAIN=' .env; then
+    sed -i "s|^PUBLIC_DOMAIN=.*|PUBLIC_DOMAIN=${PUBLIC_DOMAIN}|" .env
+  else
+    echo "PUBLIC_DOMAIN=${PUBLIC_DOMAIN}" >> .env
+  fi
+  if grep -qE '^ADMIN_USER=' .env; then
+    sed -i "s|^ADMIN_USER=.*|ADMIN_USER=${ADMIN_USER}|" .env
+  else
+    echo "ADMIN_USER=${ADMIN_USER}" >> .env
+  fi
+  if grep -qE '^ADMIN_PASS=' .env; then
+    sed -i "s|^ADMIN_PASS=.*|ADMIN_PASS=${ADMIN_PASS}|" .env
+  else
+    echo "ADMIN_PASS=${ADMIN_PASS}" >> .env
+  fi
+  if grep -qE '^AI_API_KEY=' .env; then
+    sed -i "s|^AI_API_KEY=.*|AI_API_KEY=${AI_API_KEY}|" .env
+  else
+    echo "AI_API_KEY=${AI_API_KEY}" >> .env
+  fi
+  if grep -qE '^AI_BASE_URL=' .env; then
+    sed -i "s|^AI_BASE_URL=.*|AI_BASE_URL=${AI_BASE_URL}|" .env
+  else
+    echo "AI_BASE_URL=${AI_BASE_URL}" >> .env
+  fi
+  if grep -qE '^AI_MODEL=' .env; then
+    sed -i "s|^AI_MODEL=.*|AI_MODEL=${AI_MODEL}|" .env
+  else
+    echo "AI_MODEL=${AI_MODEL}" >> .env
+  fi
+  if grep -qE '^ALERT_EMAIL=' .env; then
+    sed -i "s|^ALERT_EMAIL=.*|ALERT_EMAIL=${ALERT_EMAIL}|" .env
+  else
+    echo "ALERT_EMAIL=${ALERT_EMAIL}" >> .env
   fi
   chmod 600 .env
 }
@@ -358,6 +414,7 @@ install_redis() {
 install_prosody() {
   step "瀹夎 Prosody XMPP 鏈嶅姟鍣?
   apt install -y -qq prosody lua-dbi-postgresql
+  usermod -aG prosody "${APP_USER}" || true
 
   cp configs/prosody/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
   sed -i "s|XMPP_DOMAIN|${XMPP_DOMAIN}|g" /etc/prosody/prosody.cfg.lua
@@ -461,6 +518,13 @@ SECRET_KEY=${SECRET_KEY}
 CORS_ORIGINS=["https://${DOMAIN}"]
 XMPP_DOMAIN=${XMPP_DOMAIN}
 XMPP_REGISTRATION_ENABLED=true
+PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+ADMIN_USER=${ADMIN_USER}
+ADMIN_PASS=${ADMIN_PASS}
+AI_API_KEY=${AI_API_KEY}
+AI_BASE_URL=${AI_BASE_URL}
+AI_MODEL=${AI_MODEL}
+ALERT_EMAIL=${ALERT_EMAIL}
 EOF
   chmod 600 "${INSTALL_DIR}/api/.env"
   chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api/.env"
@@ -961,6 +1025,8 @@ MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
 SECRET_KEY=${SECRET_KEY}
 XMPP_ADMIN_JID=${XMPP_ADMIN_JID:-${XMPP_ADMIN_USER}@${XMPP_DOMAIN}}
 XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}
+ADMIN_USER=${ADMIN_USER}
+ADMIN_PASS=${ADMIN_PASS}
 EOF
   chmod 600 "${secrets_file}"
 }

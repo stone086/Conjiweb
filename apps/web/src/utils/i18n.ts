@@ -501,13 +501,14 @@ const messages: Record<Language, Record<string, string>> = {
 };
 
 export function getStoredLanguage(): Language {
+  const saved = localStorage.getItem(LANGUAGE_KEY);
+  if (saved === "zh-CN" || saved === "en-US") return saved;
   return "en-US";
 }
 
 export function setLanguage(lang: Language) {
-  const enforced: Language = "en-US";
-  localStorage.setItem(LANGUAGE_KEY, enforced);
-  window.dispatchEvent(new CustomEvent(LANGUAGE_EVENT, { detail: enforced }));
+  localStorage.setItem(LANGUAGE_KEY, lang);
+  window.dispatchEvent(new CustomEvent(LANGUAGE_EVENT, { detail: lang }));
 }
 
 export function useLanguage() {

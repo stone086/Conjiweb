@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useChatStore, Conversation } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
+import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore, MucMember } from "@/modules/group/GroupPanel";
 import { aiApi } from "@/services/api";
 import { X, Bot, Users, FileText, Info, Crown, Shield, Loader } from "lucide-react";
@@ -140,7 +141,10 @@ function MembersTab({ roomJid }: { roomJid: string }) {
 
 function InfoTab({ conversation }: { conversation: Conversation }) {
   const { t } = useLanguage();
-  const contact = useRosterStore((s) => s.contacts[conversation.peerJid]);
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const contact = useRosterStore((s) =>
+    activeAccountId ? s.getContact(activeAccountId, conversation.peerJid) : undefined
+  );
   const room = useGroupStore((s) => s.rooms[conversation.peerJid]);
 
   return (
@@ -235,4 +239,3 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     </div>
   );
 }
-

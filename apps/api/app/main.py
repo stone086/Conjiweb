@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.rate_limit import limiter
+from app.utils.security import get_current_admin
 from app.api.routers import (
     accounts, attachments, messages, plugins,
     ai, admin, auth, conversations, contacts,
@@ -38,15 +39,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router,          prefix="/auth",          tags=["auth"])
-app.include_router(accounts.router,      prefix="/accounts",      tags=["accounts"])
-app.include_router(conversations.router, prefix="/conversations",  tags=["conversations"])
-app.include_router(contacts.router,      prefix="/contacts",       tags=["contacts"])
-app.include_router(attachments.router,   prefix="/attachments",    tags=["attachments"])
-app.include_router(messages.router,      prefix="/messages",       tags=["messages"])
-app.include_router(plugins.router,       prefix="/plugins",        tags=["plugins"])
-app.include_router(ai.router,            prefix="/ai",             tags=["ai"])
-app.include_router(admin.router,         prefix="/admin",          tags=["admin"])
+admin_dep = [Depends(get_current_admin)]
+
+app.include_router(auth.router,          prefix="/auth",           tags=["auth"])
+app.include_router(accounts.router,      prefix="/accounts",       tags=["accounts"], dependencies=admin_dep)
+app.include_router(conversations.router, prefix="/conversations",  tags=["conversations"], dependencies=admin_dep)
+app.include_router(contacts.router,      prefix="/contacts",       tags=["contacts"], dependencies=admin_dep)
+app.include_router(attachments.router,   prefix="/attachments",    tags=["attachments"], dependencies=admin_dep)
+app.include_router(messages.router,      prefix="/messages",       tags=["messages"], dependencies=admin_dep)
+app.include_router(plugins.router,       prefix="/plugins",        tags=["plugins"], dependencies=admin_dep)
+app.include_router(ai.router,            prefix="/ai",             tags=["ai"], dependencies=admin_dep)
+app.include_router(admin.router,         prefix="/admin",          tags=["admin"], dependencies=admin_dep)
 
 
 @app.get("/health")

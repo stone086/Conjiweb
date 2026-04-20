@@ -58,7 +58,7 @@ function MessageBubble({
           {msg.senderJid[0]}
         </div>
       )}
-      <div className={clsx("flex flex-col gap-1 max-w-[70%]", isOwn ? "items-end" : "items-start")}>
+      <div className={clsx("flex flex-col gap-1 max-w-[70%] min-w-[8rem]", isOwn ? "items-end" : "items-start")}>
         {!isOwn && <span className="text-[10px] text-surface-200/40 px-1">{msg.senderJid.split("@")[0]}</span>}
         <div className={isOwn ? "msg-bubble-out" : "msg-bubble-in"}>
           {msg.replyToId && (

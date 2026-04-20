@@ -33,6 +33,18 @@ export default function AdminPage() {
     enabled: authed,
     refetchInterval: 10000,
   });
+  const { data: health } = useQuery({
+    queryKey: ["admin-service-health"],
+    queryFn: adminApi.serviceHealth,
+    enabled: authed,
+    refetchInterval: 10000,
+  });
+  const { data: auditLogs } = useQuery({
+    queryKey: ["admin-audit-logs"],
+    queryFn: () => adminApi.auditLogs(20, 0),
+    enabled: authed,
+    refetchInterval: 15000,
+  });
 
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,31 +112,30 @@ export default function AdminPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard icon={Activity} label={t("admin.system")} value={status?.status ?? "-"} color="text-success" />
+          <StatCard icon={Activity} label={t("admin.system")} value={status?.status ?? "-"} color={status?.status === "healthy" ? "text-success" : "text-warn"} />
           <StatCard icon={Server} label={t("admin.version")} value={status?.version ?? "-"} />
-          <StatCard icon={Users} label={t("admin.accounts")} value="-" />
-          <StatCard icon={Database} label={t("admin.storage")} value="-" />
+          <StatCard icon={Users} label={t("admin.accounts")} value={status?.stats?.accounts ?? "-"} />
+          <StatCard icon={Database} label={t("admin.storage")} value={status?.stats?.attachments ?? "-"} />
         </div>
 
         <section>
           <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide mb-3">{t("admin.services")}</h2>
           <div className="flex flex-col gap-2">
-            {[
-              { name: "FastAPI Backend", port: "8000", desc: t("admin.restApi") },
-              { name: "PostgreSQL", port: "5432", desc: t("admin.db") },
-              { name: "Redis", port: "6379", desc: t("admin.cache") },
-              { name: "MinIO", port: "9000", desc: t("admin.objectStore") },
-              { name: "Prosody XMPP", port: "5222/5280", desc: t("admin.xmpp") },
-            ].map((svc) => (
+            {(health?.services ?? []).map((svc: any) => (
               <div key={svc.name} className="glass rounded-xl px-4 py-3 flex items-center gap-4">
-                <div className="w-2 h-2 rounded-full bg-success animate-pulse-soft" />
+                <div className={clsx("w-2 h-2 rounded-full", svc.ok ? "bg-success animate-pulse-soft" : "bg-danger")} />
                 <div className="flex-1">
-                  <span className="text-sm text-surface-50">{svc.name}</span>
-                  <span className="text-xs text-surface-200/40 ml-2">{svc.desc}</span>
+                  <span className="text-sm text-surface-50">{svc.label}</span>
+                  <span className="text-xs text-surface-200/40 ml-2">{svc.detail}</span>
                 </div>
-                <code className="text-xs text-accent-soft font-mono">:{svc.port}</code>
+                <code className={clsx("text-xs font-mono", svc.ok ? "text-success" : "text-danger")}>
+                  {svc.ok ? "up" : "down"}
+                </code>
               </div>
             ))}
+            {!health?.services?.length && (
+              <div className="glass rounded-xl px-4 py-3 text-sm text-surface-200/40">No service health data</div>
+            )}
           </div>
         </section>
 
@@ -132,9 +143,27 @@ export default function AdminPage() {
           <h2 className="text-sm font-semibold text-surface-200 uppercase tracking-wide mb-3">
             {t("admin.audit")}
           </h2>
-          <div className="glass rounded-xl p-4 text-center text-sm text-surface-200/30">
-            <FileText size={24} className="mx-auto mb-2 opacity-30" />
-            {t("admin.noAudit")}
+          <div className="glass rounded-xl p-4">
+            {!auditLogs?.length ? (
+              <div className="text-center text-sm text-surface-200/30">
+                <FileText size={24} className="mx-auto mb-2 opacity-30" />
+                {t("admin.noAudit")}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {auditLogs.map((log: any) => (
+                  <div key={log.id} className="rounded-lg border border-white/10 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-surface-50">{log.action}</span>
+                      <span className="text-[11px] text-surface-200/40">{log.created_at ?? "-"}</span>
+                    </div>
+                    <div className="text-xs text-surface-200/50 mt-1">
+                      actor: {log.actor ?? "-"} · target: {log.target_type ?? "-"}:{log.target_id ?? "-"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -148,4 +177,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

@@ -111,7 +111,7 @@ export default function ConversationList() {
                   e.stopPropagation();
                   handleDelete(conv.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
                 title="Delete conversation"
               >
                 <Trash2 size={13} />

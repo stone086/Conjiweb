@@ -1,7 +1,4 @@
-/**
- * xmpp-adapter 鈥?Full XMPP client wrapper for Conjiweb
- * Wraps Strophe.js with a clean event-driven API.
- */
+/**`r`n * Full XMPP client wrapper for Conjiweb.`r`n * Wraps Strophe.js with a clean event-driven API.`r`n */
 
 export interface XmppClientConfig {
   jid: string;
@@ -240,6 +237,8 @@ export class XmppClient {
     if (!this._connection) return;
     if (!show || show === "available") {
       this._connection.send(this._$pres());
+    } else if (show === "unavailable") {
+      this._connection.send(this._$pres({ type: "unavailable" }));
     } else {
       const pres = this._$pres().c("show").t(show);
       if (status) pres.up().c("status").t(status);
@@ -445,3 +444,4 @@ export function destroyClient(accountId: string) {
 export function getAllClients(): XmppClient[] {
   return Array.from(clients.values());
 }
+

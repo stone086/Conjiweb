@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { messagesApi } from "@/services/api";
 import { useChatStore } from "@/stores/chatStore";
+import { useAccountStore } from "@/stores/accountStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useGroupStore } from "@/modules/group/GroupPanel";
 import { debounce } from "@/utils/helpers";
@@ -30,7 +31,8 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const contacts = useRosterStore((s) => Object.values(s.contacts));
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const contacts = useRosterStore((s) => (activeAccountId ? s.listContacts(activeAccountId) : []));
   const rooms = useGroupStore((s) => Object.values(s.rooms));
   const conversations = useChatStore((s) => Object.values(s.conversations));
 
@@ -69,7 +71,11 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
           );
 
         try {
-          const msgs = await messagesApi.search(q);
+          if (!activeAccountId) {
+            setResults(found);
+            return;
+          }
+          const msgs = await messagesApi.search(q, activeAccountId);
           msgs.slice(0, 5).forEach((m: any) => {
             const conv = conversations.find((c) => c.id === m.conversation_id);
             found.push({
@@ -90,7 +96,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         setLoading(false);
       }
     }, 300),
-    [contacts, rooms, conversations],
+    [contacts, rooms, conversations, activeAccountId],
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,4 +207,3 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAccountStore } from "@/stores/accountStore";
+import { getAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient, getClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
 
@@ -32,10 +32,15 @@ export function useXmppReconnect() {
         delete timersRef.current[account.id];
 
         try {
+          const runtimePassword = getAccountPassword(account.id);
+          if (!runtimePassword) {
+            setConnected(account.id, false);
+            return;
+          }
           const wsUrl = import.meta.env.VITE_XMPP_WS_URL ?? "ws://localhost:5280/xmpp-websocket";
           const newClient = createClient({
             jid: account.jid,
-            password: account.password,
+            password: runtimePassword,
             wsUrl,
             accountId: account.id,
           });

@@ -7,7 +7,7 @@ export interface XmppAccount {
   id: string;
   jid: string;
   domain: string;
-  password: string; // stored encrypted in production - use keychain
+  password?: string;
   is_enabled?: boolean;
   displayName?: string;
   avatarUrl?: string;
@@ -35,19 +35,31 @@ export const useAccountStore = create<AccountState>()(
         set((s) => ({
           accounts: [
             ...s.accounts,
-            { ...account, is_enabled: account.is_enabled ?? true, presence: "available", connected: false },
+            {
+              id: account.id,
+              jid: account.jid,
+              domain: account.domain,
+              displayName: account.displayName,
+              avatarUrl: account.avatarUrl,
+              is_enabled: account.is_enabled ?? true,
+              presence: "available",
+              connected: false,
+            },
           ],
           activeAccountId: s.activeAccountId ?? account.id,
         })),
 
       removeAccount: (id) =>
-        set((s) => ({
-          accounts: s.accounts.filter((a) => a.id !== id),
-          activeAccountId:
-            s.activeAccountId === id
-              ? s.accounts.find((a) => a.id !== id)?.id ?? null
-              : s.activeAccountId,
-        })),
+        set((s) => {
+          sessionStorage.removeItem(`${PASSWORD_KEY_PREFIX}${id}`);
+          return {
+            accounts: s.accounts.filter((a) => a.id !== id),
+            activeAccountId:
+              s.activeAccountId === id
+                ? s.accounts.find((a) => a.id !== id)?.id ?? null
+                : s.activeAccountId,
+          };
+        }),
 
       setActiveAccount: (id) => set({ activeAccountId: id }),
 
@@ -61,6 +73,26 @@ export const useAccountStore = create<AccountState>()(
           accounts: s.accounts.map((a) => (a.id === id ? { ...a, connected } : a)),
         })),
     }),
-    { name: "conjiweb-accounts" }
+    {
+      name: "conjiweb-accounts",
+      partialize: (state) => ({
+        accounts: state.accounts.map(({ password, ...rest }) => rest),
+        activeAccountId: state.activeAccountId,
+      }),
+    }
   )
 );
+
+const PASSWORD_KEY_PREFIX = "conjiweb-account-password:";
+
+export function setAccountPassword(accountId: string, password: string) {
+  sessionStorage.setItem(`${PASSWORD_KEY_PREFIX}${accountId}`, password);
+}
+
+export function getAccountPassword(accountId: string): string | null {
+  return sessionStorage.getItem(`${PASSWORD_KEY_PREFIX}${accountId}`);
+}
+
+export function clearAccountPassword(accountId: string) {
+  sessionStorage.removeItem(`${PASSWORD_KEY_PREFIX}${accountId}`);
+}

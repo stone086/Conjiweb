@@ -66,7 +66,8 @@ export const accountsApi = {
 
 // Messages
 export const messagesApi = {
-  search: (q: string) => api.get("/messages/search", { params: { q } }).then((r) => r.data),
+  search: (q: string, accountId: string) =>
+    api.get("/messages/search", { params: { q, account_id: accountId } }).then((r) => r.data),
   getConversation: (id: string, limit = 50) =>
     api.get(`/messages/conversation/${id}`, { params: { limit } }).then((r) => r.data),
   index: (data: object) => api.post("/messages/", data).then((r) => r.data),
@@ -111,6 +112,9 @@ export const aiApi = {
 // Admin
 export const adminApi = {
   status: () => api.get("/admin/status").then((r) => r.data),
+  serviceHealth: () => api.get("/admin/service-health").then((r) => r.data),
+  auditLogs: (limit = 20, offset = 0) =>
+    api.get("/admin/audit-logs", { params: { limit, offset } }).then((r) => r.data),
   login: (username: string, password: string) =>
     api.post("/auth/admin/login", { username, password }).then((r) => r.data),
 };

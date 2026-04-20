@@ -1,7 +1,8 @@
 ﻿import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
+import { getAccountPassword, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
+import { getClient } from "@/services/xmppAdapter";
 import { Trash2, Plus, Wifi, WifiOff, Copy, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
@@ -31,9 +32,13 @@ function AccountCard({ account }: { account: XmppAccount }) {
   const connect = async () => {
     setConnecting(true);
     try {
+      const runtimePassword = getAccountPassword(account.id);
+      if (!runtimePassword) {
+        throw new Error("Password not available in this session. Reconnect from login.");
+      }
       const client = createClient({
         jid: account.jid,
-        password: account.password,
+        password: runtimePassword,
         wsUrl: import.meta.env.VITE_XMPP_WS_URL ?? "ws://localhost:5280/xmpp-websocket",
         accountId: account.id,
       });
@@ -79,7 +84,13 @@ function AccountCard({ account }: { account: XmppAccount }) {
         {PRESENCES.map((p) => (
           <button
             key={p.value}
-            onClick={() => updatePresence(account.id, p.value)}
+            onClick={() => {
+              updatePresence(account.id, p.value);
+              const client = getClient(account.id);
+              if (client?.connected) {
+                client.setPresence(p.value);
+              }
+            }}
             className={clsx(
               "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all",
               account.presence === p.value
@@ -193,13 +204,15 @@ export default function SettingsPage() {
 
   const handleAdd = () => {
     if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
+    const id = crypto.randomUUID();
     addAccount({
-      id: crypto.randomUUID(),
+      id,
       jid: form.jid,
       domain: form.jid.split("@")[1] ?? "localhost",
       password: form.password,
       displayName: form.jid.split("@")[0],
     });
+    setAccountPassword(id, form.password);
     setForm({ jid: "", password: "", wsUrl: "" });
     setShowAdd(false);
     toast.success(t("toast.accountAdded"));
@@ -303,7 +316,6 @@ export default function SettingsPage() {
               <select
                 className="input-field w-auto text-sm"
                 value={language}
-                disabled
                 onChange={(e) => {
                   const next = e.target.value as Language;
                   setLanguageState(next);
@@ -311,6 +323,7 @@ export default function SettingsPage() {
                 }}
               >
                 <option value="en-US">{t("settings.languageEn")}</option>
+                <option value="zh-CN">{t("settings.languageZh")}</option>
               </select>
             </div>
             <div className="flex items-center justify-between">

@@ -55,6 +55,7 @@ bash manage.sh check
 - `.env` and secrets file permissions (`600`)
 - Backup directory permission (`700`)
 - API login rate limit (FastAPI + Nginx layer)
+- Generated admin/API credentials written to `/root/conjiweb-secrets.txt` (0600)
 
 ## Backups
 - Daily local backups via cron: `/usr/local/bin/conjiweb-backup.sh`

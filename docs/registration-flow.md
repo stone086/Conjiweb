@@ -6,6 +6,11 @@
 3. API calls `prosodyctl register`.
 4. On success, API returns `{ ok: true, jid: ... }`.
 
+## Server permission prerequisite
+- The API service user (`conjiweb`) must be in the `prosody` group.
+- Installer applies this with: `usermod -aG prosody conjiweb`.
+- If this is missing, registration can fail with permission errors.
+
 ## Friend flow
 1. A adds B's JID and sends first message.
 2. B receives message and can `Accept / Reject / Block`.

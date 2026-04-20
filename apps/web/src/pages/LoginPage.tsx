@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAccountStore } from "@/stores/accountStore";
+import { setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
 import { accountsApi, authApi } from "@/services/api";
@@ -28,6 +28,7 @@ export default function LoginPage() {
     const id = crypto.randomUUID();
     const domain = jid.split("@")[1] ?? "localhost";
     addAccount({ id, jid, domain, password: form.password, displayName: jid.split("@")[0] });
+    setAccountPassword(id, form.password);
     accountsApi.create({ jid, domain }).catch(() => {});
     const client = createClient({ jid, password: form.password, wsUrl, accountId: id });
     initXmppBridge(client);
