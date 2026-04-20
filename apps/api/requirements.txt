@@ -5,7 +5,7 @@ asyncpg==0.29.0
 alembic==1.13.1
 pydantic==2.7.1
 pydantic-settings==2.3.0
-redis[asyncio]==5.0.4
+redis==5.0.4
 minio==7.2.7
 python-multipart==0.0.9
 python-jose[cryptography]==3.3.0

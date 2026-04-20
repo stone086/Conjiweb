@@ -1,0 +1,21 @@
+[Unit]
+Description=Conjiweb FastAPI Backend
+After=network.target postgresql.service redis.service
+Requires=postgresql.service
+
+[Service]
+User=conjiweb
+Group=conjiweb
+WorkingDirectory=/opt/conjiweb/api
+EnvironmentFile=/opt/conjiweb/api/.env
+ExecStart=/opt/conjiweb/api/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 3 \
+    --log-level info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

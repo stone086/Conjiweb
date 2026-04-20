@@ -106,6 +106,7 @@ bash manage.sh update-api
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Registration flow: [`docs/registration-flow.md`](docs/registration-flow.md)
 - XMPP config: [`docs/xmpp-config.md`](docs/xmpp-config.md)
+- Operations runbook: [`docs/operations.md`](docs/operations.md)
 - Troubleshooting: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 
 ## Versioning
