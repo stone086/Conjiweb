@@ -43,13 +43,23 @@ class AccountPreferenceUpdate(BaseModel):
     config_json: Optional[dict] = None
 
 
-@router.get("/", response_model=List[AccountResponse])
+@router.get(
+    "/",
+    response_model=List[AccountResponse],
+    summary="List enabled accounts",
+    description="Return all enabled local accounts.",
+)
 async def list_accounts(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Account).where(Account.is_enabled == True))
     return result.scalars().all()
 
 
-@router.post("/", response_model=AccountResponse)
+@router.post(
+    "/",
+    response_model=AccountResponse,
+    summary="Create account",
+    description="Create a local account record and default preference profile.",
+)
 async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)):
     account = Account(
         id=str(uuid.uuid4()),
@@ -65,7 +75,12 @@ async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)
     return account
 
 
-@router.get("/{account_id}", response_model=AccountResponse)
+@router.get(
+    "/{account_id}",
+    response_model=AccountResponse,
+    summary="Get account",
+    description="Fetch one account by id.",
+)
 async def get_account(account_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Account).where(Account.id == account_id))
     account = result.scalar_one_or_none()
@@ -74,7 +89,11 @@ async def get_account(account_id: str, db: AsyncSession = Depends(get_db)):
     return account
 
 
-@router.delete("/{account_id}")
+@router.delete(
+    "/{account_id}",
+    summary="Disable account",
+    description="Soft-delete an account by setting is_enabled to false.",
+)
 async def delete_account(account_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Account).where(Account.id == account_id))
     account = result.scalar_one_or_none()
@@ -85,7 +104,12 @@ async def delete_account(account_id: str, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
-@router.get("/{account_id}/preferences", response_model=AccountPreferenceResponse)
+@router.get(
+    "/{account_id}/preferences",
+    response_model=AccountPreferenceResponse,
+    summary="Get account preferences",
+    description="Return account-level preference settings, creating defaults when missing.",
+)
 async def get_account_preferences(account_id: str, db: AsyncSession = Depends(get_db)):
     account_result = await db.execute(select(Account).where(Account.id == account_id))
     account = account_result.scalar_one_or_none()
@@ -102,7 +126,12 @@ async def get_account_preferences(account_id: str, db: AsyncSession = Depends(ge
     return pref
 
 
-@router.put("/{account_id}/preferences", response_model=AccountPreferenceResponse)
+@router.put(
+    "/{account_id}/preferences",
+    response_model=AccountPreferenceResponse,
+    summary="Update account preferences",
+    description="Patch account preference fields and return the saved profile.",
+)
 async def update_account_preferences(account_id: str, data: AccountPreferenceUpdate, db: AsyncSession = Depends(get_db)):
     account_result = await db.execute(select(Account).where(Account.id == account_id))
     account = account_result.scalar_one_or_none()

@@ -27,7 +27,11 @@ async def ensure_plugins(db: AsyncSession):
     await db.commit()
 
 
-@router.get("/")
+@router.get(
+    "/",
+    summary="List plugins",
+    description="Return installed built-in plugins and current enabled state.",
+)
 async def list_plugins(db: AsyncSession = Depends(get_db)):
     await ensure_plugins(db)
     result = await db.execute(select(Plugin))
@@ -36,7 +40,11 @@ async def list_plugins(db: AsyncSession = Depends(get_db)):
             for p in result.scalars().all()]
 
 
-@router.post("/{plugin_id}/enable")
+@router.post(
+    "/{plugin_id}/enable",
+    summary="Enable plugin",
+    description="Enable one plugin by id.",
+)
 async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Plugin).where(Plugin.id == plugin_id))
     plugin = result.scalar_one_or_none()
@@ -47,7 +55,11 @@ async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
     return {"ok": True, "plugin_id": plugin_id, "is_enabled": True}
 
 
-@router.post("/{plugin_id}/disable")
+@router.post(
+    "/{plugin_id}/disable",
+    summary="Disable plugin",
+    description="Disable one plugin by id.",
+)
 async def disable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Plugin).where(Plugin.id == plugin_id))
     plugin = result.scalar_one_or_none()
@@ -58,7 +70,11 @@ async def disable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
     return {"ok": True, "plugin_id": plugin_id, "is_enabled": False}
 
 
-@router.get("/{plugin_id}/settings")
+@router.get(
+    "/{plugin_id}/settings",
+    summary="Get plugin settings",
+    description="Return plugin configuration for optional account scope.",
+)
 async def get_plugin_settings(plugin_id: str, account_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     stmt = select(PluginSetting).where(PluginSetting.plugin_id == plugin_id)
     if account_id:
@@ -68,7 +84,11 @@ async def get_plugin_settings(plugin_id: str, account_id: Optional[str] = None, 
     return {"config": setting.config_json if setting else {}}
 
 
-@router.put("/{plugin_id}/settings")
+@router.put(
+    "/{plugin_id}/settings",
+    summary="Update plugin settings",
+    description="Write plugin configuration for optional account scope.",
+)
 async def update_plugin_settings(plugin_id: str, config: dict, account_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     stmt = select(PluginSetting).where(PluginSetting.plugin_id == plugin_id)
     if account_id:

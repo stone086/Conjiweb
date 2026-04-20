@@ -40,7 +40,12 @@ class UploadResponse(BaseModel):
     size_bytes: int
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post(
+    "/upload",
+    response_model=UploadResponse,
+    summary="Upload attachment",
+    description="Validate MIME and size, store file in MinIO, and persist metadata.",
+)
 async def upload_file(
     file: UploadFile = File(...),
     message_id: Optional[str] = None,
@@ -109,7 +114,11 @@ async def upload_file(
     )
 
 
-@router.get("/presign/{object_key:path}")
+@router.get(
+    "/presign/{object_key:path}",
+    summary="Get presigned URL",
+    description="Return temporary signed download URL for one object key.",
+)
 async def get_presigned_url(object_key: str):
     try:
         url = minio_client.presigned_get_object(settings.MINIO_BUCKET, object_key)

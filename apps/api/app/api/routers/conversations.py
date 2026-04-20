@@ -32,7 +32,12 @@ class ConversationResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/", response_model=List[ConversationResponse])
+@router.get(
+    "/",
+    response_model=List[ConversationResponse],
+    summary="List conversations",
+    description="List active (non-archived) conversations for an account.",
+)
 async def list_conversations(account_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Conversation)
@@ -42,7 +47,12 @@ async def list_conversations(account_id: str, db: AsyncSession = Depends(get_db)
     return result.scalars().all()
 
 
-@router.post("/", response_model=ConversationResponse)
+@router.post(
+    "/",
+    response_model=ConversationResponse,
+    summary="Create or get conversation",
+    description="Return existing conversation for peer JID or create a new one.",
+)
 async def create_or_get_conversation(data: ConversationCreate, db: AsyncSession = Depends(get_db)):
     # Check if exists
     result = await db.execute(
@@ -72,21 +82,33 @@ async def create_or_get_conversation(data: ConversationCreate, db: AsyncSession 
     return conv
 
 
-@router.patch("/{conv_id}/pin")
+@router.patch(
+    "/{conv_id}/pin",
+    summary="Pin conversation",
+    description="Set pinned status on a conversation.",
+)
 async def pin_conversation(conv_id: str, pinned: bool, db: AsyncSession = Depends(get_db)):
     await db.execute(update(Conversation).where(Conversation.id == conv_id).values(pinned=pinned))
     await db.commit()
     return {"ok": True}
 
 
-@router.patch("/{conv_id}/archive")
+@router.patch(
+    "/{conv_id}/archive",
+    summary="Archive conversation",
+    description="Set archived status on a conversation.",
+)
 async def archive_conversation(conv_id: str, archived: bool, db: AsyncSession = Depends(get_db)):
     await db.execute(update(Conversation).where(Conversation.id == conv_id).values(archived=archived))
     await db.commit()
     return {"ok": True}
 
 
-@router.patch("/{conv_id}/read")
+@router.patch(
+    "/{conv_id}/read",
+    summary="Mark conversation read",
+    description="Reset unread counter for a conversation.",
+)
 async def mark_read(conv_id: str, db: AsyncSession = Depends(get_db)):
     await db.execute(update(Conversation).where(Conversation.id == conv_id).values(unread_count=0))
     await db.commit()

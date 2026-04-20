@@ -31,7 +31,12 @@ class ContactResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/", response_model=List[ContactResponse])
+@router.get(
+    "/",
+    response_model=List[ContactResponse],
+    summary="List contacts",
+    description="Return all contacts for the given account id.",
+)
 async def list_contacts(account_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Contact).where(Contact.account_id == account_id)
@@ -39,7 +44,12 @@ async def list_contacts(account_id: str, db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.post("/", response_model=ContactResponse)
+@router.post(
+    "/",
+    response_model=ContactResponse,
+    summary="Create or update contact",
+    description="Upsert one contact by account id and JID.",
+)
 async def upsert_contact(data: ContactUpsert, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Contact).where(Contact.account_id == data.account_id, Contact.jid == data.jid)
@@ -65,7 +75,11 @@ async def upsert_contact(data: ContactUpsert, db: AsyncSession = Depends(get_db)
     return contact
 
 
-@router.patch("/{contact_id}/block")
+@router.patch(
+    "/{contact_id}/block",
+    summary="Update blocked status",
+    description="Set or clear contact blocked flag.",
+)
 async def block_contact(contact_id: str, blocked: bool, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Contact).where(Contact.id == contact_id))
     contact = result.scalar_one_or_none()
@@ -76,7 +90,11 @@ async def block_contact(contact_id: str, blocked: bool, db: AsyncSession = Depen
     return {"ok": True}
 
 
-@router.delete("/{contact_id}")
+@router.delete(
+    "/{contact_id}",
+    summary="Delete contact",
+    description="Delete one contact record by id.",
+)
 async def delete_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
     await db.execute(delete(Contact).where(Contact.id == contact_id))
     await db.commit()

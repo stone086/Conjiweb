@@ -23,7 +23,11 @@ class RegisterRequest(BaseModel):
     password: str
 
 
-@router.post("/admin/login")
+@router.post(
+    "/admin/login",
+    summary="Admin login",
+    description="Authenticate admin user and return JWT access token.",
+)
 @limiter.limit("5/minute")
 async def admin_login(request: Request, data: AdminLogin):
     if not ADMIN_PASSWORD:
@@ -52,7 +56,11 @@ def parse_jid(jid: str):
     return username, domain
 
 
-@router.post("/register")
+@router.post(
+    "/register",
+    summary="Register XMPP account",
+    description="Create a new Prosody account when registration is enabled.",
+)
 @limiter.limit("10/minute")
 async def register_xmpp_account(request: Request, data: RegisterRequest):
     if not settings.XMPP_REGISTRATION_ENABLED:

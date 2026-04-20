@@ -34,7 +34,12 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
-@router.post("/", response_model=MessageResponse)
+@router.post(
+    "/",
+    response_model=MessageResponse,
+    summary="Index message",
+    description="Persist one message into local searchable storage.",
+)
 async def index_message(data: MessageCreate, db: AsyncSession = Depends(get_db)):
     msg = Message(
         id=str(uuid.uuid4()),
@@ -53,7 +58,12 @@ async def index_message(data: MessageCreate, db: AsyncSession = Depends(get_db))
     return msg
 
 
-@router.get("/search", response_model=List[MessageResponse])
+@router.get(
+    "/search",
+    response_model=List[MessageResponse],
+    summary="Search messages",
+    description="Search messages by keyword within one account scope.",
+)
 async def search_messages(
     q: str = Query(..., min_length=1),
     account_id: Optional[str] = None,
@@ -77,7 +87,12 @@ async def search_messages(
     return result.scalars().all()
 
 
-@router.get("/conversation/{conversation_id}", response_model=List[MessageResponse])
+@router.get(
+    "/conversation/{conversation_id}",
+    response_model=List[MessageResponse],
+    summary="List conversation messages",
+    description="Return paginated messages for one conversation.",
+)
 async def get_conversation_messages(
     conversation_id: str,
     limit: int = 50,

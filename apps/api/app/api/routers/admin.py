@@ -13,7 +13,11 @@ import redis.asyncio as redis
 router = APIRouter()
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    summary="System status",
+    description="Return high-level system status and entity counters.",
+)
 async def system_status(db: AsyncSession = Depends(get_db)):
     account_count = await db.scalar(select(func.count()).select_from(Account))
     message_count = await db.scalar(select(func.count()).select_from(Message))
@@ -29,7 +33,11 @@ async def system_status(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/audit-logs")
+@router.get(
+    "/audit-logs",
+    summary="Audit logs",
+    description="Return paginated audit log entries.",
+)
 async def get_audit_logs(limit: int = 50, offset: int = 0, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
@@ -57,7 +65,11 @@ async def _tcp_check(host: str, port: int, timeout: float = 1.5) -> bool:
         return False
 
 
-@router.get("/service-health")
+@router.get(
+    "/service-health",
+    summary="Service health",
+    description="Check runtime health of DB, Redis, MinIO, and Prosody dependencies.",
+)
 async def service_health(db: AsyncSession = Depends(get_db)):
     services = []
 
