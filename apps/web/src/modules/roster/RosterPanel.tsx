@@ -222,9 +222,9 @@ export default function RosterPanel() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newJid, setNewJid] = useState("");
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const contacts = useRosterStore((s) => (activeAccountId ? s.listContacts(activeAccountId) : []));
   const upsertContact = useRosterStore((s) => s.upsertContact);
-  const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
   const upsertConversation = useChatStore((s) => s.upsertConversation);
   const navigate = useNavigate();
