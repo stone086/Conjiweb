@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { getAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient, getClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
+import { useReconnectStore } from "@/stores/reconnectStore";
 
 const RECONNECT_DELAYS = [3000, 5000, 10000, 30000]; // ms
 
@@ -12,6 +13,7 @@ const RECONNECT_DELAYS = [3000, 5000, 10000, 30000]; // ms
 export function useXmppReconnect() {
   const accounts = useAccountStore((s) => s.accounts);
   const setConnected = useAccountStore((s) => s.setConnected);
+  const setReconnecting = useReconnectStore((s) => s.setReconnecting);
   const attemptsRef = useRef<Record<string, number>>({});
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -27,6 +29,7 @@ export function useXmppReconnect() {
 
       const attempt = attemptsRef.current[account.id] ?? 0;
       const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)];
+      setReconnecting(account.id, true);
 
       timersRef.current[account.id] = setTimeout(async () => {
         delete timersRef.current[account.id];
@@ -35,6 +38,7 @@ export function useXmppReconnect() {
           const runtimePassword = getAccountPassword(account.id);
           if (!runtimePassword) {
             setConnected(account.id, false);
+            setReconnecting(account.id, false);
             return;
           }
           const wsUrl = import.meta.env.VITE_XMPP_WS_URL ?? "ws://localhost:5280/xmpp-websocket";
@@ -48,9 +52,11 @@ export function useXmppReconnect() {
           await newClient.connect();
           attemptsRef.current[account.id] = 0;
           setConnected(account.id, true);
+          setReconnecting(account.id, false);
         } catch {
           attemptsRef.current[account.id] = attempt + 1;
           setConnected(account.id, false);
+          setReconnecting(account.id, true);
         }
       }, delay);
     });
@@ -58,5 +64,5 @@ export function useXmppReconnect() {
     return () => {
       Object.values(timersRef.current).forEach(clearTimeout);
     };
-  }, [accounts, setConnected]);
+  }, [accounts, setConnected, setReconnecting]);
 }

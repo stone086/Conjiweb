@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   MessageSquare, Settings, Puzzle, Plus, Wifi, WifiOff,
 } from "lucide-react";
@@ -31,6 +32,18 @@ export default function Sidebar() {
   const activeId = useAccountStore((s) => s.activeAccountId);
   const setActive = useAccountStore((s) => s.setActiveAccount);
   const activeAccount = accounts.find((a) => a.id === activeId);
+  const [browserOnline, setBrowserOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+  useEffect(() => {
+    const onOnline = () => setBrowserOnline(true);
+    const onOffline = () => setBrowserOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   return (
     <aside className="w-16 flex-shrink-0 flex flex-col items-center py-4 gap-2
@@ -102,9 +115,9 @@ export default function Sidebar() {
       {/* Connection status */}
       <div
         className="mt-2 flex items-center justify-center"
-        title={activeAccount?.connected ? t("nav.connected") : t("nav.disconnected")}
+        title={!browserOnline ? "Browser offline" : (activeAccount?.connected ? t("nav.connected") : t("nav.disconnected"))}
       >
-        {activeAccount?.connected
+        {!browserOnline ? <WifiOff size={14} className="text-danger" /> : activeAccount?.connected
           ? <Wifi size={14} className="text-success" />
           : <WifiOff size={14} className="text-surface-200/30" />
         }

@@ -68,4 +68,16 @@ export default defineConfig({
       "/api": { target: "http://localhost:8000", changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          query: ["@tanstack/react-query"],
+          xmpp: ["strophe.js"],
+          ui: ["lucide-react", "react-hot-toast", "clsx"],
+        },
+      },
+    },
+  },
 });

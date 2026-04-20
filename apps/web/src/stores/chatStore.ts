@@ -58,6 +58,7 @@ interface ChatState {
   clearComposerDraft: (conversationId: string) => void;
   getComposerDraft: (conversationId: string) => string;
   clearAccountData: (accountId: string) => void;
+  updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
 }
 
 const MAX_MESSAGES_PER_CONVERSATION = 500;
@@ -297,6 +298,25 @@ export const useChatStore = create<ChatState>()(
             messages: nextMessages,
             composerDrafts: nextDrafts,
             activeConversationId: activeStillExists ? s.activeConversationId : null,
+          };
+        }),
+
+      updateMessage: (conversationId, messageId, patch) =>
+        set((s) => {
+          const existing = s.messages[conversationId] ?? [];
+          if (existing.length === 0) return s;
+          let touched = false;
+          const updated = existing.map((msg) => {
+            if (msg.id !== messageId) return msg;
+            touched = true;
+            return { ...msg, ...patch };
+          });
+          if (!touched) return s;
+          return {
+            messages: {
+              ...s.messages,
+              [conversationId]: updated,
+            },
           };
         }),
     }),

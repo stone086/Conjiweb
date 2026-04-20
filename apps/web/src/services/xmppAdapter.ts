@@ -26,6 +26,7 @@ export type XmppEvent =
   | "typing.stopped"
   | "message.delivered"
   | "message.read"
+  | "room.member"
   | "error";
 
 export interface XmppMessage {
@@ -174,6 +175,15 @@ export class XmppClient {
         });
         return true;
       }
+      const displayed = stanza.querySelector("displayed");
+      if (displayed) {
+        this.emit("message.read", {
+          accountId: this.config.accountId,
+          messageId: displayed.getAttribute("id"),
+          from,
+        });
+        return true;
+      }
 
       if (body) {
         const replyNode = stanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
@@ -209,6 +219,22 @@ export class XmppClient {
     conn.addHandler((stanza: Element) => {
       const from = stanza.getAttribute("from") ?? "";
       const type = stanza.getAttribute("type") ?? "available";
+      const fromParts = from.split("/");
+      const roomJid = fromParts[0] ?? "";
+      const nickname = fromParts[1] ?? "";
+      const mucUser = stanza.querySelector('x[xmlns="http://jabber.org/protocol/muc#user"]');
+      if (mucUser && roomJid && nickname) {
+        const item = mucUser.querySelector("item");
+        this.emit("room.member", {
+          accountId: this.config.accountId,
+          roomJid,
+          nickname,
+          jid: item?.getAttribute("jid") ?? `${nickname}@${roomJid}`,
+          role: (item?.getAttribute("role") ?? "participant") as "moderator" | "participant" | "visitor",
+          affiliation: (item?.getAttribute("affiliation") ?? "none") as "owner" | "admin" | "member" | "none",
+          presence: type === "unavailable" ? "unavailable" : "available",
+        });
+      }
       if (type === "subscribe") {
         this.emit("subscription.request", { accountId: this.config.accountId, jid: from.split("/")[0] });
         return true;
@@ -299,6 +325,14 @@ export class XmppClient {
     this._connection.send(
       this._$msg({ to: toJid, type: "chat" })
         .c(state, { xmlns: "http://jabber.org/protocol/chatstates" })
+    );
+  }
+
+  sendReceipt(toJid: string, messageId: string, kind: "received" | "displayed" = "received") {
+    if (!this._connection || !this._connected || !messageId) return;
+    this._connection.send(
+      this._$msg({ to: toJid, type: "chat" })
+        .c(kind, { xmlns: "urn:xmpp:receipts", id: messageId })
     );
   }
 

@@ -75,12 +75,17 @@ export default function PluginsPage() {
                     {plugin.id === "markdown-plus" && t("plugins.desc.markdown-plus")}
                   </p>
                   <div className="flex gap-1.5 mt-2 flex-wrap">
-                    {(["messages", "sidebar", "toolbar"] as string[]).slice(0, 2).map((perm) => (
+                    {(Array.isArray(plugin.permissions) ? plugin.permissions : []).map((perm: string) => (
                       <span key={perm}
                         className="px-2 py-0.5 rounded-full text-[10px] bg-surface-800 text-surface-200/50">
                         {perm}
                       </span>
                     ))}
+                    {!Array.isArray(plugin.permissions) || plugin.permissions.length === 0 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-surface-800 text-surface-200/40">
+                        no-permissions
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 

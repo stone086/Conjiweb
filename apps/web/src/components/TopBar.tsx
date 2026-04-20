@@ -8,6 +8,7 @@ import GlobalSearch from "@/modules/search/GlobalSearch";
 import { applyTheme, getStoredTheme } from "@/utils/theme";
 import { useLanguage } from "@/utils/i18n";
 import { getOmemoEnabled, onOmemoEnabledChange, setOmemoEnabled } from "@/services/omemoSettings";
+import { useReconnectStore } from "@/stores/reconnectStore";
 
 interface TopBarProps {
   onToggleRight?: () => void;
@@ -25,6 +26,7 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
     return theme === "dark";
   }, [theme]);
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === s.activeAccountId));
+  const reconnectingCount = useReconnectStore((s) => s.reconnectingAccountIds.length);
   const totalUnread = useNotificationStore((s) => s.totalUnread);
   const notifWrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -112,6 +114,9 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             <span className="text-surface-200 text-xs max-w-[100px] truncate">
               {account.displayName ?? account.jid.split("@")[0]}
             </span>
+            {reconnectingCount > 0 && (
+              <span className="text-[10px] text-warn">{`Reconnecting ${reconnectingCount}`}</span>
+            )}
           </div>
         )}
       </header>

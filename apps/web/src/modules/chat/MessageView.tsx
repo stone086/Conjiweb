@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useChatStore, ChatMessage } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { getClient } from "@/services/xmppAdapter";
@@ -15,6 +16,7 @@ import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
+import { attachmentsApi } from "@/services/api";
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
@@ -38,6 +40,7 @@ function MessageBubble({
   isOwn,
   onReply,
   onOpenImage,
+  onRetry,
   sentLabel,
   readLabel,
 }: {
@@ -47,6 +50,7 @@ function MessageBubble({
   isOwn: boolean;
   onReply: (m: ChatMessage) => void;
   onOpenImage: (src: string, alt: string) => void;
+  onRetry: (m: ChatMessage) => void;
   sentLabel: string;
   readLabel: string;
 }) {
@@ -89,6 +93,14 @@ function MessageBubble({
             {format(msg.timestamp, "HH:mm")}
           </span>
           {isOwn && <span className="text-[10px] text-surface-200/25">{msg.status === "read" ? readLabel : sentLabel}</span>}
+          {isOwn && msg.status === "failed" && (
+            <button
+              onClick={() => onRetry(msg)}
+              className="text-[10px] text-danger hover:text-danger/80 underline"
+            >
+              Retry
+            </button>
+          )}
         </div>
       </div>
       <div className={clsx("flex items-center self-center transition-opacity", hovered ? "opacity-100" : "opacity-0")}>
@@ -168,6 +180,7 @@ function ImageLightbox({
 }
 
 export default function MessageView({ conversationId }: { conversationId: string }) {
+  const [searchParams] = useSearchParams();
   const { t } = useLanguage();
   const [input, setInput] = useState("");
   const [showUpload, setShowUpload] = useState(false);
@@ -178,6 +191,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -187,6 +201,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
   const composerDraft = useChatStore((s) => s.composerDrafts[conversationId] ?? "");
   const addMessage = useChatStore((s) => s.addMessage);
+  const updateMessage = useChatStore((s) => s.updateMessage);
   const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const clearComposerDraft = useChatStore((s) => s.clearComposerDraft);
   const messageMap = new Map<string, ChatMessage>(messages.map((m) => [m.id, m]));
@@ -303,6 +318,19 @@ export default function MessageView({ conversationId }: { conversationId: string
     };
   }, [showEmojiPicker]);
 
+  useEffect(() => {
+    const targetId = searchParams.get("mid");
+    if (!targetId) return;
+    const target = messageNodeRefs.current[targetId];
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("ring-2", "ring-accent", "rounded-xl");
+    const timer = window.setTimeout(() => {
+      target.classList.remove("ring-2", "ring-accent", "rounded-xl");
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [messages, searchParams]);
+
   const handleScroll = () => {
     const c = containerRef.current;
     if (!c) return;
@@ -332,6 +360,27 @@ export default function MessageView({ conversationId }: { conversationId: string
           )
         : crypto.randomUUID();
     } catch (error: any) {
+      if (body) {
+        const failedMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          conversationId,
+          senderJid: client.config.jid,
+          body,
+          bodyType: "text",
+          direction: "out",
+          status: "failed",
+          timestamp: Date.now(),
+          replyToId: replyTo?.id,
+          attachments: pendingFiles.map((f) => ({
+            id: f.id,
+            fileName: f.name,
+            mimeType: f.mimeType,
+            downloadUrl: f.downloadUrl,
+            sizeBytes: f.sizeBytes,
+          })),
+        };
+        addMessage(failedMessage, { countAsUnread: false });
+      }
       toast.error(error?.message ?? t("chat.sendFailed"));
       return;
     }
@@ -364,6 +413,57 @@ export default function MessageView({ conversationId }: { conversationId: string
     setShowEmojiPicker(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, replyTo, t, clearComposerDraft]);
+
+  const retryFailedMessage = useCallback((message: ChatMessage) => {
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    if (!client?.connected) {
+      toast.error(t("chat.notConnected"));
+      return;
+    }
+    try {
+      const newId = client.sendMessage(
+        conversation?.peerJid ?? conversationId,
+        message.body,
+        conversation?.type === "group" ? "groupchat" : "chat"
+      );
+      updateMessage(conversationId, message.id, { id: newId, status: "sent", timestamp: Date.now() });
+    } catch (error: any) {
+      toast.error(error?.message ?? t("chat.sendFailed"));
+    }
+  }, [activeAccountId, conversation, conversationId, t, updateMessage]);
+
+  const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(event.clipboardData?.items ?? []);
+    const imageItems = items.filter((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (imageItems.length === 0) return;
+    event.preventDefault();
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    if (!client?.connected) {
+      toast.error(t("chat.notConnected"));
+      return;
+    }
+    for (const item of imageItems) {
+      const file = item.getAsFile();
+      if (!file) continue;
+      try {
+        const result = await attachmentsApi.upload(file);
+        setPendingFiles((prev) => [
+          ...prev,
+          {
+            id: result.id,
+            name: result.file_name,
+            mimeType: result.mime_type,
+            sizeBytes: result.size_bytes,
+            downloadUrl: result.download_url,
+          },
+        ]);
+      } catch {
+        toast.error(t("upload.error"));
+      }
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -399,7 +499,12 @@ export default function MessageView({ conversationId }: { conversationId: string
           const prev = messages[i - 1];
           const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
           return (
-            <div key={msg.id} className="animate-fade-in">
+            <div
+              key={msg.id}
+              className="animate-fade-in"
+              ref={(node) => { messageNodeRefs.current[msg.id] = node; }}
+              data-mid={msg.id}
+            >
               {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
               {msg.direction === "system" ? (
                 <div className="msg-bubble-system">{msg.body}</div>
@@ -411,6 +516,7 @@ export default function MessageView({ conversationId }: { conversationId: string
                   isOwn={isOwn}
                   onReply={setReplyTo}
                   onOpenImage={(src, alt) => setLightbox({ src, alt })}
+                  onRetry={retryFailedMessage}
                   sentLabel={t("chat.sentSent")}
                   readLabel={t("chat.sentRead")}
                 />
@@ -515,6 +621,7 @@ export default function MessageView({ conversationId }: { conversationId: string
               next.style.height = Math.min(next.scrollHeight, 120) + "px";
             }}
             onKeyDown={handleKeyDown}
+            onPaste={handleComposerPaste}
             onBlur={onBlur}
             placeholder={`${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
             rows={1}

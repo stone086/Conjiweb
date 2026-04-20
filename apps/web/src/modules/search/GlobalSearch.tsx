@@ -20,6 +20,7 @@ interface SearchResult {
   subtitle?: string;
   timestamp?: number;
   conversationId?: string;
+  messageId?: string;
 }
 
 export default function GlobalSearch({ onClose }: { onClose: () => void }) {
@@ -85,6 +86,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
               subtitle: conv?.title ?? m.sender_jid,
               timestamp: m.created_at ? new Date(m.created_at).getTime() : undefined,
               conversationId: m.conversation_id,
+              messageId: m.id,
             });
           });
         } catch {
@@ -110,7 +112,8 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
     localStorage.setItem("conjiweb-recent-searches", JSON.stringify(searches));
 
     if (result.type === "message" && result.conversationId) {
-      navigate(`/chat/${result.conversationId}`);
+      const mid = result.messageId ? `?mid=${encodeURIComponent(result.messageId)}` : "";
+      navigate(`/chat/${result.conversationId}${mid}`);
     } else if (result.type === "contact" || result.type === "room") {
       const conv = conversations.find((c) => c.peerJid === result.id);
       if (conv) navigate(`/chat/${conv.id}`);

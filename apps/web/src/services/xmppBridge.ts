@@ -9,6 +9,7 @@ import { useRosterStore } from "@/stores/rosterStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useAccountStore } from "@/stores/accountStore";
+import { useGroupStore } from "@/stores/groupStore";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
@@ -201,6 +202,10 @@ export function initXmppBridge(client: XmppClient) {
     };
 
     useChatStore.getState().addMessage(chatMsg);
+    client.sendReceipt(message.from, message.id, "received");
+    if (useChatStore.getState().activeConversationId === convId) {
+      client.sendReceipt(message.from, message.id, "displayed");
+    }
 
     // Cache to IndexedDB
     cacheMessages([chatMsg]).catch(() => {});
@@ -257,8 +262,45 @@ export function initXmppBridge(client: XmppClient) {
 
   // Delivery receipts
   client.on("message.delivered", (data: any) => {
-    // Update message status in store
-    console.log(`[xmppBridge] Message delivered: ${data.messageId}`);
+    const messageId = data.messageId as string | undefined;
+    if (!messageId) return;
+    const store = useChatStore.getState();
+    Object.entries(store.messages).forEach(([conversationId, list]) => {
+      if (list.some((m) => m.id === messageId && m.direction === "out")) {
+        store.updateMessage(conversationId, messageId, { status: "delivered" });
+      }
+    });
+  });
+
+  client.on("message.read", (data: any) => {
+    const messageId = data.messageId as string | undefined;
+    if (!messageId) return;
+    const store = useChatStore.getState();
+    Object.entries(store.messages).forEach(([conversationId, list]) => {
+      if (list.some((m) => m.id === messageId && m.direction === "out")) {
+        store.updateMessage(conversationId, messageId, { status: "read" });
+      }
+    });
+  });
+
+  client.on("room.member", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    const members = useGroupStore.getState().members[roomJid] ?? [];
+    const jid = normalizeBareJid(data.jid as string);
+    const nextMember = {
+      jid,
+      nickname: (data.nickname as string) ?? jid.split("@")[0],
+      role: (data.role as any) ?? "participant",
+      affiliation: (data.affiliation as any) ?? "none",
+      presence: (data.presence as any) ?? "available",
+    };
+    const without = members.filter((m) => m.jid !== jid);
+    if (nextMember.presence === "unavailable") {
+      useGroupStore.getState().setMembers(roomJid, without);
+      return;
+    }
+    useGroupStore.getState().setMembers(roomJid, [...without, nextMember]);
   });
 
   console.log(`[xmppBridge] Bridge initialized for account: ${accountId}`);
