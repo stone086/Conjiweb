@@ -104,3 +104,14 @@ export async function deleteLocalConversationData(conversationId: string) {
   await db.drafts.delete(conversationId);
   await db.conversations.delete(conversationId);
 }
+
+export async function clearLocalAccountData(accountId: string) {
+  const convs = await db.conversations.where("accountId").equals(accountId).toArray();
+  const convIds = convs.map((c) => c.id);
+  if (convIds.length > 0) {
+    await Promise.all(convIds.map((id) => db.messages.where("conversationId").equals(id).delete()));
+    await Promise.all(convIds.map((id) => db.drafts.delete(id)));
+  }
+  await db.conversations.where("accountId").equals(accountId).delete();
+  await db.contacts.where("accountId").equals(accountId).delete();
+}

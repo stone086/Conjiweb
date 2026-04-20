@@ -152,7 +152,12 @@ cmd_update_api() {
   if [[ -f .env && -f alembic.ini ]]; then
     db_url="$(grep '^DATABASE_URL=' .env | cut -d= -f2- || true)"
     if [[ -n "${db_url}" ]]; then
-      sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = ${db_url}|" alembic.ini
+      current_url="$(grep '^sqlalchemy.url = ' alembic.ini | cut -d= -f2- | xargs || true)"
+      if [[ -z "${current_url}" || "${current_url}" == "postgresql+asyncpg://user:pass@localhost/dbname" ]]; then
+        sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = ${db_url}|" alembic.ini
+      else
+        echo "Keeping operator-managed alembic sqlalchemy.url"
+      fi
     fi
   fi
   .venv/bin/alembic upgrade head

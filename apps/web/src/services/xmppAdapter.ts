@@ -70,6 +70,15 @@ function sanitizeXmlText(input: string): string {
   return output;
 }
 
+function parseXmppDelayTimestamp(stanza: Element): number {
+  const stamp = stanza
+    .querySelector('delay[xmlns="urn:xmpp:delay"]')
+    ?.getAttribute("stamp");
+  if (!stamp) return Date.now();
+  const parsed = Date.parse(stamp);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
 export class XmppClient {
   readonly config: XmppClientConfig;
   private handlers: Map<XmppEvent, EventHandler[]> = new Map();
@@ -389,19 +398,20 @@ export class XmppClient {
 
     if (options.before) iq.up().c("before").t(options.before);
 
-    this._connection.addHandler((stanza: Element) => {
+    const mamHandler = this._connection.addHandler((stanza: Element) => {
       const result = stanza.querySelector("result");
       if (!result || result.getAttribute("queryid") !== queryId) return true;
       const msg = result.querySelector("forwarded message");
       if (!msg) return true;
       const body = msg.querySelector("body")?.textContent ?? "";
       if (!body) return true;
+      const forwarded = result.querySelector("forwarded") as Element | null;
       const xmppMsg: XmppMessage = {
         id: msg.getAttribute("id") ?? crypto.randomUUID(),
         from: msg.getAttribute("from") ?? "",
         to: msg.getAttribute("to") ?? "",
         body,
-        timestamp: Date.now(),
+        timestamp: forwarded ? parseXmppDelayTimestamp(forwarded) : Date.now(),
         type: (msg.getAttribute("type") ?? "chat") as "chat" | "groupchat",
         stanzaId: result.getAttribute("id") ?? undefined,
         replyTo: msg.querySelector('reply[xmlns="urn:xmpp:reply:0"]')?.getAttribute("id") ?? undefined,
@@ -410,8 +420,21 @@ export class XmppClient {
       return true;
     }, null, "message");
 
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      if (mamHandler) {
+        this._connection.deleteHandler(mamHandler);
+      }
+    };
+
     this._connection.sendIQ(iq.tree(), () => {
+      cleanup();
       this.emit("mam.loaded", { accountId: this.config.accountId, targetJid, queryId });
+    }, () => {
+      cleanup();
+      this.emit("error", { type: "mam_fetch_failed", accountId: this.config.accountId, targetJid, queryId });
     });
   }
 

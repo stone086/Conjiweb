@@ -1,8 +1,8 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useChatStore, Conversation } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
-import { useGroupStore, MucMember } from "@/modules/group/GroupPanel";
+import { useGroupStore, MucMember } from "@/stores/groupStore";
 import { aiApi } from "@/services/api";
 import { X, Bot, Users, FileText, Info, Crown, Shield, Loader } from "lucide-react";
 import { clsx } from "clsx";
@@ -19,6 +19,7 @@ interface RightPanelProps {
 function AiSummaryTab({ conversationId }: { conversationId: string }) {
   const { t } = useLanguage();
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
+  const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<{ summary: string; key_points: string[] } | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -87,7 +88,11 @@ function AiSummaryTab({ conversationId }: { conversationId: string }) {
         {suggestions.length > 0 && (
           <div className="mt-2 flex flex-col gap-1.5">
             {suggestions.map((s) => (
-              <button key={s} className="w-full text-left text-xs px-3 py-2 rounded-lg bg-surface-800/50 hover:bg-surface-800 border border-white/5 text-surface-200/80">
+              <button
+                key={s}
+                onClick={() => setComposerDraft(conversationId, s)}
+                className="w-full text-left text-xs px-3 py-2 rounded-lg bg-surface-800/50 hover:bg-surface-800 border border-white/5 text-surface-200/80"
+              >
                 {s}
               </button>
             ))}
@@ -239,3 +244,5 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     </div>
   );
 }
+
+

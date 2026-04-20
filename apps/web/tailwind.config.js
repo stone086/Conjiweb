@@ -23,8 +23,8 @@ export default {
         danger:  "rgb(var(--danger) / <alpha-value>)",
       },
       fontFamily: {
-        sans: ["'DM Sans'", "system-ui", "sans-serif"],
-        mono: ["'JetBrains Mono'", "monospace"],
+        sans: ["Segoe UI", "SF Pro Text", "system-ui", "sans-serif"],
+        mono: ["Cascadia Mono", "Consolas", "ui-monospace", "monospace"],
       },
       animation: {
         "slide-in":   "slideIn 0.2s ease-out",

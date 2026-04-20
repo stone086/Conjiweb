@@ -2,60 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
+import { MucMember, MucRoom, useGroupStore } from "@/stores/groupStore";
 import { getClient } from "@/services/xmppAdapter";
 import { clsx } from "clsx";
 import { Users, Plus, Hash, LogOut, Settings, Crown, Shield, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { useLanguage } from "@/utils/i18n";
 import { generateConversationId } from "@/utils/helpers";
-
-export interface MucRoom {
-  jid: string;
-  name: string;
-  nickname: string;
-  description?: string;
-  memberCount?: number;
-  isPublic: boolean;
-  joined: boolean;
-  subject?: string;
-}
-
-export interface MucMember {
-  jid: string;
-  nickname: string;
-  role: "moderator" | "participant" | "visitor";
-  affiliation: "owner" | "admin" | "member" | "none";
-  presence: "available" | "away" | "unavailable";
-}
-
-interface GroupState {
-  rooms: Record<string, MucRoom>;
-  members: Record<string, MucMember[]>; // keyed by roomJid
-  upsertRoom: (room: MucRoom) => void;
-  removeRoom: (jid: string) => void;
-  setMembers: (roomJid: string, members: MucMember[]) => void;
-  updateRoomSubject: (roomJid: string, subject: string) => void;
-}
-
-export const useGroupStore = create<GroupState>()(
-  persist(
-    (set) => ({
-      rooms: {},
-      members: {},
-      upsertRoom: (room) => set((s) => ({ rooms: { ...s.rooms, [room.jid]: room } })),
-      removeRoom: (jid) => set((s) => {
-        const r = { ...s.rooms }; delete r[jid]; return { rooms: r };
-      }),
-      setMembers: (roomJid, members) => set((s) => ({ members: { ...s.members, [roomJid]: members } })),
-      updateRoomSubject: (roomJid, subject) => set((s) => ({
-        rooms: s.rooms[roomJid] ? { ...s.rooms, [roomJid]: { ...s.rooms[roomJid], subject } } : s.rooms,
-      })),
-    }),
-    { name: "conjiweb-groups" }
-  )
-);
 
 function RoleIcon({ role, affiliation }: { role: MucMember["role"]; affiliation: MucMember["affiliation"] }) {
   if (affiliation === "owner") return <Crown size={10} className="text-yellow-400" />;
@@ -64,7 +17,7 @@ function RoleIcon({ role, affiliation }: { role: MucMember["role"]; affiliation:
   return null;
 }
 
-function RoomCard({ room }: { room: MucRoom }) {
+function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom) => void }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -102,20 +55,6 @@ function RoomCard({ room }: { room: MucRoom }) {
     toast(t("group.leftRoom"));
   };
 
-  const invite = () => {
-    if (!activeAccountId || !room.joined) return;
-    const inviteeJid = window.prompt(t("group.invitePrompt"));
-    if (!inviteeJid?.trim()) return;
-    const reason = window.prompt(t("group.inviteReasonOptional")) ?? "";
-    try {
-      const client = getClient(activeAccountId);
-      client?.inviteToRoom(room.jid, inviteeJid.trim(), reason);
-      toast.success(`${t("group.invited")}: ${inviteeJid.trim()}`);
-    } catch (error: any) {
-      toast.error(error?.message ?? t("group.inviteFailed"));
-    }
-  };
-
   return (
     <div className={clsx(
       "glass rounded-xl p-4 flex items-start gap-3 cursor-pointer hover:bg-white/4 transition-colors",
@@ -139,7 +78,7 @@ function RoomCard({ room }: { room: MucRoom }) {
       </div>
       {room.joined && (
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={(e) => { e.stopPropagation(); invite(); }}
+          <button onClick={(e) => { e.stopPropagation(); onInvite(room); }}
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-accent-soft"
             title={t("group.invite")}>
             <UserPlus size={13} />
@@ -159,8 +98,10 @@ export default function GroupPanel() {
   const { t } = useLanguage();
   const [showJoin, setShowJoin] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [inviteRoom, setInviteRoom] = useState<MucRoom | null>(null);
   const [joinForm, setJoinForm] = useState({ jid: "", nickname: "" });
   const [createForm, setCreateForm] = useState({ name: "", server: "conference.localhost" });
+  const [inviteForm, setInviteForm] = useState({ jid: "", reason: "" });
   const rooms = useGroupStore((s) => Object.values(s.rooms));
   const upsertRoom = useGroupStore((s) => s.upsertRoom);
   const upsertConversation = useChatStore((s) => s.upsertConversation);
@@ -226,6 +167,23 @@ export default function GroupPanel() {
     toast.success(t("group.joined"));
   };
 
+  const handleInvite = () => {
+    if (!activeAccountId || !inviteRoom) return;
+    if (!inviteForm.jid.trim()) {
+      toast.error(t("group.invitePrompt"));
+      return;
+    }
+    try {
+      const client = getClient(activeAccountId);
+      client?.inviteToRoom(inviteRoom.jid, inviteForm.jid.trim(), inviteForm.reason.trim());
+      toast.success(`${t("group.invited")}: ${inviteForm.jid.trim()}`);
+      setInviteForm({ jid: "", reason: "" });
+      setInviteRoom(null);
+    } catch (error: any) {
+      toast.error(error?.message ?? t("group.inviteFailed"));
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
@@ -253,7 +211,7 @@ export default function GroupPanel() {
             placeholder="room@conference.example.com"
             className="input-field text-xs py-1.5" />
           <input value={joinForm.nickname} onChange={(e) => setJoinForm({ ...joinForm, nickname: e.target.value })}
-            placeholder={`${t("group.nicknameDefault")} ${defaultNickname})`}
+            placeholder={`${t("group.nicknameDefault")} ${defaultNickname}`}
             className="input-field text-xs py-1.5" />
           <div className="flex gap-2">
             <button onClick={handleJoin} className="btn-primary text-xs py-1.5 flex-1">{t("group.join")}</button>
@@ -278,6 +236,36 @@ export default function GroupPanel() {
         </div>
       )}
 
+      {inviteRoom && (
+        <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.invite")} {inviteRoom.name}</p>
+          <input
+            value={inviteForm.jid}
+            onChange={(e) => setInviteForm((prev) => ({ ...prev, jid: e.target.value }))}
+            placeholder="user@example.com"
+            className="input-field text-xs py-1.5"
+          />
+          <input
+            value={inviteForm.reason}
+            onChange={(e) => setInviteForm((prev) => ({ ...prev, reason: e.target.value }))}
+            placeholder={t("group.inviteReasonOptional")}
+            className="input-field text-xs py-1.5"
+          />
+          <div className="flex gap-2">
+            <button onClick={handleInvite} className="btn-primary text-xs py-1.5 flex-1">{t("group.invite")}</button>
+            <button
+              onClick={() => {
+                setInviteRoom(null);
+                setInviteForm({ jid: "", reason: "" });
+              }}
+              className="btn-ghost text-xs py-1.5"
+            >
+              {t("group.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
         {rooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 gap-2 text-surface-200/30">
@@ -285,7 +273,7 @@ export default function GroupPanel() {
             <span className="text-xs">{t("group.empty")}</span>
           </div>
         ) : (
-          rooms.map((room) => <RoomCard key={room.jid} room={room} />)
+          rooms.map((room) => <RoomCard key={room.jid} room={room} onInvite={setInviteRoom} />)
         )}
       </div>
     </div>

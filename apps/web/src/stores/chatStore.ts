@@ -42,6 +42,7 @@ export interface Conversation {
 interface ChatState {
   conversations: Record<string, Conversation>;
   messages: Record<string, ChatMessage[]>; // keyed by conversationId
+  composerDrafts: Record<string, string>;
   activeConversationId: string | null;
 
   setActiveConversation: (id: string | null) => void;
@@ -53,13 +54,20 @@ interface ChatState {
   pruneHistoryOlderThan: (cutoffTs: number) => void;
   mergeDuplicatePrivateConversations: () => void;
   deleteConversation: (conversationId: string) => void;
+  setComposerDraft: (conversationId: string, draft: string) => void;
+  clearComposerDraft: (conversationId: string) => void;
+  getComposerDraft: (conversationId: string) => string;
+  clearAccountData: (accountId: string) => void;
 }
+
+const MAX_MESSAGES_PER_CONVERSATION = 500;
 
 export const useChatStore = create<ChatState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       conversations: {},
       messages: {},
+      composerDrafts: {},
       activeConversationId: null,
 
       setActiveConversation: (id) =>
@@ -106,7 +114,7 @@ export const useChatStore = create<ChatState>()(
           return {
             messages: {
               ...s.messages,
-              [msg.conversationId]: [...existing, msg],
+              [msg.conversationId]: [...existing, msg].slice(-MAX_MESSAGES_PER_CONVERSATION),
             },
             conversations: conv
               ? {
@@ -245,12 +253,50 @@ export const useChatStore = create<ChatState>()(
         set((s) => {
           const nextConversations = { ...s.conversations };
           const nextMessages = { ...s.messages };
+          const nextDrafts = { ...s.composerDrafts };
           delete nextConversations[conversationId];
           delete nextMessages[conversationId];
+          delete nextDrafts[conversationId];
           return {
             conversations: nextConversations,
             messages: nextMessages,
+            composerDrafts: nextDrafts,
             activeConversationId: s.activeConversationId === conversationId ? null : s.activeConversationId,
+          };
+        }),
+
+      setComposerDraft: (conversationId, draft) =>
+        set((s) => ({
+          composerDrafts: { ...s.composerDrafts, [conversationId]: draft },
+        })),
+
+      clearComposerDraft: (conversationId) =>
+        set((s) => {
+          const nextDrafts = { ...s.composerDrafts };
+          delete nextDrafts[conversationId];
+          return { composerDrafts: nextDrafts };
+        }),
+
+      getComposerDraft: (conversationId) => get().composerDrafts[conversationId] ?? "",
+
+      clearAccountData: (accountId) =>
+        set((s) => {
+          const nextConversations = { ...s.conversations };
+          const nextMessages = { ...s.messages };
+          const nextDrafts = { ...s.composerDrafts };
+          Object.entries(s.conversations).forEach(([id, conv]) => {
+            if (conv.accountId !== accountId) return;
+            delete nextConversations[id];
+            delete nextMessages[id];
+            delete nextDrafts[id];
+          });
+          const activeStillExists =
+            s.activeConversationId && nextConversations[s.activeConversationId];
+          return {
+            conversations: nextConversations,
+            messages: nextMessages,
+            composerDrafts: nextDrafts,
+            activeConversationId: activeStillExists ? s.activeConversationId : null,
           };
         }),
     }),
@@ -259,6 +305,7 @@ export const useChatStore = create<ChatState>()(
       partialize: (s) => ({
         conversations: s.conversations,
         messages: s.messages,
+        composerDrafts: s.composerDrafts,
         activeConversationId: s.activeConversationId,
       }),
     }

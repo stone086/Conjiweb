@@ -29,6 +29,7 @@ interface RosterState {
   markPendingIncoming: (accountId: string, jid: string) => void;
   getContact: (accountId: string, jid: string) => RosterContact | undefined;
   listContacts: (accountId: string) => RosterContact[];
+  clearAccountData: (accountId: string) => void;
 }
 
 function contactKey(accountId: string, jid: string) {
@@ -143,6 +144,15 @@ export const useRosterStore = create<RosterState>()(
 
       listContacts: (accountId) =>
         Object.values(get().contacts).filter((c) => c.accountId === accountId),
+
+      clearAccountData: (accountId) =>
+        set((s) => {
+          const next = { ...s.contacts };
+          Object.entries(next).forEach(([key, contact]) => {
+            if (contact.accountId === accountId) delete next[key];
+          });
+          return { contacts: next };
+        }),
     }),
     { name: "conjiweb-roster" }
   )

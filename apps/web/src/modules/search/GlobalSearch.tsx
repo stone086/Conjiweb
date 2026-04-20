@@ -4,7 +4,7 @@ import { messagesApi } from "@/services/api";
 import { useChatStore } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useRosterStore } from "@/stores/rosterStore";
-import { useGroupStore } from "@/modules/group/GroupPanel";
+import { useGroupStore } from "@/stores/groupStore";
 import { debounce } from "@/utils/helpers";
 import { Search, MessageSquare, User, Hash, X, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";

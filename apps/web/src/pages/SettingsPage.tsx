@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getAccountPassword, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
+import { useChatStore } from "@/stores/chatStore";
+import { useRosterStore } from "@/stores/rosterStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
 import { getClient } from "@/services/xmppAdapter";
 import { Trash2, Plus, Wifi, WifiOff, Copy, Check } from "lucide-react";
@@ -13,12 +15,17 @@ import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
 import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { accountsApi } from "@/services/api";
+import { clearLocalAccountData } from "@/services/localDb";
 
 const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
+const DENSITY_KEY = "conjiweb-message-density";
+type MessageDensity = "comfortable" | "compact";
 
 function AccountCard({ account }: { account: XmppAccount }) {
   const { t } = useLanguage();
   const removeAccount = useAccountStore((s) => s.removeAccount);
+  const clearChatAccountData = useChatStore((s) => s.clearAccountData);
+  const clearRosterAccountData = useRosterStore((s) => s.clearAccountData);
   const updatePresence = useAccountStore((s) => s.updatePresence);
   const setConnected = useAccountStore((s) => s.setConnected);
   const [connecting, setConnecting] = useState(false);
@@ -56,6 +63,14 @@ function AccountCard({ account }: { account: XmppAccount }) {
     destroyClient(account.id);
     setConnected(account.id, false);
     toast(t("toast.disconnected"));
+  };
+
+  const removeAccountWithData = async () => {
+    disconnect();
+    clearChatAccountData(account.id);
+    clearRosterAccountData(account.id);
+    await clearLocalAccountData(account.id).catch(() => {});
+    removeAccount(account.id);
   };
 
   return (
@@ -119,7 +134,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
           </button>
         )}
         <button
-          onClick={() => { disconnect(); removeAccount(account.id); }}
+          onClick={removeAccountWithData}
           className="btn-ghost text-xs py-1.5 flex items-center gap-1.5 text-danger ml-auto"
         >
           <Trash2 size={12} /> {t("account.remove")}
@@ -134,6 +149,7 @@ export default function SettingsPage() {
   const accounts = useAccountStore((s) => s.accounts);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const addAccount = useAccountStore((s) => s.addAccount);
+  const setConnected = useAccountStore((s) => s.setConnected);
   const soundEnabled = useNotificationStore((s) => s.soundEnabled);
   const browserEnabled = useNotificationStore((s) => s.browserEnabled);
   const setSoundEnabled = useNotificationStore((s) => s.setSoundEnabled);
@@ -145,6 +161,10 @@ export default function SettingsPage() {
   const [language, setLanguageState] = useState<Language>(getStoredLanguage());
   const [historyRetentionDays, setHistoryRetentionDays] = useState<number>(getStoredHistoryRetentionDays());
   const [notifyMentionEnabled, setNotifyMentionEnabled] = useState<boolean>(() => localStorage.getItem(MENTION_NOTIFY_KEY) !== "0");
+  const [messageDensity, setMessageDensity] = useState<MessageDensity>(() => {
+    const raw = localStorage.getItem(DENSITY_KEY);
+    return raw === "compact" ? "compact" : "comfortable";
+  });
   const [omemoFingerprints, setOmemoFingerprints] = useState<Record<string, string>>({});
   const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
   const [omemoEnabled, setOmemoEnabledState] = useState<boolean>(getOmemoEnabled());
@@ -177,6 +197,11 @@ export default function SettingsPage() {
   }, [notifyMentionEnabled]);
 
   useEffect(() => {
+    localStorage.setItem(DENSITY_KEY, messageDensity);
+    document.documentElement.classList.toggle("density-compact", messageDensity === "compact");
+  }, [messageDensity]);
+
+  useEffect(() => {
     if (!activeAccountId) return;
     accountsApi
       .getPreferences(activeAccountId)
@@ -202,7 +227,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
     const id = crypto.randomUUID();
     addAccount({
@@ -213,6 +238,18 @@ export default function SettingsPage() {
       displayName: form.jid.split("@")[0],
     });
     setAccountPassword(id, form.password);
+    try {
+      const client = createClient({
+        jid: form.jid,
+        password: form.password,
+        wsUrl: form.wsUrl || import.meta.env.VITE_XMPP_WS_URL || "ws://localhost:5280/xmpp-websocket",
+        accountId: id,
+      });
+      client.on("connection.changed", (d: any) => setConnected(id, d.status === "connected"));
+      await client.connect();
+    } catch (error: any) {
+      toast.error(error?.message ?? t("toast.connectionFailed"));
+    }
     setForm({ jid: "", password: "", wsUrl: "" });
     setShowAdd(false);
     toast.success(t("toast.accountAdded"));
@@ -328,7 +365,11 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-surface-200">{t("settings.messageDensity")}</span>
-              <select className="input-field w-auto text-sm">
+              <select
+                className="input-field w-auto text-sm"
+                value={messageDensity}
+                onChange={(e) => setMessageDensity(e.target.value as MessageDensity)}
+              >
                 <option value="comfortable">{t("settings.densityComfortable")}</option>
                 <option value="compact">{t("settings.densityCompact")}</option>
               </select>

@@ -10,7 +10,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       manifest: {
         name: "Conjiweb",
-        short_name: "WGajim",
+        short_name: "Conjiweb",
         description: "Modern Web XMPP Client",
         theme_color: "#1a1a2e",
         background_color: "#0f0f1a",
@@ -22,6 +22,40 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "pages-cache",
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 20, maxAgeSeconds: 24 * 60 * 60 },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+            handler: "NetworkOnly",
+          },
+          {
+            urlPattern: ({ request }) =>
+              request.destination === "style"
+              || request.destination === "script"
+              || request.destination === "worker",
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "assets-runtime",
+              expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
+            },
+          },
+          {
+            urlPattern: ({ request }) => request.destination === "image",
+            handler: "CacheFirst",
+            options: {
+              cacheName: "images-runtime",
+              expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            },
+          },
+        ],
       },
     }),
   ],

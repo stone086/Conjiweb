@@ -113,3 +113,12 @@
 .msg-bubble-system {
   @apply text-center text-xs text-surface-200/50 py-2;
 }
+
+:root.density-compact .msg-bubble-in,
+:root.density-compact .msg-bubble-out {
+  @apply px-3 py-1.5 text-[13px];
+}
+
+:root.density-compact .msg-bubble-system {
+  @apply py-1 text-[11px];
+}

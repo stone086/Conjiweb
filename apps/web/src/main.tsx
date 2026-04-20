@@ -14,6 +14,7 @@ const queryClient = new QueryClient({
 });
 
 applyTheme(getStoredTheme());
+document.documentElement.classList.toggle("density-compact", localStorage.getItem("conjiweb-message-density") === "compact");
 applyConfiguredHistoryRetention().catch(() => {});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

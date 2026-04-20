@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRosterStore, RosterContact } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
@@ -28,6 +28,7 @@ function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
 function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid: string) => void }) {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const blockContact = useRosterStore((s) => s.blockContact);
   const unblockContact = useRosterStore((s) => s.unblockContact);
   const upsertContact = useRosterStore((s) => s.upsertContact);
@@ -99,6 +100,22 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
     toast.success(t("roster.rejectedDone"));
   };
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (menuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [menuOpen]);
+
   return (
     <div className="relative flex items-center gap-3 px-3 py-2 hover:bg-white/4 group rounded-lg mx-1 cursor-pointer"
       onClick={() => onChat(contact.jid)}>
@@ -144,7 +161,7 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
           className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
           <MessageSquare size={13} />
         </button>
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen(!menuOpen)}
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
             <MoreVertical size={13} />

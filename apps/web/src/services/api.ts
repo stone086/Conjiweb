@@ -1,4 +1,5 @@
 import axios from "axios";
+export const ADMIN_SESSION_EXPIRED_EVENT = "conjiweb:admin-session-expired";
 
 function normalizeApiUrl(raw?: string): string {
   const fallback = "/api";
@@ -43,6 +44,18 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401 && localStorage.getItem("admin_token")) {
+      localStorage.removeItem("admin_token");
+      window.dispatchEvent(new Event(ADMIN_SESSION_EXPIRED_EVENT));
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Accounts
 export const accountsApi = {

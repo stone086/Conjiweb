@@ -51,6 +51,10 @@ AI_API_KEY="${AI_API_KEY:-}"
 AI_BASE_URL="${AI_BASE_URL:-}"
 AI_MODEL="${AI_MODEL:-}"
 ALERT_EMAIL="${ALERT_EMAIL:-}"
+DB_POOL_SIZE="${DB_POOL_SIZE:-10}"
+DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW:-20}"
+DB_POOL_TIMEOUT="${DB_POOL_TIMEOUT:-30}"
+DB_POOL_RECYCLE="${DB_POOL_RECYCLE:-1800}"
 
 ensure_service_users() {
   if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -206,6 +210,10 @@ load_config() {
   AI_BASE_URL="${AI_BASE_URL:-}"
   AI_MODEL="${AI_MODEL:-}"
   ALERT_EMAIL="${ALERT_EMAIL:-}"
+  DB_POOL_SIZE="${DB_POOL_SIZE:-10}"
+  DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW:-20}"
+  DB_POOL_TIMEOUT="${DB_POOL_TIMEOUT:-30}"
+  DB_POOL_RECYCLE="${DB_POOL_RECYCLE:-1800}"
 
   # Strip accidental CR characters from sourced values.
   DOMAIN="${DOMAIN//$'\r'/}"
@@ -225,6 +233,10 @@ load_config() {
   AI_BASE_URL="${AI_BASE_URL//$'\r'/}"
   AI_MODEL="${AI_MODEL//$'\r'/}"
   ALERT_EMAIL="${ALERT_EMAIL//$'\r'/}"
+  DB_POOL_SIZE="${DB_POOL_SIZE//$'\r'/}"
+  DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW//$'\r'/}"
+  DB_POOL_TIMEOUT="${DB_POOL_TIMEOUT//$'\r'/}"
+  DB_POOL_RECYCLE="${DB_POOL_RECYCLE//$'\r'/}"
 
   DB_PASS_SQL_ESCAPED="${DB_PASS//\'/\'\'}"
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
@@ -289,6 +301,26 @@ load_config() {
     sed -i "s|^ALERT_EMAIL=.*|ALERT_EMAIL=${ALERT_EMAIL}|" .env
   else
     echo "ALERT_EMAIL=${ALERT_EMAIL}" >> .env
+  fi
+  if grep -qE '^DB_POOL_SIZE=' .env; then
+    sed -i "s|^DB_POOL_SIZE=.*|DB_POOL_SIZE=${DB_POOL_SIZE}|" .env
+  else
+    echo "DB_POOL_SIZE=${DB_POOL_SIZE}" >> .env
+  fi
+  if grep -qE '^DB_MAX_OVERFLOW=' .env; then
+    sed -i "s|^DB_MAX_OVERFLOW=.*|DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW}|" .env
+  else
+    echo "DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW}" >> .env
+  fi
+  if grep -qE '^DB_POOL_TIMEOUT=' .env; then
+    sed -i "s|^DB_POOL_TIMEOUT=.*|DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT}|" .env
+  else
+    echo "DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT}" >> .env
+  fi
+  if grep -qE '^DB_POOL_RECYCLE=' .env; then
+    sed -i "s|^DB_POOL_RECYCLE=.*|DB_POOL_RECYCLE=${DB_POOL_RECYCLE}|" .env
+  else
+    echo "DB_POOL_RECYCLE=${DB_POOL_RECYCLE}" >> .env
   fi
   chmod 600 .env
 }
@@ -525,6 +557,10 @@ AI_API_KEY=${AI_API_KEY}
 AI_BASE_URL=${AI_BASE_URL}
 AI_MODEL=${AI_MODEL}
 ALERT_EMAIL=${ALERT_EMAIL}
+DB_POOL_SIZE=${DB_POOL_SIZE}
+DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW}
+DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT}
+DB_POOL_RECYCLE=${DB_POOL_RECYCLE}
 EOF
   chmod 600 "${INSTALL_DIR}/api/.env"
   chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api/.env"
@@ -931,10 +967,11 @@ set -euo pipefail
 BACKUP_DIR="/root/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_REMOTE="${BACKUP_REMOTE}"
+DB_NAME="${APP_USER}"
 mkdir -p "$BACKUP_DIR"
 
 # Backup PostgreSQL
-sudo -u postgres pg_dump conjiweb | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
+sudo -u postgres pg_dump "$DB_NAME" | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
 if ! gzip -t "${BACKUP_DIR}/db_${DATE}.sql.gz"; then
   echo "backup verification failed: db_${DATE}.sql.gz" >&2
   exit 1
@@ -979,11 +1016,34 @@ setup_monitoring_alert() {
   cat > /usr/local/bin/conjiweb-alert.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -f /opt/conjiweb-src/.env ]]; then
+  # shellcheck disable=SC1091
+  source /opt/conjiweb-src/.env
+fi
 services=(postgresql redis-server prosody conjiweb-api nginx)
+ALERT_EMAIL="${ALERT_EMAIL:-}"
 for svc in "${services[@]}"; do
   if ! systemctl is-active --quiet "$svc"; then
-    echo "$(date '+%F %T') WARN service down: $svc" >> /var/log/conjiweb-alert.log
+    msg="$(date '+%F %T') WARN service down: $svc"
+    echo "$msg" >> /var/log/conjiweb-alert.log
     systemctl restart "$svc" || true
+    if [[ -n "$ALERT_EMAIL" ]] && command -v mail >/dev/null 2>&1; then
+      echo "$msg" | mail -s "Conjiweb service alert" "$ALERT_EMAIL" || true
+    fi
+  fi
+done
+
+for mount in / /data; do
+  if ! df -P "$mount" >/dev/null 2>&1; then
+    continue
+  fi
+  use_pct="$(df -P "$mount" | awk 'NR==2 {gsub(/%/, "", $5); print $5}')"
+  if [[ -n "$use_pct" ]] && (( use_pct >= 90 )); then
+    msg="$(date '+%F %T') WARN disk usage high: $mount ${use_pct}%"
+    echo "$msg" >> /var/log/conjiweb-alert.log
+    if [[ -n "$ALERT_EMAIL" ]] && command -v mail >/dev/null 2>&1; then
+      echo "$msg" | mail -s "Conjiweb disk alert" "$ALERT_EMAIL" || true
+    fi
   fi
 done
 EOF

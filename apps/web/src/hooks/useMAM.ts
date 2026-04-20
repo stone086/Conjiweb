@@ -25,6 +25,12 @@ export function useMAM(peerJid: string, conversationId: string) {
 
     return new Promise<void>((resolve) => {
       let count = 0;
+      const timeout = window.setTimeout(() => {
+        unsubMsg();
+        unsubDone();
+        setLoading(false);
+        resolve();
+      }, 10000);
 
       const unsubMsg = client.on("mam.message", (data: any) => {
         count++;
@@ -34,6 +40,7 @@ export function useMAM(peerJid: string, conversationId: string) {
       });
 
       const unsubDone = client.on("mam.loaded", () => {
+        window.clearTimeout(timeout);
         unsubMsg();
         unsubDone();
         setLoading(false);

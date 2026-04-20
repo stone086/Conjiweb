@@ -5,12 +5,14 @@ import { getClient } from "@/services/xmppAdapter";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMAM } from "@/hooks/useMAM";
 import { FileUploadZone, UploadedFile, ImagePreview, FileCard } from "@/modules/media/FileUpload";
-import { cacheMessages, getLocalMessages } from "@/services/localDb";
+import { cacheMessages, getDraft, getLocalMessages, saveDraft } from "@/services/localDb";
 import { getChatToolbarActions } from "@/plugins/host";
 import type { ChatToolbarAction } from "@/plugins/sdk";
 import { format, isSameDay } from "date-fns";
 import { clsx } from "clsx";
-import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader } from "lucide-react";
+import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile } from "lucide-react";
+import EmojiPicker from "emoji-picker-react";
+import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 
@@ -35,6 +37,7 @@ function MessageBubble({
   replySender,
   isOwn,
   onReply,
+  onOpenImage,
   sentLabel,
   readLabel,
 }: {
@@ -43,6 +46,7 @@ function MessageBubble({
   replySender?: string;
   isOwn: boolean;
   onReply: (m: ChatMessage) => void;
+  onOpenImage: (src: string, alt: string) => void;
   sentLabel: string;
   readLabel: string;
 }) {
@@ -73,7 +77,7 @@ function MessageBubble({
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
               {att.mimeType.startsWith("image/") ? (
-                <ImagePreview src={att.downloadUrl} alt={att.fileName} />
+                <ImagePreview src={att.downloadUrl} alt={att.fileName} onClick={() => onOpenImage(att.downloadUrl, att.fileName)} />
               ) : (
                 <FileCard name={att.fileName} mimeType={att.mimeType} sizeBytes={att.sizeBytes} downloadUrl={att.downloadUrl} />
               )}
@@ -81,7 +85,9 @@ function MessageBubble({
           ))}
         </div>
         <div className="flex items-center gap-2 px-1">
-          <span className="text-[10px] text-surface-200/25">{format(msg.timestamp, "HH:mm")}</span>
+          <span className="text-[10px] text-surface-200/25" title={format(msg.timestamp, "yyyy-MM-dd HH:mm:ss")}>
+            {format(msg.timestamp, "HH:mm")}
+          </span>
           {isOwn && <span className="text-[10px] text-surface-200/25">{msg.status === "read" ? readLabel : sentLabel}</span>}
         </div>
       </div>
@@ -122,22 +128,67 @@ function ReplyPreview({ msg, onCancel, title }: { msg: ChatMessage; onCancel: ()
   );
 }
 
+function ImageLightbox({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <img
+        src={src}
+        alt={alt}
+        className="max-w-full max-h-full object-contain rounded-lg border border-white/10"
+        onClick={(event) => event.stopPropagation()}
+      />
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 border border-white/20 text-white hover:bg-black/70"
+        title="Close"
+      >
+        <X size={16} className="mx-auto" />
+      </button>
+    </div>
+  );
+}
+
 export default function MessageView({ conversationId }: { conversationId: string }) {
   const { t } = useLanguage();
   const [input, setInput] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pluginToolbarActions, setPluginToolbarActions] = useState<ChatToolbarAction[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const conversation = useChatStore((s) => s.conversations[conversationId]);
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
+  const composerDraft = useChatStore((s) => s.composerDrafts[conversationId] ?? "");
   const addMessage = useChatStore((s) => s.addMessage);
+  const setComposerDraft = useChatStore((s) => s.setComposerDraft);
+  const clearComposerDraft = useChatStore((s) => s.clearComposerDraft);
   const messageMap = new Map<string, ChatMessage>(messages.map((m) => [m.id, m]));
   const { peerIsTyping, onInputChange, onBlur } = useTypingIndicator(conversation?.peerJid ?? "");
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
@@ -163,6 +214,35 @@ export default function MessageView({ conversationId }: { conversationId: string
       cancelled = true;
     };
   }, [conversationId, conversation, messages.length, addMessage, fetchHistory]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDraft = async () => {
+      if (composerDraft) {
+        setInput(composerDraft);
+        return;
+      }
+      const persisted = await getDraft(conversationId);
+      if (cancelled || !persisted) return;
+      setComposerDraft(conversationId, persisted);
+      setInput(persisted);
+    };
+    loadDraft().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, composerDraft, setComposerDraft]);
+
+  useEffect(() => {
+    setInput(composerDraft);
+  }, [composerDraft]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      saveDraft(conversationId, input).catch(() => {});
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [conversationId, input]);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +286,22 @@ export default function MessageView({ conversationId }: { conversationId: string
     if (!c) return;
     if (c.scrollHeight - c.scrollTop - c.clientHeight < 200) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, peerIsTyping]);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (composerRef.current?.contains(target)) return;
+      setShowEmojiPicker(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [showEmojiPicker]);
 
   const handleScroll = () => {
     const c = containerRef.current;
@@ -260,11 +356,14 @@ export default function MessageView({ conversationId }: { conversationId: string
     addMessage(outgoingMessage);
     cacheMessages([outgoingMessage]).catch(() => {});
     setInput("");
+    clearComposerDraft(conversationId);
+    saveDraft(conversationId, "").catch(() => {});
     setReplyTo(null);
     setPendingFiles([]);
     setShowUpload(false);
+    setShowEmojiPicker(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, replyTo, t]);
+  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, replyTo, t, clearComposerDraft]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -311,6 +410,7 @@ export default function MessageView({ conversationId }: { conversationId: string
                   replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
                   isOwn={isOwn}
                   onReply={setReplyTo}
+                  onOpenImage={(src, alt) => setLightbox({ src, alt })}
                   sentLabel={t("chat.sentSent")}
                   readLabel={t("chat.sentRead")}
                 />
@@ -352,7 +452,7 @@ export default function MessageView({ conversationId }: { conversationId: string
 
       {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} title={t("chat.replyingTo")} />}
 
-      <div className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0">
+      <div ref={composerRef} className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0 relative">
         {pluginToolbarActions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {pluginToolbarActions.map((action) => (
@@ -395,11 +495,20 @@ export default function MessageView({ conversationId }: { conversationId: string
           >
             <Paperclip size={16} />
           </button>
+          <button
+            onClick={() => setShowEmojiPicker((v) => !v)}
+            className={clsx("btn-ghost p-2 flex-shrink-0", showEmojiPicker && "text-accent")}
+            title="Emoji"
+          >
+            <Smile size={16} />
+          </button>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => {
-              setInput(e.target.value);
+              const nextValue = e.target.value;
+              setInput(nextValue);
+              setComposerDraft(conversationId, nextValue);
               onInputChange();
               const next = e.target;
               next.style.height = "auto";
@@ -415,8 +524,29 @@ export default function MessageView({ conversationId }: { conversationId: string
             <Send size={16} />
           </button>
         </div>
+        {showEmojiPicker && (
+          <div className="absolute bottom-16 left-14 z-20">
+            <EmojiPicker
+              theme={Theme.DARK}
+              lazyLoadEmojis
+              onEmojiClick={(emojiData) => {
+                const next = `${input}${emojiData.emoji}`;
+                setInput(next);
+                setComposerDraft(conversationId, next);
+                textareaRef.current?.focus();
+              }}
+            />
+          </div>
+        )}
         <p className="text-[10px] text-surface-200/20 mt-1 pl-1">{t("chat.hint")}</p>
       </div>
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }

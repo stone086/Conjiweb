@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { adminApi } from "@/services/api";
+import { ADMIN_SESSION_EXPIRED_EVENT, adminApi } from "@/services/api";
 import { Shield, Activity, Database, Server, Users, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
@@ -57,6 +57,15 @@ export default function AdminPage() {
       toast.error(t("admin.invalidCreds"));
     }
   };
+
+  useEffect(() => {
+    const onExpired = () => {
+      setAuthed(false);
+      toast.error("Admin session expired. Please login again.");
+    };
+    window.addEventListener(ADMIN_SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(ADMIN_SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
 
   if (!authed) {
     return (
@@ -158,7 +167,7 @@ export default function AdminPage() {
                       <span className="text-[11px] text-surface-200/40">{log.created_at ?? "-"}</span>
                     </div>
                     <div className="text-xs text-surface-200/50 mt-1">
-                      actor: {log.actor ?? "-"} · target: {log.target_type ?? "-"}:{log.target_id ?? "-"}
+                      actor: {log.actor ?? "-"} | target: {log.target_type ?? "-"}:{log.target_id ?? "-"}
                     </div>
                   </div>
                 ))}
@@ -177,3 +186,4 @@ export default function AdminPage() {
     </div>
   );
 }
+
