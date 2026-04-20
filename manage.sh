@@ -46,8 +46,12 @@ usage() {
   echo "  db-history      Show alembic migration history"
   echo "  db-rollback     Rollback alembic migration"
   echo "  check           Quick health check"
+  echo "  api-health      Probe public API health endpoint"
   echo "  cert-info       Show SSL certificate expiry"
   echo "  disk-usage      Show disk usage details"
+  echo "  ports           Show listening ports"
+  echo "  backup-verify   Verify latest database backup archive integrity"
+  echo "  env-check       Validate key runtime env values"
   echo "  top-requests    Top nginx requests from access log"
   echo "  mem-usage       Show process memory usage"
   echo "  watchdog        Run conjiweb watchdog once"
@@ -226,6 +230,17 @@ cmd_check() {
   fi
 }
 
+cmd_api_health() {
+  load_env
+  local host="${DOMAIN:-localhost}"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS "https://${host}/api/health" || curl -fsS "http://127.0.0.1:8000/api/health"
+  else
+    echo "curl is required for api-health"
+    exit 1
+  fi
+}
+
 cmd_cert_info() {
   load_env
   cert="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
@@ -258,6 +273,42 @@ cmd_top_requests() {
   fi
   echo "=== Top 30 paths (last 10000 lines) ==="
   tail -n 10000 "$log" | awk '{print $7}' | cut -d'?' -f1 | sort | uniq -c | sort -rn | head -30
+}
+
+cmd_ports() {
+  echo "=== Listening ports ==="
+  ss -tulpen 2>/dev/null || netstat -tulpen 2>/dev/null || true
+}
+
+cmd_backup_verify() {
+  local latest
+  latest="$(ls -1t /root/backups/db_*.sql.gz 2>/dev/null | head -n1 || true)"
+  if [[ -z "${latest}" ]]; then
+    echo "No backup archive found under /root/backups"
+    exit 1
+  fi
+  echo "Verifying: ${latest}"
+  if gzip -t "${latest}"; then
+    echo "Backup archive is valid"
+  else
+    echo "Backup archive is corrupted"
+    exit 1
+  fi
+}
+
+cmd_env_check() {
+  load_env
+  local failed=0
+  for key in DOMAIN EMAIL XMPP_DOMAIN DB_PASS REDIS_PASS SECRET_KEY MINIO_ROOT_PASSWORD; do
+    value="$(eval "printf '%s' \"\${$key:-}\"")"
+    if [[ -z "${value}" ]]; then
+      echo "MISSING: ${key}"
+      failed=1
+    else
+      echo "OK: ${key}"
+    fi
+  done
+  [[ "${failed}" -eq 0 ]] || exit 1
 }
 
 cmd_watchdog() {
@@ -294,8 +345,12 @@ case "${1:-}" in
   db-history)      cmd_db_history ;;
   db-rollback)     cmd_db_rollback ;;
   check)           cmd_check ;;
+  api-health)      cmd_api_health ;;
   cert-info)       cmd_cert_info ;;
   disk-usage)      cmd_disk_usage ;;
+  ports)           cmd_ports ;;
+  backup-verify)   cmd_backup_verify ;;
+  env-check)       cmd_env_check ;;
   top-requests)    cmd_top_requests ;;
   mem-usage)       cmd_mem_usage ;;
   watchdog)        cmd_watchdog ;;

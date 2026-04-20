@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from app.core.database import get_db
 from app.models import Message, Conversation
@@ -18,7 +18,7 @@ class MessageCreate(BaseModel):
     body_type: str = "text"
     direction: str
     xmpp_stanza_id: Optional[str]
-    metadata_json: Optional[dict] = {}
+    metadata_json: Optional[dict] = Field(default_factory=dict)
 
 
 class MessageResponse(BaseModel):
@@ -30,8 +30,7 @@ class MessageResponse(BaseModel):
     status: str
     created_at: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.post(

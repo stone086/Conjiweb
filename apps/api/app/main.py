@@ -19,6 +19,7 @@ from app.api.routers import (
 from app.core.config import settings
 from app.core.database import Base, engine
 from app.core.rate_limit import limiter
+from app.core.version import get_app_version
 from app.utils.security import get_current_admin
 
 
@@ -30,9 +31,11 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+APP_VERSION = get_app_version()
+
 app = FastAPI(
     title="Conjiweb API",
-    version="3.0.0",
+    version=APP_VERSION,
     description="Backend API for the Conjiweb web XMPP client platform.",
     openapi_tags=[
         {"name": "auth", "description": "Authentication endpoints. Public."},
@@ -78,7 +81,7 @@ app.include_router(admin.router, prefix="/admin", tags=["admin"], dependencies=a
     description="Returns API liveness and current version.",
 )
 async def health_check():
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.get(
@@ -87,7 +90,7 @@ async def health_check():
     description="Nginx-routed API health endpoint.",
 )
 async def api_health_check():
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 # WebSocket

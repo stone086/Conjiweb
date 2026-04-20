@@ -32,7 +32,7 @@ class AccountPreference(Base):
     default_presence = Column(String, default="available")
     theme_override = Column(String)
     notifications_enabled = Column(Boolean, default=True)
-    config_json = Column(JSON, default={})
+    config_json = Column(JSON, default=dict)
 
     account = relationship("Account", back_populates="preferences")
 
@@ -45,7 +45,7 @@ class Contact(Base):
     nickname = Column(String)
     avatar_url = Column(String)
     group_name = Column(String)
-    tags = Column(JSON, default=[])
+    tags = Column(JSON, default=list)
     last_presence = Column(String)
     last_seen_at = Column(DateTime(timezone=True))
     is_blocked = Column(Boolean, default=False)
@@ -82,7 +82,7 @@ class Message(Base):
     direction = Column(String, nullable=False)  # in/out/system
     status = Column(String, default="sent")  # pending/sent/delivered/read/failed
     reply_to_message_id = Column(String)
-    metadata_json = Column(JSON, default={})
+    metadata_json = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     edited_at = Column(DateTime(timezone=True))
     deleted_at = Column(DateTime(timezone=True))
@@ -116,8 +116,8 @@ class Plugin(Base):
     version = Column(String)
     entrypoint = Column(String)
     is_enabled = Column(Boolean, default=False)
-    permission_json = Column(JSON, default=[])
-    config_schema_json = Column(JSON, default={})
+    permission_json = Column(JSON, default=list)
+    config_schema_json = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -126,7 +126,7 @@ class PluginSetting(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     plugin_id = Column(String, ForeignKey("plugins.id"), nullable=False)
     account_id = Column(String, nullable=True)
-    config_json = Column(JSON, default={})
+    config_json = Column(JSON, default=dict)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
@@ -137,5 +137,5 @@ class AuditLog(Base):
     action = Column(String, nullable=False)
     target_type = Column(String)
     target_id = Column(String)
-    detail_json = Column(JSON, default={})
+    detail_json = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

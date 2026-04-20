@@ -73,7 +73,7 @@ bash manage.sh logs-api
 - XMPP: `add-user`, `del-user`, `list-users`, `change-pass`
 - Ops: `backup`, `update`, `update-front`, `update-api`, `ssl-renew`, `db-shell`
 - Migrations: `db-history`, `db-rollback`
-- Inspect: `check`, `cert-info`, `disk-usage`, `top-requests`, `mem-usage`, `watchdog`
+- Inspect: `check`, `api-health`, `cert-info`, `disk-usage`, `ports`, `backup-verify`, `env-check`, `top-requests`, `mem-usage`, `watchdog`
 
 ## Health, API Docs, and Validation
 - API health: `https://<domain>/api/health`

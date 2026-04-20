@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -8,8 +8,7 @@ class AccountResponse(BaseModel):
     domain: str
     display_name: Optional[str] = None
     is_enabled: bool
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ConversationResponse(BaseModel):
     id: str
@@ -20,8 +19,7 @@ class ConversationResponse(BaseModel):
     unread_count: int
     pinned: bool
     archived: bool
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MessageResponse(BaseModel):
     id: str
@@ -31,8 +29,7 @@ class MessageResponse(BaseModel):
     direction: str
     status: str
     created_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TokenResponse(BaseModel):
     access_token: str

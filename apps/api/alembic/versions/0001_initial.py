@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.Column("default_presence", sa.String(), default="available"),
         sa.Column("theme_override", sa.String()),
         sa.Column("notifications_enabled", sa.Boolean(), default=True),
-        sa.Column("config_json", sa.JSON(), default={}),
+        sa.Column("config_json", sa.JSON(), default=dict),
     )
 
     op.create_table(
@@ -46,7 +46,7 @@ def upgrade() -> None:
         sa.Column("nickname", sa.String()),
         sa.Column("avatar_url", sa.String()),
         sa.Column("group_name", sa.String()),
-        sa.Column("tags", sa.JSON(), default=[]),
+        sa.Column("tags", sa.JSON(), default=list),
         sa.Column("last_presence", sa.String()),
         sa.Column("last_seen_at", sa.DateTime(timezone=True)),
         sa.Column("is_blocked", sa.Boolean(), default=False),
@@ -80,7 +80,7 @@ def upgrade() -> None:
         sa.Column("direction", sa.String(), nullable=False),
         sa.Column("status", sa.String(), default="sent"),
         sa.Column("reply_to_message_id", sa.String()),
-        sa.Column("metadata_json", sa.JSON(), default={}),
+        sa.Column("metadata_json", sa.JSON(), default=dict),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("edited_at", sa.DateTime(timezone=True)),
         sa.Column("deleted_at", sa.DateTime(timezone=True)),
@@ -109,8 +109,8 @@ def upgrade() -> None:
         sa.Column("version", sa.String()),
         sa.Column("entrypoint", sa.String()),
         sa.Column("is_enabled", sa.Boolean(), default=False),
-        sa.Column("permission_json", sa.JSON(), default=[]),
-        sa.Column("config_schema_json", sa.JSON(), default={}),
+        sa.Column("permission_json", sa.JSON(), default=list),
+        sa.Column("config_schema_json", sa.JSON(), default=dict),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
@@ -119,7 +119,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("plugin_id", sa.String(), sa.ForeignKey("plugins.id"), nullable=False),
         sa.Column("account_id", sa.String()),
-        sa.Column("config_json", sa.JSON(), default={}),
+        sa.Column("config_json", sa.JSON(), default=dict),
         sa.Column("updated_at", sa.DateTime(timezone=True)),
     )
 
@@ -144,7 +144,7 @@ def upgrade() -> None:
         sa.Column("action", sa.String(), nullable=False),
         sa.Column("target_type", sa.String()),
         sa.Column("target_id", sa.String()),
-        sa.Column("detail_json", sa.JSON(), default={}),
+        sa.Column("detail_json", sa.JSON(), default=dict),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 

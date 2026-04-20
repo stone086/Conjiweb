@@ -1,8 +1,4 @@
-"""
-websocket.py — Real-time push endpoint.
-The frontend connects here to receive server-pushed events
-(new message notifications, presence changes, etc.).
-"""
+"""`nwebsocket.py - Real-time push endpoint.`nThe frontend connects here to receive server-pushed events`n(new message notifications, presence changes, etc.).`n"""
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict, Set
 import json

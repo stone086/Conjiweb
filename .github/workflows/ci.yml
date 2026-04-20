@@ -7,6 +7,16 @@ on:
     branches: [main]
 
 jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: |
+          bash -n install.sh
+          bash -n manage.sh
+          bash -n uninstall.sh
+
   web:
     runs-on: ubuntu-latest
     strategy:

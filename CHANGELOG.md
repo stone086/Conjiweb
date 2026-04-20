@@ -13,6 +13,10 @@
 - Message density setting wired to actual chat rendering
 - Runtime caching strategy in Vite PWA build
 - CI workflow split for web build and API tests
+- Script syntax checks in CI (`install.sh`, `manage.sh`, `uninstall.sh`)
+- Unified runtime version reader for API (`app/core/version.py`)
+- New `manage.sh` commands: `api-health`, `ports`, `backup-verify`, `env-check`
+- Nginx `/api/redoc` proxy route
 
 ### Changed
 - Manual chunking for frontend build to reduce initial bundle pressure
@@ -25,6 +29,9 @@
 - Notification/admin token expiry handling in admin UI
 - MAM timestamp parsing and timeout safety paths
 - Default backup database name resolution with `APP_USER`
+- Removed mutable default containers in SQLAlchemy models/migration
+- Migrated Pydantic config to V2 style (`ConfigDict` / `SettingsConfigDict`)
+- Replaced deprecated UTC usage (`datetime.now(UTC)`)
 
 ## [1.0.0] - 2026-04-19
 ### Added

@@ -1,5 +1,5 @@
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from app.core.config import settings
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -8,7 +8,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def create_access_token(subject: str, expires_minutes: int = None) -> str:
-    expire = datetime.utcnow() + timedelta(
+    expire = datetime.now(UTC) + timedelta(
         minutes=expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
     return jwt.encode(

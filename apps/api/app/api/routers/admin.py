@@ -7,10 +7,12 @@ from sqlalchemy import select, func
 from app.core.database import get_db
 from app.models import AuditLog, Account, Message, Attachment
 from app.core.config import settings
+from app.core.version import get_app_version
 from minio import Minio
 import redis.asyncio as redis
 
 router = APIRouter()
+APP_VERSION = get_app_version()
 
 
 @router.get(
@@ -24,7 +26,7 @@ async def system_status(db: AsyncSession = Depends(get_db)):
     attachment_count = await db.scalar(select(func.count()).select_from(Attachment))
     return {
         "status": "healthy",
-        "version": "3.0.0",
+        "version": APP_VERSION,
         "stats": {
             "accounts": account_count,
             "messages": message_count,

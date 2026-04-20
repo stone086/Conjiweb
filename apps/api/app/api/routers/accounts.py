@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.core.database import get_db
 from app.models import Account, AccountPreference
@@ -23,8 +23,7 @@ class AccountResponse(BaseModel):
     display_name: Optional[str]
     is_enabled: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AccountPreferenceResponse(BaseModel):
@@ -32,7 +31,7 @@ class AccountPreferenceResponse(BaseModel):
     default_presence: str
     theme_override: Optional[str] = None
     notifications_enabled: bool
-    config_json: dict
+    config_json: dict = Field(default_factory=dict)
 
 
 class AccountPreferenceUpdate(BaseModel):

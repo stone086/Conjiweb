@@ -21,10 +21,11 @@ modules_enabled = {
   "vcard_legacy";
   "mam";
   "smacks";
-  "csi_simple";
+  "csi";
   "websocket";
   "bosh";
   "http";
+  "push";
   "version";
   "uptime";
   "time";
