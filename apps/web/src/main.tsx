@@ -13,9 +13,31 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 60 * 5, retry: 1 } },
 });
 
+async function clearLegacyPwaCachesOnce() {
+  const flag = "conjiweb-sw-reset-2026-04-20";
+  if (localStorage.getItem(flag) === "done") return;
+  if (!("serviceWorker" in navigator)) {
+    localStorage.setItem(flag, "done");
+    return;
+  }
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch {
+    // Ignore cache cleanup errors.
+  } finally {
+    localStorage.setItem(flag, "done");
+  }
+}
+
 applyTheme(getStoredTheme());
 document.documentElement.classList.toggle("density-compact", localStorage.getItem("conjiweb-message-density") === "compact");
 applyConfiguredHistoryRetention().catch(() => {});
+clearLegacyPwaCachesOnce().catch(() => {});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
