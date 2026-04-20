@@ -11,7 +11,7 @@ info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC}   $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERR]${NC}  $*"; exit 1; }
-step()    { echo -e "\n${CYAN}鈹佲攣鈹?$* 鈹佲攣鈹?{NC}"; }
+step()    { echo -e "\n${CYAN}=== $* ===${NC}"; }
 
 is_placeholder_domain() {
   case "${1:-}" in
@@ -115,15 +115,15 @@ bootstrap_if_needed() {
 
   [[ -n "$REPO_URL" ]] || { bootstrap_usage; error "--repo is required"; }
   if is_placeholder_domain "$DOMAIN" && [[ -t 0 ]]; then
-    read -rp "璇疯緭鍏ョ湡瀹炲煙鍚嶏紙渚嬪 chat.yourdomain.com锛? " DOMAIN
+    read -rp "Enter your real domain (for example: chat.yourdomain.com): " DOMAIN
     DOMAIN="${DOMAIN// /}"
   fi
   if is_placeholder_email "$EMAIL" && [[ -t 0 ]]; then
-    read -rp "璇疯緭鍏ラ偖绠憋紙鐢ㄤ簬 SSL 璇佷功閫氱煡锛? " EMAIL
+    read -rp "Enter your email for SSL certificate notices: " EMAIL
     EMAIL="${EMAIL// /}"
   fi
-  is_placeholder_domain "$DOMAIN" && { bootstrap_usage; error "--domain 缂哄け鎴栦粛鏄ず渚嬪€?; }
-  is_placeholder_email "$EMAIL" && { bootstrap_usage; error "--email 缂哄け鎴栦粛鏄ず渚嬪€?; }
+  is_placeholder_domain "$DOMAIN" && { bootstrap_usage; error "--domain is required and must not be a placeholder"; }
+  is_placeholder_email "$EMAIL" && { bootstrap_usage; error "--email is required and must not be a placeholder"; }
   [[ "$(id -u)" -eq 0 ]] || error "Please run as root"
 
   info "Preparing dependencies..."
@@ -187,7 +187,7 @@ bootstrap_if_needed() {
 
 load_config() {
   if [ ! -f ".env" ]; then
-    error ".env 鏂囦欢涓嶅瓨鍦紝璇峰厛澶嶅埗: cp .env.example .env 骞跺～鍐欓厤缃?
+    error ".env file not found. Run: cp .env.example .env and fill required values."
   fi
   # Normalize CRLF to LF to avoid hidden '\r' in secrets.
   sed -i 's/\r$//' .env
@@ -242,15 +242,15 @@ load_config() {
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
 
   if is_placeholder_domain "$DOMAIN" && [[ -t 0 ]]; then
-    read -rp "璇疯緭鍏ョ湡瀹炲煙鍚嶏紙渚嬪 chat.yourdomain.com锛? " DOMAIN
+    read -rp "Enter your real domain (for example: chat.yourdomain.com): " DOMAIN
     DOMAIN="${DOMAIN// /}"
   fi
   if is_placeholder_email "$EMAIL" && [[ -t 0 ]]; then
-    read -rp "璇疯緭鍏ラ偖绠憋紙鐢ㄤ簬 SSL 璇佷功閫氱煡锛? " EMAIL
+    read -rp "Enter your email for SSL certificate notices: " EMAIL
     EMAIL="${EMAIL// /}"
   fi
-  is_placeholder_domain "$DOMAIN" && error "璇峰湪 .env 涓缃湡瀹?DOMAIN锛堝綋鍓? ${DOMAIN:-绌簘)"
-  is_placeholder_email "$EMAIL" && error "璇峰湪 .env 涓缃湡瀹?EMAIL锛堝綋鍓? ${EMAIL:-绌簘)"
+  is_placeholder_domain "$DOMAIN" && error "Please set a real DOMAIN value in .env (current: ${DOMAIN:-empty})"
+  is_placeholder_email "$EMAIL" && error "Please set a real EMAIL value in .env (current: ${EMAIL:-empty})"
 
   # Persist generated secrets back to .env.
   sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
@@ -326,18 +326,18 @@ load_config() {
 }
 
 check_system() {
-  step "绯荤粺妫€鏌?
-  [ "$(id -u)" -eq 0 ] || error "璇蜂娇鐢?root 鐢ㄦ埛杩愯"
+  step "System checks"
+  [ "$(id -u)" -eq 0 ] || error "Please run as root"
 
   OS=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
   VER=$(grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"')
-  [ "$OS" = "debian" ] && [ "$VER" = "12" ] || warn "寤鸿鍦?Debian 12 涓婅繍琛岋紝褰撳墠: $OS $VER"
+  [ "$OS" = "debian" ] && [ "$VER" = "12" ] || warn "Debian 12 is recommended, current: $OS $VER"
 
   MEM=$(free -m | awk '/^Mem:/{print $2}')
-  info "鍐呭瓨: ${MEM}MB"
-  [ "$MEM" -lt 1500 ] && warn "鍐呭瓨涓嶈冻 1.5GB锛屽彲鑳藉奖鍝嶇ǔ瀹氭€?
+  info "Memory: ${MEM}MB"
+  [ "$MEM" -lt 1500 ] && warn "Memory is below 1.5GB; stability may be affected"
 
-  success "绯荤粺妫€鏌ラ€氳繃"
+  success "System checks passed"
 }
 
 setup_apt_mirror() {
@@ -365,18 +365,18 @@ upgrade_system_packages() {
 }
 
 install_deps() {
-  step "瀹夎绯荤粺渚濊禆"
+  step "Install system dependencies"
   apt install -y -qq \
     curl wget git unzip build-essential \
     ca-certificates gnupg lsb-release \
     openssl htop vim ufw fail2ban \
     python3.11 python3.11-venv python3-pip \
     libpq-dev libssl-dev libffi-dev
-  success "绯荤粺渚濊禆瀹夎瀹屾垚"
+  success "System dependencies installed"
 }
 
 install_postgres() {
-  step "瀹夎 PostgreSQL 16"
+  step "Install PostgreSQL 16"
   if [ ! -f /etc/apt/keyrings/postgresql.gpg ]; then
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
       gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
@@ -424,11 +424,11 @@ install_postgres() {
   PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" \
     -c "SELECT 1;" >/dev/null 2>&1 || error "PostgreSQL login check failed for user ${APP_USER}"
 
-  success "PostgreSQL 16 瀹夎瀹屾垚锛屾暟鎹簱: ${APP_USER}"
+  success "PostgreSQL 16 installed, database: ${APP_USER}"
 }
 
 install_redis() {
-  step "瀹夎 Redis 7"
+  step "Install Redis 7"
   apt install -y -qq redis-server
 
   REDIS_CONF="/etc/redis/redis.conf"
@@ -440,11 +440,11 @@ install_redis() {
 
   systemctl enable redis-server
   systemctl restart redis-server
-  success "Redis 7 瀹夎瀹屾垚"
+  success "Redis 7 installed"
 }
 
 install_prosody() {
-  step "瀹夎 Prosody XMPP 鏈嶅姟鍣?
+  step "Install Prosody XMPP server"
   apt install -y -qq prosody lua-dbi-postgresql
   usermod -aG prosody "${APP_USER}" || true
 
@@ -460,18 +460,18 @@ install_prosody() {
     XMPP_ADMIN_CREATED=1
   else
     if grep -Eiq "exists|already" /tmp/conjiweb-prosody-admin.log; then
-      warn "榛樿璐﹀彿 ${XMPP_ADMIN_JID} 宸插瓨鍦紝淇濈暀鐜版湁瀵嗙爜"
+      warn "Default account ${XMPP_ADMIN_JID} already exists; keeping existing password"
       XMPP_ADMIN_CREATED=0
     else
       cat /tmp/conjiweb-prosody-admin.log >&2 || true
-      error "鍒涘缓榛樿 XMPP 绠＄悊鍛樿处鍙峰け璐? ${XMPP_ADMIN_JID}"
+      error "Failed to create default XMPP admin account: ${XMPP_ADMIN_JID}"
     fi
   fi
-  success "Prosody 瀹夎瀹屾垚锛屽煙鍚? ${XMPP_DOMAIN}"
+  success "Prosody installed, domain: ${XMPP_DOMAIN}"
 }
 
 install_minio() {
-  step "瀹夎 MinIO 瀵硅薄瀛樺偍"
+  step "Install MinIO object storage"
   systemctl stop minio 2>/dev/null || true
   pkill -f '/usr/local/bin/minio' 2>/dev/null || true
   sleep 1
@@ -516,18 +516,18 @@ EOF
   /usr/local/bin/mc mb local/conjiweb-files --quiet 2>/dev/null || true
   /usr/local/bin/mc anonymous set none local/conjiweb-files --quiet 2>/dev/null || true
 
-  success "MinIO 瀹夎瀹屾垚锛孊ucket: conjiweb-files"
+  success "MinIO installed, bucket: conjiweb-files"
 }
 
 install_nodejs() {
-  step "瀹夎 Node.js 20"
+  step "Install Node.js 20"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
   apt install -y -qq nodejs
-  success "Node.js $(node --version) 瀹夎瀹屾垚"
+  success "Node.js $(node --version) installed"
 }
 
 deploy_api() {
-  step "閮ㄧ讲 FastAPI 鍚庣"
+  step "Deploy FastAPI backend"
   mkdir -p "${INSTALL_DIR}"
   rm -rf "${INSTALL_DIR}/api"
   cp -r "${SRC_DIR}/apps/api" "${INSTALL_DIR}/api"
@@ -619,11 +619,11 @@ EOF
   sleep 2
 
   cd "${SRC_DIR}"
-  success "FastAPI 鍚庣閮ㄧ讲瀹屾垚锛岀洃鍚?127.0.0.1:8000"
+  success "FastAPI backend deployed, listening on 127.0.0.1:8000"
 }
 
 deploy_frontend() {
-  step "鏋勫缓鍓嶇锛圧eact + Vite锛?
+  step "Build frontend (React + Vite)"
   rm -rf "${INSTALL_DIR}/web"
   cp -r "${SRC_DIR}/apps/web" "${INSTALL_DIR}/web"
   cd "${INSTALL_DIR}/web"
@@ -643,11 +643,11 @@ EOF
 
   FRONTEND_DIST="${INSTALL_DIR}/web/dist"
   cd "${SRC_DIR}"
-  success "鍓嶇鏋勫缓瀹屾垚锛岃緭鍑虹洰褰? ${FRONTEND_DIST}"
+  success "Frontend build completed, output: ${FRONTEND_DIST}"
 }
 
 install_nginx() {
-  step "瀹夎閰嶇疆 Nginx"
+  step "Install and configure Nginx"
   apt install -y -qq nginx
 
   # Temporary HTTP config for certbot validation.
@@ -671,11 +671,11 @@ EOF
   ln -sf /etc/nginx/sites-available/conjiweb /etc/nginx/sites-enabled/conjiweb
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl restart nginx
-  success "Nginx 涓存椂閰嶇疆瀹屾垚"
+  success "Nginx temporary config completed"
 }
 
 setup_ssl() {
-  step "鐢宠 Let's Encrypt SSL 璇佷功"
+  step "Issue Let's Encrypt SSL certificate"
   apt install -y -qq certbot python3-certbot-nginx
 
   local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
@@ -685,7 +685,7 @@ setup_ssl() {
   if [[ -f "$cert_fullchain" && -f "$cert_privkey" ]]; then
     if openssl x509 -checkend 86400 -noout -in "$cert_fullchain" >/dev/null 2>&1; then
       has_usable_cert=1
-      info "妫€娴嬪埌鍙敤璇佷功锛岃烦杩囬噸鏂扮敵璇?
+      info "Usable certificate detected, skipping re-issuance"
     fi
   fi
 
@@ -695,7 +695,7 @@ setup_ssl() {
       --email "${EMAIL}" \
       --agree-tos \
       --non-interactive
-    success "SSL 璇佷功鐢宠鎴愬姛"
+    success "SSL certificate issued successfully"
   fi
 
   cp configs/nginx/conjiweb.conf /etc/nginx/sites-available/conjiweb
@@ -706,7 +706,7 @@ limit_req_zone $binary_remote_addr zone=api_auth:10m rate=30r/m;
 EOF
 
   nginx -t && systemctl reload nginx
-  success "Nginx HTTPS 閰嶇疆瀹屾垚"
+  success "Nginx HTTPS configuration completed"
 
   systemctl enable certbot.timer
   systemctl start certbot.timer
@@ -753,7 +753,7 @@ setup_firewall() {
         read -r -p "${prompt} [YES/no]: " reply
       fi
     else
-      warn "褰撳墠浼氳瘽涓嶅彲浜や簰锛岄粯璁ゆ寜 no 澶勭悊: ${prompt}"
+      warn "Non-interactive session detected. Defaulting to no: ${prompt}"
       return 1
     fi
     reply="${reply// /}"
@@ -832,7 +832,7 @@ EOF
       fi
     done
 
-    info "鏈娴嬪埌鐜版湁 SSH 绉侀挜锛岃嚜鍔ㄥ垱寤?${ssh_dir}/id_ed25519"
+    info "No existing SSH private key detected. Creating ${ssh_dir}/id_ed25519 automatically"
     ssh-keygen -t ed25519 -f "${ssh_dir}/id_ed25519" -N "" -C "conjiweb@$(hostname)-$(date +%F)" >/dev/null
     cat "${ssh_dir}/id_ed25519.pub"
   }
@@ -849,7 +849,7 @@ EOF
     fi
   }
 
-  step "閰嶇疆闃茬伀澧?(ufw)"
+  step "Configure firewall (ufw)"
   local ssh_ports_raw
   ssh_ports_raw="$(detect_ssh_ports)"
   if [[ -z "${SSH_PORT:-}" ]]; then
@@ -857,12 +857,12 @@ EOF
   fi
   SSH_PORT="${SSH_PORT//,/ }"
   SSH_PORT="$(echo "$SSH_PORT" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
-  [[ -n "$SSH_PORT" ]] || error "鏃犳硶纭畾 SSH 绔彛锛岃閫氳繃 --ssh-port 鎵嬪姩鎸囧畾"
+  [[ -n "$SSH_PORT" ]] || error "Unable to determine SSH port. Please provide --ssh-port manually."
   local p
   for p in $SSH_PORT; do
-    validate_port "$p" || error "鏃犳晥 SSH 绔彛: ${p}"
+    validate_port "$p" || error "Invalid SSH port: ${p}"
   done
-  info "鑷姩鎵弿鍒?SSH 绔彛: ${SSH_PORT}"
+  info "Auto-detected SSH port(s): ${SSH_PORT}"
 
   local has_port_22=0
   for p in $SSH_PORT; do
@@ -871,32 +871,32 @@ EOF
       break
     fi
   done
-  if [[ "$has_port_22" -eq 1 ]] && prompt_yes_no "妫€娴嬪埌 SSH 绔彛鍖呭惈 22锛屾槸鍚︽敼鎴愬叾瀹冪櫥褰曠鍙ｏ紵"; then
+  if [[ "$has_port_22" -eq 1 ]] && prompt_yes_no "Detected SSH port 22. Do you want to change the login port?"; then
     local new_ssh_port=""
     while true; do
-      new_ssh_port="$(prompt_input "璇疯緭鍏ユ柊鐨?SSH 绔彛鍙? " || true)"
-      [[ -n "$new_ssh_port" ]] || { warn "鏈鍙栧埌绔彛杈撳叆锛岃閲嶈瘯"; continue; }
+      new_ssh_port="$(prompt_input "Enter the new SSH port: " || true)"
+      [[ -n "$new_ssh_port" ]] || { warn "No input detected. Please try again."; continue; }
       new_ssh_port="${new_ssh_port// /}"
-      validate_port "$new_ssh_port" || { warn "绔彛鏃犳晥锛岃閲嶆柊杈撳叆"; continue; }
-      [[ "$new_ssh_port" != "22" ]] || { warn "鏂扮鍙ｄ笉鑳芥槸 22锛岃閲嶆柊杈撳叆"; continue; }
+      validate_port "$new_ssh_port" || { warn "Port is invalid. Please try again."; continue; }
+      [[ "$new_ssh_port" != "22" ]] || { warn "New port cannot be 22. Please choose another one."; continue; }
       break
     done
     apply_sshd_port "$new_ssh_port"
     SSH_PORT="$new_ssh_port"
-    info "SSH 鐧诲綍绔彛宸插垏鎹负: ${SSH_PORT}"
+    info "SSH login port switched to: ${SSH_PORT}"
   fi
 
-  if prompt_yes_no "鏄惁鑷姩閰嶇疆 SSH 瀵嗛挜鐧诲綍锛堝苟淇濈暀瀵嗙爜鐧诲綍锛夛紵"; then
+  if prompt_yes_no "Do you want to auto-configure SSH key login (while keeping password login enabled)?"; then
     local detected_pub_key=""
     detected_pub_key="$(detect_or_create_local_public_key)"
-    [[ -n "$detected_pub_key" ]] || error "鏈兘鑾峰彇鍙敤鍏挜"
+    [[ -n "$detected_pub_key" ]] || error "Unable to obtain a usable public key"
     add_key_to_authorized_keys "$detected_pub_key"
     apply_sshd_dropin_and_reload
-    success "宸查厤缃瘑閽ョ櫥褰曪紝骞舵槑纭繚鐣欏瘑鐮佺櫥褰?
+    success "SSH key login configured. Password login remains enabled."
   fi
 
-  if ! prompt_yes_no "纭鎸変笂杩?SSH 绔彛閰嶇疆 UFW锛屽苟浠呮斁琛?80/443/5222/5269锛?; then
-    warn "宸插彇娑堥槻鐏鏀瑰姩锛堟湭杈撳叆 yes锛?
+  if ! prompt_yes_no "Confirm applying UFW with detected SSH port(s) and allowing only 80/443/5222/5269?"; then
+    warn "Firewall changes canceled (did not enter yes)."
     return 0
   fi
 
@@ -909,16 +909,16 @@ EOF
   ufw allow 80/tcp
   ufw allow 443/tcp
   ufw allow 5222/tcp   # XMPP TCP
-  ufw allow 5269/tcp   # XMPP 鏈嶅姟鍣ㄩ棿
-  if prompt_yes_no "是否禁用 ICMP ping（安全更严，但不利于网络排障）？"; then
+  ufw allow 5269/tcp   # XMPP server-to-server
+  if prompt_yes_no "Disable ICMP ping (stricter security, but harder network diagnostics)?"; then
     ufw deny in from any to any proto icmp || warn "ICMP rule not applied by ufw, skipping"
   fi
   ufw --force enable
-  success "闃茬伀澧欓厤缃畬鎴?
+  success "Firewall configuration completed"
 }
 
 setup_fail2ban() {
-  step "配置 fail2ban（防暴力破解）"
+  step "Configure fail2ban (anti-bruteforce)"
   cat > /etc/fail2ban/filter.d/conjiweb-api.conf << 'EOF'
 [Definition]
 failregex = ^<HOST> - .* "POST /api/auth/(admin/login|register) HTTP.*" (4[0-9][0-9]) .*
@@ -949,11 +949,11 @@ bantime = 3600
 EOF
   systemctl enable fail2ban
   systemctl restart fail2ban
-  success "fail2ban 配置完成"
+  success "fail2ban configuration completed"
 }
 
 setup_backup() {
-  step "閰嶇疆鑷姩澶囦唤"
+  step "Configure automated backups"
   mkdir -p /root/backups
   chmod 700 /root/backups
   if [[ -n "${BACKUP_REMOTE}" ]] && ! command -v rclone >/dev/null 2>&1; then
@@ -999,7 +999,7 @@ BACKUP
 }
 
 setup_logrotate_and_journald() {
-  step "配置日志轮转与 journald 限额"
+  step "Configure log rotation and journald limits"
   cp "${SRC_DIR}/configs/logrotate/conjiweb" /etc/logrotate.d/conjiweb
 
   mkdir -p /etc/systemd/journald.conf.d
@@ -1008,11 +1008,11 @@ setup_logrotate_and_journald() {
 SystemMaxUse=500M
 EOF
   systemctl restart systemd-journald || true
-  success "日志轮转配置完成"
+  success "Log rotation configuration completed"
 }
 
 setup_monitoring_alert() {
-  step "配置轻量服务监控与自愈脚本"
+  step "Configure lightweight service monitoring and self-heal script"
   cat > /usr/local/bin/conjiweb-alert.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1049,7 +1049,7 @@ done
 EOF
   chmod +x /usr/local/bin/conjiweb-alert.sh
   echo "*/5 * * * * root /usr/local/bin/conjiweb-alert.sh" > /etc/cron.d/conjiweb-alert
-  success "监控告警脚本配置完成（每5分钟）"
+  success "Monitoring alert script configured (every 5 minutes)"
 }
 
 setup_quick_check() {
@@ -1093,54 +1093,54 @@ EOF
 
 print_summary() {
   echo ""
-  echo -e "${GREEN}鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽${NC}"
-  echo -e "${GREEN}鈺?           Conjiweb 瀹夎瀹屾垚锛?                         鈺?{NC}"
-  echo -e "${GREEN}鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆${NC}"
+  echo -e "${GREEN}============================================================${NC}"
+  echo -e "${GREEN}                  Conjiweb Install Completed                ${NC}"
+  echo -e "${GREEN}============================================================${NC}"
   echo ""
-  echo -e "  ${CYAN}鍓嶇鍦板潃锛?{NC}   https://${DOMAIN}"
-  echo -e "  ${CYAN}API 鏂囨。锛?{NC}   https://${DOMAIN}/api/docs"
-  echo -e "  ${CYAN}XMPP 鍩熷悕锛?{NC} ${XMPP_DOMAIN}"
-  echo -e "  ${CYAN}WebSocket锛?{NC} wss://${DOMAIN}/xmpp-websocket"
+  echo -e "  ${CYAN}Web URL:${NC}        https://${DOMAIN}"
+  echo -e "  ${CYAN}API Docs:${NC}       https://${DOMAIN}/api/docs"
+  echo -e "  ${CYAN}XMPP Domain:${NC}    ${XMPP_DOMAIN}"
+  echo -e "  ${CYAN}WebSocket:${NC}      wss://${DOMAIN}/xmpp-websocket"
   echo ""
-  echo -e "  ${YELLOW}榛樿 XMPP 鐧诲綍璐﹀彿锛?{NC}"
+  echo -e "  ${YELLOW}Default XMPP admin account:${NC}"
   echo -e "  JID: ${XMPP_ADMIN_JID:-${XMPP_ADMIN_USER}@${XMPP_DOMAIN}}"
   if [[ "${XMPP_ADMIN_CREATED}" = "1" ]]; then
-    echo -e "  瀵嗙爜: ${XMPP_ADMIN_PASS}"
+    echo -e "  Password: ${XMPP_ADMIN_PASS}"
   else
-    echo -e "  瀵嗙爜: 锛堝凡瀛樺湪璐﹀彿锛屼繚鎸佸師瀵嗙爜锛?
+    echo -e "  Password: (account already existed, existing password kept)"
   fi
   echo ""
-  echo -e "  ${YELLOW}甯哥敤绠＄悊鍛戒护锛?{NC}"
-  echo -e "  systemctl status conjiweb-api   # 鏌ョ湅 API 鐘舵€?
-  echo -e "  journalctl -u conjiweb-api -f   # 鏌ョ湅 API 鏃ュ織"
-  echo -e "  systemctl status prosody        # 鏌ョ湅 XMPP 鐘舵€?
-  echo -e "  systemctl status nginx          # 鏌ョ湅 Nginx 鐘舵€?
-  echo -e "  conjiweb-backup.sh              # 绔嬪嵆澶囦唤"
-  echo -e "  conjiweb-check ${DOMAIN}        # 30绉掗獙鏀?
+  echo -e "  ${YELLOW}Useful commands:${NC}"
+  echo -e "  systemctl status conjiweb-api   # Check API status"
+  echo -e "  journalctl -u conjiweb-api -f   # Follow API logs"
+  echo -e "  systemctl status prosody        # Check XMPP status"
+  echo -e "  systemctl status nginx          # Check Nginx status"
+  echo -e "  conjiweb-backup.sh              # Run backup now"
+  echo -e "  conjiweb-check ${DOMAIN}        # Run 30-second checks"
   echo ""
   echo -e "  Secrets file: /root/conjiweb-secrets.txt (chmod 600)"
   echo ""
-  echo -e "  ${RED}璇蜂繚瀛樹互涓嬪瘑鐮侊紙鍙樉绀轰竴娆★級锛?{NC}"
-  echo -e "  鏁版嵁搴撳瘑鐮? ${DB_PASS}"
-  echo -e "  Redis 瀵嗙爜: ${REDIS_PASS}"
-  echo -e "  MinIO 瀵嗙爜: ${MINIO_ROOT_PASSWORD}"
+  echo -e "  ${RED}Store these generated passwords safely:${NC}"
+  echo -e "  Database: ${DB_PASS}"
+  echo -e "  Redis: ${REDIS_PASS}"
+  echo -e "  MinIO: ${MINIO_ROOT_PASSWORD}"
   echo ""
 }
 
 main() {
   SRC_DIR="$(pwd -P)"
-  [[ -d "${SRC_DIR}/apps/api" ]] || error "缂哄皯婧愮爜鐩綍: ${SRC_DIR}/apps/api"
-  [[ -d "${SRC_DIR}/apps/web" ]] || error "缂哄皯婧愮爜鐩綍: ${SRC_DIR}/apps/web"
+  [[ -d "${SRC_DIR}/apps/api" ]] || error "Missing source directory: ${SRC_DIR}/apps/api"
+  [[ -d "${SRC_DIR}/apps/web" ]] || error "Missing source directory: ${SRC_DIR}/apps/web"
 
   echo -e "${CYAN}"
-  echo "   鈻堚枅鈻堚枅鈻堚枅鈺?鈻堚枅鈻堚枅鈻堚枅鈺?鈻堚枅鈻堚晽   鈻堚枅鈺?    鈻堚枅鈺椻枅鈻堚晽鈻堚枅鈺?   鈻堚枅鈺椻枅鈻堚枅鈻堚枅鈻堚枅鈺椻枅鈻堚枅鈻堚枅鈻堚晽 "
-  echo "  鈻堚枅鈺斺晲鈺愨晲鈺愨暆鈻堚枅鈺斺晲鈺愨晲鈻堚枅鈺椻枅鈻堚枅鈻堚晽  鈻堚枅鈺?    鈻堚枅鈺戔枅鈻堚晳鈻堚枅鈺?   鈻堚枅鈺戔枅鈻堚晹鈺愨晲鈺愨晲鈺濃枅鈻堚晹鈺愨晲鈻堚枅鈺?
-  echo "  鈻堚枅鈺?    鈻堚枅鈺?  鈻堚枅鈺戔枅鈻堚晹鈻堚枅鈺?鈻堚枅鈺?    鈻堚枅鈺戔枅鈻堚晳鈻堚枅鈺?鈻堚晽 鈻堚枅鈺戔枅鈻堚枅鈻堚枅鈺? 鈻堚枅鈻堚枅鈻堚枅鈺斺暆"
-  echo "  鈻堚枅鈺?    鈻堚枅鈺?  鈻堚枅鈺戔枅鈻堚晳鈺氣枅鈻堚晽鈻堚枅鈺戔枅鈻?  鈻堚枅鈺戔枅鈻堚晳鈻堚枅鈺戔枅鈻堚枅鈺椻枅鈻堚晳鈻堚枅鈺斺晲鈺愨暆  鈻堚枅鈺斺晲鈺愨枅鈻堚晽"
-  echo "  鈺氣枅鈻堚枅鈻堚枅鈻堚晽鈺氣枅鈻堚枅鈻堚枅鈻堚晹鈺濃枅鈻堚晳 鈺氣枅鈻堚枅鈻堚晳鈺氣枅鈻堚枅鈻堚枅鈺斺暆鈻堚枅鈺戔暁鈻堚枅鈻堚晹鈻堚枅鈻堚晹鈺濃枅鈻堚枅鈻堚枅鈻堚枅鈺椻枅鈻堚枅鈻堚枅鈻堚晹鈺?
-  echo "   鈺氣晲鈺愨晲鈺愨晲鈺?鈺氣晲鈺愨晲鈺愨晲鈺?鈺氣晲鈺? 鈺氣晲鈺愨晲鈺?鈺氣晲鈺愨晲鈺愨暆 鈺氣晲鈺?鈺氣晲鈺愨暆鈺氣晲鈺愨暆 鈺氣晲鈺愨晲鈺愨晲鈺愨暆鈺氣晲鈺愨晲鈺愨晲鈺?"
+  echo -e "${CYAN}Conjiweb Installer${NC}"
+  echo ""
+
+
+
+
   echo -e "${NC}"
-  echo -e "  ${BLUE}Conjiweb 路 Installer${NC}"
+
   echo ""
 
   load_config
