@@ -56,6 +56,59 @@ async def test_attachment_upload_rejects_unsupported_mime(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_attachment_upload_rejects_empty_file(monkeypatch):
+    class _Magic:
+        @staticmethod
+        def from_buffer(_content: bytes, mime: bool = True):
+            return "text/plain" if mime else "text/plain"
+
+    monkeypatch.setattr(attachments_router, "magic", _Magic())
+    token = create_access_token("user@example.com", role="user", account_id="acc-1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/attachments/upload",
+            files={"file": ("empty.txt", b"", "text/plain")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_attachment_upload_rejects_too_large(monkeypatch):
+    class _Magic:
+        @staticmethod
+        def from_buffer(_content: bytes, mime: bool = True):
+            return "text/plain" if mime else "text/plain"
+
+    monkeypatch.setattr(attachments_router, "magic", _Magic())
+    monkeypatch.setattr(attachments_router, "MAX_UPLOAD_SIZE_BYTES", 5)
+    token = create_access_token("user@example.com", role="user", account_id="acc-1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/attachments/upload",
+            files={"file": ("big.txt", b"123456", "text/plain")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 413
+
+
+@pytest.mark.anyio
+async def test_attachment_upload_fails_when_magic_unavailable(monkeypatch):
+    monkeypatch.setattr(attachments_router, "magic", None)
+    token = create_access_token("user@example.com", role="user", account_id="acc-1")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/attachments/upload",
+            files={"file": ("a.txt", b"hello", "text/plain")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 500
+
+
+@pytest.mark.anyio
 async def test_message_search_requires_account_id_with_admin_token():
     token = create_access_token("admin")
     transport = ASGITransport(app=app)

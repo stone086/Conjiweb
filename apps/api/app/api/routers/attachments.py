@@ -23,6 +23,17 @@ minio_client = Minio(
     secure=settings.MINIO_SECURE,
 )
 
+ALLOWED_MIME_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+    "application/zip",
+    "text/plain",
+}
+MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
+
 
 def ensure_bucket():
     try:
@@ -54,17 +65,6 @@ async def upload_file(
     db: AsyncSession = Depends(get_db),
 ):
     ensure_bucket()
-    allowed_mime = {
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/webp",
-        "application/pdf",
-        "application/zip",
-        "text/plain",
-    }
-    max_size_bytes = 100 * 1024 * 1024
-
     file_id = str(uuid.uuid4())
     ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
     object_key = f"uploads/{file_id}.{ext}"
@@ -73,12 +73,12 @@ async def upload_file(
     size = len(content)
     if size == 0:
         raise HTTPException(status_code=400, detail="Empty file")
-    if size > max_size_bytes:
+    if size > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="File too large")
     if magic is None:
         raise HTTPException(status_code=500, detail="MIME detection is unavailable on server")
     detected_mime = magic.from_buffer(content, mime=True) or "application/octet-stream"
-    if detected_mime not in allowed_mime:
+    if detected_mime not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=415, detail=f"Unsupported file type: {detected_mime}")
 
     try:
