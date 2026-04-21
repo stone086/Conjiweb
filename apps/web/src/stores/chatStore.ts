@@ -18,6 +18,8 @@ export interface ChatMessage {
   deletedAt?: number;
   starred?: boolean;
   reactions?: Record<string, number>;
+  encrypted?: boolean;
+  decryptFailed?: boolean;
   replyToId?: string;
   attachments?: MessageAttachment[];
 }

@@ -11,7 +11,7 @@ import { getChatToolbarActions } from "@/plugins/host";
 import type { ChatToolbarAction } from "@/plugins/sdk";
 import { format, isSameDay } from "date-fns";
 import { clsx } from "clsx";
-import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2 } from "lucide-react";
+import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
@@ -133,6 +133,8 @@ function MessageBubble({
         )}
         <div className="flex items-center gap-2 px-1">
           {msg.starred && <span className="text-[10px] text-warn">★</span>}
+          {msg.encrypted && <Lock size={10} className="text-success" />}
+          {msg.decryptFailed && <span className="text-[10px] text-danger">decrypt-failed</span>}
           <span className="text-[10px] text-surface-200/25" title={format(msg.timestamp, "yyyy-MM-dd HH:mm:ss")}>
             {format(msg.timestamp, "HH:mm")}
           </span>
@@ -480,6 +482,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       status: "sent",
       timestamp: Date.now(),
       replyToId: replyTo?.id,
+      encrypted: Boolean(body && conversation?.type === "private" && getOmemoEnabled()),
       attachments: pendingFiles.map((f) => ({
         id: f.id,
         fileName: f.name,

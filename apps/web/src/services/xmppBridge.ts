@@ -226,9 +226,16 @@ export function initXmppBridge(client: XmppClient) {
     }
 
     let incomingBody = message.body;
-    if (typeof incomingBody === "string" && isEncryptedPayload(incomingBody)) {
+    const incomingEncrypted = typeof incomingBody === "string" && isEncryptedPayload(incomingBody);
+    let decryptFailed = false;
+    if (incomingEncrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, from, incomingBody);
-      incomingBody = decrypted ?? "[Encrypted message - unable to decrypt]";
+      if (decrypted == null) {
+        incomingBody = "[Encrypted message - unable to decrypt]";
+        decryptFailed = true;
+      } else {
+        incomingBody = decrypted;
+      }
     }
 
     const chatMsg = {
@@ -240,6 +247,8 @@ export function initXmppBridge(client: XmppClient) {
       direction: "in" as const,
       status: "delivered" as const,
       timestamp: message.timestamp,
+      encrypted: incomingEncrypted,
+      decryptFailed,
       replyToId: message.replyTo,
     };
 
@@ -304,9 +313,16 @@ export function initXmppBridge(client: XmppClient) {
     const convId = generateConversationId(accountId, peerJid);
 
     let body = message.body;
-    if (typeof body === "string" && isEncryptedPayload(body)) {
+    const encrypted = typeof body === "string" && isEncryptedPayload(body);
+    let decryptFailed = false;
+    if (encrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, peerJid, body);
-      body = decrypted ?? "[Encrypted message - unable to decrypt]";
+      if (decrypted == null) {
+        body = "[Encrypted message - unable to decrypt]";
+        decryptFailed = true;
+      } else {
+        body = decrypted;
+      }
     }
 
     const chatMsg = {
@@ -318,6 +334,8 @@ export function initXmppBridge(client: XmppClient) {
       direction: isOwn ? ("out" as const) : ("in" as const),
       status: "delivered" as const,
       timestamp: message.timestamp,
+      encrypted,
+      decryptFailed,
       replyToId: message.replyTo,
     };
 
