@@ -1,4 +1,7 @@
-/**`r`n * Full XMPP client wrapper for Conjiweb.`r`n * Wraps Strophe.js with a clean event-driven API.`r`n */
+/**
+ * Full XMPP client wrapper for Conjiweb.
+ * Wraps Strophe.js with a clean event-driven API.
+ */
 
 export interface XmppClientConfig {
   jid: string;
