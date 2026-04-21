@@ -20,3 +20,14 @@ async def test_health_routes_are_public():
         r2 = await client.get("/api/health")
     assert r1.status_code == 200
     assert r2.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_attachment_upload_requires_user_token():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/attachments/upload",
+            files={"file": ("a.txt", b"hello", "text/plain")},
+        )
+    assert resp.status_code == 401

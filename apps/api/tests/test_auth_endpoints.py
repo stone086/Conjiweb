@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 import subprocess
+import uuid
 
 from app.api.routers import auth as auth_router
 from app.core.config import settings
@@ -103,3 +104,54 @@ async def test_register_returns_conflict_when_account_exists(monkeypatch):
             json={"jid": "alice@example.com", "password": "password123"},
         )
     assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_user_token_requires_password():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/auth/user-token",
+            json={"jid": "alice@example.com", "password": ""},
+        )
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_user_token_rejects_invalid_password(monkeypatch):
+    class _FailResult:
+        returncode = 1
+        stdout = ""
+        stderr = "authentication failed"
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _FailResult())
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/auth/user-token",
+            json={"jid": "alice@example.com", "password": "wrong"},
+        )
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_user_token_issues_token_when_credentials_valid(monkeypatch):
+    class _OkResult:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _OkResult())
+    unique_jid = f"u{uuid.uuid4().hex[:8]}@example.com"
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/auth/user-token",
+            json={"jid": unique_jid, "password": "password123"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["token_type"] == "bearer"
+    assert data["access_token"]
+    assert data["jid"] == unique_jid
+    assert data["account_id"]

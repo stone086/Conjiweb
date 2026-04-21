@@ -70,6 +70,9 @@ interface SessionState {
   recvCounter: number;
 }
 
+const bundleSecretCache = new Map<string, Record<string, LocalBundleSecret>>();
+const sessionCache = new Map<string, Record<string, SessionState>>();
+
 function openSecureStore(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(SECURE_DB_NAME, SECURE_DB_VERSION);
@@ -252,36 +255,61 @@ function setBundleMap(accountId: string, bundles: Record<string, OmemoBundle>) {
   localStorage.setItem(bundleStoreKey(accountId), JSON.stringify(bundles));
 }
 
-function getBundleSecretMap(accountId: string): Record<string, LocalBundleSecret> {
+function parseObjectMap<T>(raw: string | null): Record<string, T> {
+  if (!raw) return {};
   try {
-    const raw = localStorage.getItem(bundleSecretStoreKey(accountId));
-    if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Record<string, LocalBundleSecret>;
+    return parsed as Record<string, T>;
   } catch {
     return {};
   }
 }
 
-function setBundleSecretMap(accountId: string, secrets: Record<string, LocalBundleSecret>) {
-  localStorage.setItem(bundleSecretStoreKey(accountId), JSON.stringify(secrets));
-}
-
-function getSessionMap(accountId: string): Record<string, SessionState> {
-  try {
-    const raw = localStorage.getItem(sessionStoreKey(accountId));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Record<string, SessionState>;
-  } catch {
-    return {};
+async function getBundleSecretMap(accountId: string): Promise<Record<string, LocalBundleSecret>> {
+  const cached = bundleSecretCache.get(accountId);
+  if (cached) return cached;
+  const key = bundleSecretStoreKey(accountId);
+  const secureRaw = await secureGet(key);
+  if (secureRaw) {
+    const parsed = parseObjectMap<LocalBundleSecret>(secureRaw);
+    bundleSecretCache.set(accountId, parsed);
+    return parsed;
   }
+  const legacyRaw = localStorage.getItem(key);
+  const parsed = parseObjectMap<LocalBundleSecret>(legacyRaw);
+  await secureSet(key, JSON.stringify(parsed));
+  localStorage.removeItem(key);
+  bundleSecretCache.set(accountId, parsed);
+  return parsed;
 }
 
-function setSessionMap(accountId: string, sessions: Record<string, SessionState>) {
-  localStorage.setItem(sessionStoreKey(accountId), JSON.stringify(sessions));
+async function setBundleSecretMap(accountId: string, secrets: Record<string, LocalBundleSecret>) {
+  bundleSecretCache.set(accountId, secrets);
+  await secureSet(bundleSecretStoreKey(accountId), JSON.stringify(secrets));
+}
+
+async function getSessionMap(accountId: string): Promise<Record<string, SessionState>> {
+  const cached = sessionCache.get(accountId);
+  if (cached) return cached;
+  const key = sessionStoreKey(accountId);
+  const secureRaw = await secureGet(key);
+  if (secureRaw) {
+    const parsed = parseObjectMap<SessionState>(secureRaw);
+    sessionCache.set(accountId, parsed);
+    return parsed;
+  }
+  const legacyRaw = localStorage.getItem(key);
+  const parsed = parseObjectMap<SessionState>(legacyRaw);
+  await secureSet(key, JSON.stringify(parsed));
+  localStorage.removeItem(key);
+  sessionCache.set(accountId, parsed);
+  return parsed;
+}
+
+async function setSessionMap(accountId: string, sessions: Record<string, SessionState>) {
+  sessionCache.set(accountId, sessions);
+  await secureSet(sessionStoreKey(accountId), JSON.stringify(sessions));
 }
 
 function getPeerInfo(accountId: string, peerJid: string): PeerKeyInfo | null {
@@ -346,7 +374,7 @@ export async function getOrCreateLocalKeyPair(accountId: string): Promise<Stored
 export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<OmemoBundle> {
   const deviceId = getOrCreateLocalDeviceId(accountId);
   const map = getBundleMap(accountId);
-  const secretMap = getBundleSecretMap(accountId);
+  const secretMap = await getBundleSecretMap(accountId);
   const existing = map[String(deviceId)];
   const existingSecret = secretMap[String(deviceId)];
   if (existing?.identityKey && existing?.signedPreKeyPublic && existing?.preKeys?.length && existingSecret?.signedPreKeyPrivateJwk) {
@@ -388,7 +416,7 @@ export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<Om
   map[String(deviceId)] = bundle;
   secretMap[String(deviceId)] = { signedPreKeyPrivateJwk, preKeyPrivates };
   setBundleMap(accountId, map);
-  setBundleSecretMap(accountId, secretMap);
+  await setBundleSecretMap(accountId, secretMap);
   return bundle;
 }
 
@@ -426,14 +454,14 @@ async function deriveSessionKey(accountId: string, peerJid: string): Promise<Cry
   );
 }
 
-function saveSession(accountId: string, session: SessionState) {
-  const map = getSessionMap(accountId);
+async function saveSession(accountId: string, session: SessionState) {
+  const map = await getSessionMap(accountId);
   map[sessionKey(session.peer, session.senderDeviceId)] = session;
-  setSessionMap(accountId, map);
+  await setSessionMap(accountId, map);
 }
 
-function readSession(accountId: string, peerJid: string, senderDeviceId: number): SessionState | null {
-  const map = getSessionMap(accountId);
+async function readSession(accountId: string, peerJid: string, senderDeviceId: number): Promise<SessionState | null> {
+  const map = await getSessionMap(accountId);
   return map[sessionKey(peerJid, senderDeviceId)] ?? null;
 }
 
@@ -483,7 +511,7 @@ async function initOutboundSession(
     sendCounter: 0,
     recvCounter: 0,
   };
-  saveSession(accountId, session);
+  await saveSession(accountId, session);
   return { session, ek: ephPub, pkid: peerOneTime?.preKeyId };
 }
 
@@ -496,7 +524,7 @@ async function initInboundSession(
 ): Promise<SessionState | null> {
   const peer = normalizeBareJid(peerJid);
   const localDeviceId = getOrCreateLocalDeviceId(accountId);
-  const localSecrets = getBundleSecretMap(accountId)[String(localDeviceId)];
+  const localSecrets = (await getBundleSecretMap(accountId))[String(localDeviceId)];
   const localBundle = getBundleMap(accountId)[String(localDeviceId)];
   const peerBundle = getPeerBundleForDevice(accountId, peer, senderDeviceId);
   const identity = await getOrCreateLocalKeyPair(accountId);
@@ -523,7 +551,7 @@ async function initInboundSession(
     sendCounter: 0,
     recvCounter: 0,
   };
-  saveSession(accountId, session);
+  await saveSession(accountId, session);
   return session;
 }
 
@@ -606,7 +634,7 @@ export async function encryptOmemoEnvelopeForPeer(
 
   const keys: OmemoEnvelopeKey[] = [];
   for (const target of targets) {
-    let session = readSession(accountId, peerJid, target.rid);
+    let session = await readSession(accountId, peerJid, target.rid);
     let initMeta: { ek?: string; pkid?: number } = {};
     if (!session && target.bundle) {
       const initialized = await initOutboundSession(accountId, peerJid, target.bundle);
@@ -642,7 +670,7 @@ export async function encryptOmemoEnvelopeForPeer(
     const next = await nextChainKey(chain);
     session.sendChain = toB64(next);
     session.sendCounter = counter + 1;
-    saveSession(accountId, session);
+    await saveSession(accountId, session);
   }
 
   if (keys.length === 0) return { envelope: null, usedPeerKey: false };
@@ -668,7 +696,7 @@ export async function decryptOmemoEnvelopeFromPeer(
   const wrappedForMe = envelope.keys.find((k) => k.rid === localRid) ?? envelope.keys[0];
   if (!wrappedForMe?.value) return null;
 
-  let session = readSession(accountId, peerJid, envelope.sid);
+  let session = await readSession(accountId, peerJid, envelope.sid);
   if (!session && wrappedForMe.ek) {
     session = await initInboundSession(accountId, peerJid, envelope.sid, wrappedForMe.ek, wrappedForMe.pkid);
   }
@@ -715,7 +743,7 @@ export async function decryptOmemoEnvelopeFromPeer(
     const next = await nextChainKey(chain);
     session.recvChain = toB64(next);
     session.recvCounter = targetN + 1;
-    saveSession(accountId, session);
+    await saveSession(accountId, session);
     return new TextDecoder().decode(plain);
   } catch {
     return null;
