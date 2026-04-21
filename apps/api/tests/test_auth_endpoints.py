@@ -182,3 +182,80 @@ async def test_user_token_issues_token_when_credentials_valid(monkeypatch):
     assert data["access_token"]
     assert data["jid"] == unique_jid
     assert data["account_id"]
+
+
+@pytest.mark.anyio
+async def test_user_token_rejects_disabled_account(monkeypatch):
+    class _OkResult:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    class _DisabledAccount:
+        id = "acc-disabled"
+        jid = "disabled@example.com"
+        is_enabled = False
+
+    class _FakeExecuteResult:
+        @staticmethod
+        def scalar_one_or_none():
+            return _DisabledAccount()
+
+    class _FakeDB:
+        async def execute(self, *args, **kwargs):
+            return _FakeExecuteResult()
+
+    async def _fake_get_db():
+        yield _FakeDB()
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _OkResult())
+    app.dependency_overrides[get_db] = _fake_get_db
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/auth/user-token",
+                json={"jid": "disabled@example.com", "password": "password123"},
+            )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_user_token_existing_account_still_issues_token(monkeypatch):
+    class _OkResult:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    class _EnabledAccount:
+        id = "acc-existing"
+        jid = "existing@example.com"
+        is_enabled = True
+
+    class _FakeExecuteResult:
+        @staticmethod
+        def scalar_one_or_none():
+            return _EnabledAccount()
+
+    class _FakeDB:
+        async def execute(self, *args, **kwargs):
+            return _FakeExecuteResult()
+
+    async def _fake_get_db():
+        yield _FakeDB()
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _OkResult())
+    app.dependency_overrides[get_db] = _fake_get_db
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/auth/user-token",
+                json={"jid": "existing@example.com", "password": "password123"},
+            )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert resp.status_code == 200
+    assert resp.json()["account_id"] == "acc-existing"
