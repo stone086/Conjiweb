@@ -324,7 +324,12 @@ export const useChatStore = create<ChatState>()(
       name: "conjiweb-chat",
       partialize: (s) => ({
         conversations: s.conversations,
-        messages: s.messages,
+        messages: Object.fromEntries(
+          Object.entries(s.messages).map(([conversationId, list]) => [
+            conversationId,
+            list.slice(-100),
+          ])
+        ),
         composerDrafts: s.composerDrafts,
         activeConversationId: s.activeConversationId,
       }),

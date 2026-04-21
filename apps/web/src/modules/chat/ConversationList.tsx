@@ -8,6 +8,7 @@ import { Users, User, MessageSquare, Trash2 } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 import { deleteLocalConversationData } from "@/services/localDb";
 import { normalizeBareJid } from "@/utils/helpers";
+import { useShallow } from "zustand/react/shallow";
 
 function ConvIcon({ type }: { type: string }) {
   if (type === "group") return <Users size={14} />;
@@ -18,7 +19,8 @@ export default function ConversationList() {
   const { lang, t } = useLanguage();
   const { conversationId } = useParams();
   const navigate = useNavigate();
-  const conversations = useChatStore((s) => Object.values(s.conversations));
+  const conversations = useChatStore(useShallow((s) => Object.values(s.conversations)));
+  const composerDrafts = useChatStore((s) => s.composerDrafts);
   const setActive = useChatStore((s) => s.setActiveConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -97,7 +99,9 @@ export default function ConversationList() {
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-xs text-surface-200/50 truncate">
-                    {conv.lastMessage ?? t("conv.noMessages")}
+                    {composerDrafts[conv.id]
+                      ? `[Draft] ${composerDrafts[conv.id]}`
+                      : (conv.lastMessage ?? t("conv.noMessages"))}
                   </span>
                   {conv.unreadCount > 0 && (
                     <span className="badge flex-shrink-0 ml-1">{conv.unreadCount}</span>

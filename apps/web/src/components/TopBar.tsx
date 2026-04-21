@@ -9,6 +9,7 @@ import { applyTheme, getStoredTheme } from "@/utils/theme";
 import { useLanguage } from "@/utils/i18n";
 import { getOmemoEnabled, onOmemoEnabledChange, setOmemoEnabled } from "@/services/omemoSettings";
 import { useReconnectStore } from "@/stores/reconnectStore";
+import toast from "react-hot-toast";
 
 interface TopBarProps {
   onToggleRight?: () => void;
@@ -74,7 +75,16 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
         </button>
         <div className="flex-1" />
         <button
-          onClick={() => setOmemoEnabled(!omemoEnabled)}
+          onClick={() => {
+            const next = !omemoEnabled;
+            setOmemoEnabled(next);
+            if (next) {
+              toast("OMEMO is not implemented yet. Messages are still plaintext.", {
+                icon: "⚠️",
+                duration: 4000,
+              });
+            }
+          }}
           className="btn-ghost p-2"
           title={omemoEnabled ? "OMEMO enabled" : "OMEMO disabled"}
         >

@@ -213,10 +213,22 @@ export function initXmppBridge(client: XmppClient) {
     // Notification
     const contact = useRosterStore.getState().getContact(accountId, from);
     const activeConvId = useChatStore.getState().activeConversationId;
+    const ownUsername = ownBareJid.split("@")[0].toLowerCase();
+    const text = (message.body ?? "").toLowerCase();
+    const mentionEnabled = localStorage.getItem("conjiweb-notify-mention") !== "0";
+    const mentioned = text.includes(`@${ownUsername}`);
     if (activeConvId !== convId) {
       useNotificationStore.getState().addNotification({
-        type: "message",
+        type: mentioned && mentionEnabled ? "mention" : "message",
         title: contact?.name ?? from.split("@")[0],
+        body: message.body.slice(0, 80),
+        conversationId: convId,
+        accountId,
+      });
+    } else if (mentioned && mentionEnabled) {
+      useNotificationStore.getState().addNotification({
+        type: "mention",
+        title: `${contact?.name ?? from.split("@")[0]} mentioned you`,
         body: message.body.slice(0, 80),
         conversationId: convId,
         accountId,

@@ -193,6 +193,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
 
@@ -299,7 +300,8 @@ export default function MessageView({ conversationId }: { conversationId: string
   useEffect(() => {
     const c = containerRef.current;
     if (!c) return;
-    if (c.scrollHeight - c.scrollTop - c.clientHeight < 200) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!isNearBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, peerIsTyping]);
 
   useEffect(() => {
@@ -334,7 +336,9 @@ export default function MessageView({ conversationId }: { conversationId: string
   const handleScroll = () => {
     const c = containerRef.current;
     if (!c) return;
-    setShowScrollBtn(c.scrollHeight - c.scrollTop - c.clientHeight > 300);
+    const distFromBottom = c.scrollHeight - c.scrollTop - c.clientHeight;
+    isNearBottomRef.current = distFromBottom < 200;
+    setShowScrollBtn(distFromBottom > 300);
     if (c.scrollTop < 80 && hasMore && !mamLoading) fetchHistory();
   };
 
