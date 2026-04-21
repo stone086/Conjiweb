@@ -69,13 +69,15 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
-          query: ["@tanstack/react-query"],
-          xmpp: ["strophe.js"],
-          ui: ["lucide-react", "react-hot-toast", "clsx"],
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("strophe.js") || id.includes("@converse/headless")) return "xmpp";
+          if (id.includes("emoji-picker-react") || id.includes("react-dropzone")) return "rich-input";
+          if (id.includes("dexie")) return "dexie";
+          return undefined;
         },
       },
     },
