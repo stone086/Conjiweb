@@ -191,6 +191,46 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
   );
 }
 
+function FilesTab({ conversationId }: { conversationId: string }) {
+  const messages = useChatStore((s) => s.messages[conversationId] ?? []);
+  const files = messages
+    .flatMap((m) => m.attachments ?? [])
+    .filter((a) => Boolean(a.downloadUrl));
+
+  const unique = Array.from(
+    new Map(files.map((f) => [f.id, f])).values()
+  );
+
+  if (unique.length === 0) {
+    return (
+      <div className="p-4 text-center text-sm text-surface-200/30 mt-4">
+        <FileText size={20} className="mx-auto mb-2 opacity-30" />
+        No files shared yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {unique.map((f) => (
+        <a
+          key={f.id}
+          href={f.downloadUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="glass rounded-lg p-3 flex items-center gap-3 hover:bg-white/5"
+        >
+          <FileText size={14} className="text-surface-200/50 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-surface-50 truncate">{f.fileName}</p>
+            <p className="text-[10px] text-surface-200/40">{(f.sizeBytes / 1024).toFixed(1)} KB</p>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export default function RightPanel({ conversationId, onClose }: RightPanelProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<RightTab>("info");
@@ -234,12 +274,7 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
         {activeTab === "info" && <InfoTab conversation={conversation} />}
         {activeTab === "members" && <MembersTab roomJid={conversation.peerJid} />}
         {activeTab === "ai" && <AiSummaryTab conversationId={conversationId} />}
-        {activeTab === "files" && (
-          <div className="p-4 text-center text-sm text-surface-200/30 mt-4">
-            <FileText size={20} className="mx-auto mb-2 opacity-30" />
-            {t("right.fileHistorySoon")}
-          </div>
-        )}
+        {activeTab === "files" && <FilesTab conversationId={conversationId} />}
       </div>
     </div>
   );

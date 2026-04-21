@@ -5,6 +5,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
 import { getClient } from "@/services/xmppAdapter";
+import { initXmppBridge } from "@/services/xmppBridge";
 import { Trash2, Plus, Wifi, WifiOff, Copy, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
@@ -14,7 +15,7 @@ import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDay
 import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
 import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
 import { useNotificationStore } from "@/stores/notificationStore";
-import { accountsApi } from "@/services/api";
+import { accountsApi, authApi, setUserToken } from "@/services/api";
 import { clearLocalAccountData } from "@/services/localDb";
 
 const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
@@ -50,8 +51,11 @@ function AccountCard({ account }: { account: XmppAccount }) {
         wsUrl: import.meta.env.VITE_XMPP_WS_URL ?? "ws://localhost:5280/xmpp-websocket",
         accountId: account.id,
       });
+      initXmppBridge(client);
       client.on("connection.changed", (d: any) => setConnected(account.id, d.status === "connected"));
       await client.connect();
+      const tokenRes = await authApi.getUserToken(account.jid).catch(() => null);
+      if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
       toast.success(`${t("toast.connected")}: ${account.jid}`);
     } catch (e: any) {
       toast.error(e.message ?? t("toast.connectionFailed"));
@@ -266,8 +270,11 @@ export default function SettingsPage() {
         wsUrl: form.wsUrl || import.meta.env.VITE_XMPP_WS_URL || "ws://localhost:5280/xmpp-websocket",
         accountId: id,
       });
+      initXmppBridge(client);
       client.on("connection.changed", (d: any) => setConnected(id, d.status === "connected"));
       await client.connect();
+      const tokenRes = await authApi.getUserToken(form.jid).catch(() => null);
+      if (tokenRes?.access_token) setUserToken(id, tokenRes.access_token);
     } catch (error: any) {
       toast.error(error?.message ?? t("toast.connectionFailed"));
     }
@@ -499,7 +506,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <p className="text-xs text-surface-200/20 text-center">Conjiweb · v3.0.0</p>
+        <p className="text-xs text-surface-200/20 text-center">Conjiweb · v{__APP_VERSION__}</p>
       </div>
     </div>
   );

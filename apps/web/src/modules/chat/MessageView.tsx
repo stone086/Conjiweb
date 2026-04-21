@@ -263,6 +263,8 @@ export default function MessageView({ conversationId }: { conversationId: string
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [forwardTargetId, setForwardTargetId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
@@ -272,6 +274,7 @@ export default function MessageView({ conversationId }: { conversationId: string
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const conversation = useChatStore((s) => s.conversations[conversationId]);
+  const allConversations = useChatStore((s) => Object.values(s.conversations));
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
   const composerDraft = useChatStore((s) => s.composerDrafts[conversationId] ?? "");
   const addMessage = useChatStore((s) => s.addMessage);
@@ -283,6 +286,9 @@ export default function MessageView({ conversationId }: { conversationId: string
   const messageMap = new Map<string, ChatMessage>(messages.map((m) => [m.id, m]));
   const { peerIsTyping, onInputChange, onBlur } = useTypingIndicator(conversation?.peerJid ?? "");
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
+  const forwardCandidates = allConversations
+    .filter((c) => c.accountId === activeAccountId && c.id !== conversationId)
+    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
 
   useEffect(() => {
     let cancelled = false;
@@ -434,7 +440,7 @@ export default function MessageView({ conversationId }: { conversationId: string
         if (!encrypted.usedPeerKey || !encrypted.envelope) {
           const keyExchange = await buildKeyExchangePayload(activeAccountId);
           client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
-          toast("Secure session handshake sent. Please resend after peer responds.", { icon: "🔐" });
+          toast("Encrypted session initiated (Conjiweb-only, experimental). Only works between two Conjiweb clients.", { icon: "🔐" });
           return;
         }
         id = client.sendOmemoMessage(
@@ -528,11 +534,32 @@ export default function MessageView({ conversationId }: { conversationId: string
   }, [conversationId, setComposerDraft]);
 
   const handleForwardMessage = useCallback((message: ChatMessage) => {
-    const next = `FWD: ${message.body}`;
-    setInput(next);
-    setComposerDraft(conversationId, next);
-    textareaRef.current?.focus();
-  }, [conversationId, setComposerDraft]);
+    setForwardingMessage(message);
+    setForwardTargetId("");
+  }, []);
+
+  const handleConfirmForward = useCallback(() => {
+    if (!forwardingMessage || !forwardTargetId || !activeAccountId) return;
+    const target = allConversations.find((c) => c.id === forwardTargetId);
+    if (!target) return;
+    const client = getClient(activeAccountId);
+    if (!client?.connected) {
+      toast.error(t("chat.notConnected"));
+      return;
+    }
+    try {
+      client.sendMessage(
+        target.peerJid,
+        `↩ ${forwardingMessage.body}`,
+        target.type === "group" ? "groupchat" : "chat"
+      );
+      toast.success("Forwarded");
+      setForwardingMessage(null);
+      setForwardTargetId("");
+    } catch (error: any) {
+      toast.error(error?.message ?? t("chat.sendFailed"));
+    }
+  }, [forwardingMessage, forwardTargetId, activeAccountId, allConversations, t]);
 
   const handleDeleteMessage = useCallback((message: ChatMessage) => {
     if (!activeAccountId) return;
@@ -582,7 +609,7 @@ export default function MessageView({ conversationId }: { conversationId: string
           if (!encrypted.usedPeerKey || !encrypted.envelope) {
             const keyExchange = await buildKeyExchangePayload(activeAccountId);
             client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
-            toast("Secure session handshake sent. Please resend after peer responds.", { icon: "🔐" });
+            toast("Encrypted session initiated (Conjiweb-only, experimental). Only works between two Conjiweb clients.", { icon: "🔐" });
             return;
           }
           newId = client.sendOmemoMessage(
@@ -859,6 +886,40 @@ export default function MessageView({ conversationId }: { conversationId: string
           alt={lightbox.alt}
           onClose={() => setLightbox(null)}
         />
+      )}
+      {forwardingMessage && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
+            <h3 className="text-sm font-semibold text-surface-50">Forward Message</h3>
+            <p className="text-xs text-surface-200/50 line-clamp-2">{forwardingMessage.body}</p>
+            <select
+              value={forwardTargetId}
+              onChange={(e) => setForwardTargetId(e.target.value)}
+              className="input-field text-sm"
+            >
+              <option value="">Select conversation...</option>
+              {forwardCandidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.type})
+                </option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setForwardingMessage(null);
+                  setForwardTargetId("");
+                }}
+                className="btn-ghost text-sm"
+              >
+                Cancel
+              </button>
+              <button onClick={handleConfirmForward} disabled={!forwardTargetId} className="btn-primary text-sm">
+                Forward
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

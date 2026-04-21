@@ -4,13 +4,12 @@ from app.utils.security import create_access_token
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.database import get_db
-from app.models import Account, AccountPreference
+from app.models import Account
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import re
 import subprocess
-import uuid
 
 router = APIRouter()
 
@@ -99,7 +98,7 @@ async def register_xmpp_account(request: Request, data: RegisterRequest):
 @router.post(
     "/user-token",
     summary="Issue user token",
-    description="Issue a JWT for a regular XMPP user by JID, creating a local account record when missing.",
+    description="Issue a JWT for a regular XMPP user by JID.",
 )
 @limiter.limit("20/minute")
 async def issue_user_token(
@@ -113,17 +112,7 @@ async def issue_user_token(
     result = await db.execute(select(Account).where(Account.jid == full_jid))
     account = result.scalar_one_or_none()
     if not account:
-        account = Account(
-            id=str(uuid.uuid4()),
-            jid=full_jid,
-            domain=domain,
-            display_name=username,
-            is_enabled=True,
-        )
-        db.add(account)
-        db.add(AccountPreference(account_id=account.id))
-        await db.commit()
-        await db.refresh(account)
+        raise HTTPException(status_code=404, detail="Account not found. Register first.")
     elif not account.is_enabled:
         raise HTTPException(status_code=403, detail="Account is disabled")
 

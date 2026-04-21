@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -109,8 +109,18 @@ export default function GroupPanel() {
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
   const activeAccount = accounts.find((a) => a.id === activeAccountId);
+  const defaultServer = useMemo(() => {
+    const domain = activeAccount?.jid.includes("@")
+      ? activeAccount.jid.split("@")[1]
+      : (import.meta.env.VITE_XMPP_DOMAIN ?? "");
+    return domain ? `conference.${domain}` : "conference.localhost";
+  }, [activeAccount?.jid]);
 
   const defaultNickname = activeAccount?.jid.split("@")[0] ?? "user";
+
+  useEffect(() => {
+    setCreateForm((prev) => ({ ...prev, server: defaultServer }));
+  }, [defaultServer]);
 
   const joinRoomNow = (roomJid: string, roomName: string, nickname: string) => {
     if (!activeAccountId) {
@@ -162,7 +172,7 @@ export default function GroupPanel() {
     const roomJid = `${slug}@${createForm.server}`;
     const roomName = createForm.name.trim();
     if (!joinRoomNow(roomJid, roomName, defaultNickname)) return;
-    setCreateForm({ name: "", server: "conference.localhost" });
+    setCreateForm({ name: "", server: defaultServer });
     setShowCreate(false);
     toast.success(t("group.joined"));
   };
@@ -227,7 +237,7 @@ export default function GroupPanel() {
             placeholder="Room name"
             className="input-field text-xs py-1.5" />
           <input value={createForm.server} onChange={(e) => setCreateForm({ ...createForm, server: e.target.value })}
-            placeholder="conference.localhost"
+            placeholder={defaultServer}
             className="input-field text-xs py-1.5" />
           <div className="flex gap-2">
             <button onClick={handleCreate} className="btn-primary text-xs py-1.5 flex-1">{t("group.create")}</button>
