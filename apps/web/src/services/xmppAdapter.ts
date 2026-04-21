@@ -26,6 +26,7 @@ export type XmppEvent =
   | "typing.stopped"
   | "message.delivered"
   | "message.read"
+  | "room.subject"
   | "room.member"
   | "error";
 
@@ -38,11 +39,13 @@ export interface XmppMessage {
   type: "chat" | "groupchat";
   stanzaId?: string;
   replyTo?: string;
+  replaceId?: string;
 }
 
 interface SendMessageOptions {
   replyToId?: string;
   replyToJid?: string;
+  replaceId?: string;
 }
 
 export interface RosterContact {
@@ -158,6 +161,11 @@ export class XmppClient {
       const type = stanza.getAttribute("type") ?? "chat";
       const body = stanza.querySelector("body")?.textContent ?? "";
       const id = stanza.getAttribute("id") ?? crypto.randomUUID();
+      const subject = stanza.querySelector("subject")?.textContent ?? "";
+      if (type === "groupchat" && subject) {
+        this.emit("room.subject", { accountId: this.config.accountId, roomJid: from.split("/")[0], subject });
+        return true;
+      }
 
       if (stanza.querySelector("composing")) {
         this.emit("typing.started", { accountId: this.config.accountId, from });
@@ -187,6 +195,7 @@ export class XmppClient {
 
       if (body) {
         const replyNode = stanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
+        const replaceNode = stanza.querySelector('replace[xmlns="urn:xmpp:message-correct:0"]');
         const msg: XmppMessage = {
           id,
           from,
@@ -195,6 +204,7 @@ export class XmppClient {
           timestamp: Date.now(),
           type: type as "chat" | "groupchat",
           replyTo: replyNode?.getAttribute("id") ?? undefined,
+          replaceId: replaceNode?.getAttribute("id") ?? undefined,
         };
         this.emit("message.received", { accountId: this.config.accountId, message: msg });
       }
@@ -304,6 +314,13 @@ export class XmppClient {
         id: options.replyToId,
         to: options.replyToJid ?? toJid,
       });
+      stanza.up();
+    }
+    if (options?.replaceId) {
+      stanza.c("replace", {
+        xmlns: "urn:xmpp:message-correct:0",
+        id: options.replaceId,
+      });
     }
     this._connection.send(stanza);
     const msg: XmppMessage = {
@@ -314,6 +331,7 @@ export class XmppClient {
       timestamp: Date.now(),
       type,
       replyTo: options?.replyToId,
+      replaceId: options?.replaceId,
     };
     this.emit("message.sent", { accountId: this.config.accountId, message: msg });
     return id;
@@ -414,6 +432,27 @@ export class XmppClient {
       .c("invite", { to: cleanInvitee });
     if (reason?.trim()) msg.c("reason").t(sanitizeXmlText(reason.trim()));
     this._connection.send(msg);
+  }
+
+  fetchVCardAvatar(jid: string): Promise<string | null> {
+    if (!this._connection) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const iq = this._$iq({ type: "get", to: jid }).c("vCard", { xmlns: "vcard-temp" });
+      this._connection.sendIQ(
+        iq.tree(),
+        (result: Element) => {
+          const photo = result.querySelector("vCard PHOTO");
+          const b64 = photo?.querySelector("BINVAL")?.textContent?.trim();
+          const mime = photo?.querySelector("TYPE")?.textContent?.trim() || "image/jpeg";
+          if (!b64) {
+            resolve(null);
+            return;
+          }
+          resolve(`data:${mime};base64,${b64}`);
+        },
+        () => resolve(null)
+      );
+    });
   }
 
   fetchMAM(targetJid: string, options: { before?: string; limit?: number; type?: "chat" | "groupchat" } = {}) {

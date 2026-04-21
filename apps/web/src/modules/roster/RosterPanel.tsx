@@ -122,9 +122,13 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
       onClick={() => onChat(contact.jid)}>
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        <div className="w-8 h-8 rounded-full bg-surface-800 flex items-center justify-center
+        <div className="w-8 h-8 rounded-full bg-surface-800 overflow-hidden flex items-center justify-center
                         text-sm font-medium uppercase text-surface-200">
-          {(contact.name ?? contact.jid)[0]}
+          {contact.avatarUrl ? (
+            <img src={contact.avatarUrl} alt={contact.name ?? contact.jid} className="w-full h-full object-cover" />
+          ) : (
+            (contact.name ?? contact.jid)[0]
+          )}
         </div>
         <PresenceDot presence={contact.presence} />
       </div>

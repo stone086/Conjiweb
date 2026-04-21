@@ -11,7 +11,7 @@ import { getChatToolbarActions } from "@/plugins/host";
 import type { ChatToolbarAction } from "@/plugins/sdk";
 import { format, isSameDay } from "date-fns";
 import { clsx } from "clsx";
-import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile } from "lucide-react";
+import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2 } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
@@ -41,6 +41,11 @@ function MessageBubble({
   onReply,
   onOpenImage,
   onRetry,
+  onEdit,
+  onForward,
+  onDelete,
+  onToggleStar,
+  onReact,
   sentLabel,
   readLabel,
 }: {
@@ -51,10 +56,32 @@ function MessageBubble({
   onReply: (m: ChatMessage) => void;
   onOpenImage: (src: string, alt: string) => void;
   onRetry: (m: ChatMessage) => void;
+  onEdit: (m: ChatMessage) => void;
+  onForward: (m: ChatMessage) => void;
+  onDelete: (m: ChatMessage) => void;
+  onToggleStar: (m: ChatMessage) => void;
+  onReact: (m: ChatMessage, emoji: string) => void;
   sentLabel: string;
   readLabel: string;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (menuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [menuOpen]);
   return (
     <div
       className={clsx("flex gap-2 group", isOwn ? "flex-row-reverse" : "flex-row")}
@@ -78,6 +105,7 @@ function MessageBubble({
             </div>
           )}
           {msg.body && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>}
+          {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1">edited</p>}
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
               {att.mimeType.startsWith("image/") ? (
@@ -88,7 +116,21 @@ function MessageBubble({
             </div>
           ))}
         </div>
+        {!!msg.reactions && Object.keys(msg.reactions).length > 0 && (
+          <div className="flex gap-1 flex-wrap px-1">
+            {Object.entries(msg.reactions).map(([emoji, count]) => (
+              <button
+                key={emoji}
+                onClick={() => onReact(msg, emoji)}
+                className="text-[11px] px-1.5 py-0.5 rounded-full border border-white/10 bg-white/5"
+              >
+                {emoji} {count}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2 px-1">
+          {msg.starred && <span className="text-[10px] text-warn">★</span>}
           <span className="text-[10px] text-surface-200/25" title={format(msg.timestamp, "yyyy-MM-dd HH:mm:ss")}>
             {format(msg.timestamp, "HH:mm")}
           </span>
@@ -107,6 +149,28 @@ function MessageBubble({
         <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
           <CornerUpLeft size={13} />
         </button>
+        <div className="relative" ref={menuRef}>
+          <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
+            <MoreVertical size={13} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-7 z-20 w-36 rounded-lg border border-white/10 bg-surface-900 shadow-xl p-1">
+              <button onClick={() => { onToggleStar(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                <Star size={12} /> {msg.starred ? "Unstar" : "Star"}
+              </button>
+              <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                <Pencil size={12} /> Edit
+              </button>
+              <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                <Forward size={12} /> Forward
+              </button>
+              <button onClick={() => { onReact(msg, "👍"); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded">👍 React</button>
+              <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
+                <Trash2 size={12} /> Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -187,6 +251,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pluginToolbarActions, setPluginToolbarActions] = useState<ChatToolbarAction[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
@@ -203,6 +268,8 @@ export default function MessageView({ conversationId }: { conversationId: string
   const composerDraft = useChatStore((s) => s.composerDrafts[conversationId] ?? "");
   const addMessage = useChatStore((s) => s.addMessage);
   const updateMessage = useChatStore((s) => s.updateMessage);
+  const toggleMessageStar = useChatStore((s) => s.toggleMessageStar);
+  const toggleMessageReaction = useChatStore((s) => s.toggleMessageReaction);
   const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const clearComposerDraft = useChatStore((s) => s.clearComposerDraft);
   const messageMap = new Map<string, ChatMessage>(messages.map((m) => [m.id, m]));
@@ -353,16 +420,14 @@ export default function MessageView({ conversationId }: { conversationId: string
     }
     let id: string;
     try {
-      id = body
-        ? client.sendMessage(
-            conversation?.peerJid ?? conversationId,
-            body,
-            conversation?.type === "group" ? "groupchat" : "chat",
-            replyTo
-              ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid }
-              : undefined
-          )
-        : crypto.randomUUID();
+      id = body ? client.sendMessage(
+        conversation?.peerJid ?? conversationId,
+        body,
+        conversation?.type === "group" ? "groupchat" : "chat",
+        editingMessageId
+          ? { replaceId: editingMessageId }
+          : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
+      ) : crypto.randomUUID();
     } catch (error: any) {
       if (body) {
         const failedMessage: ChatMessage = {
@@ -406,17 +471,56 @@ export default function MessageView({ conversationId }: { conversationId: string
         sizeBytes: f.sizeBytes,
       })),
     };
-    addMessage(outgoingMessage);
-    cacheMessages([outgoingMessage]).catch(() => {});
+    if (editingMessageId) {
+      updateMessage(conversationId, editingMessageId, {
+        body,
+        editedAt: Date.now(),
+      });
+    } else {
+      addMessage(outgoingMessage);
+      cacheMessages([outgoingMessage]).catch(() => {});
+    }
     setInput("");
     clearComposerDraft(conversationId);
     saveDraft(conversationId, "").catch(() => {});
     setReplyTo(null);
+    setEditingMessageId(null);
     setPendingFiles([]);
     setShowUpload(false);
     setShowEmojiPicker(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, replyTo, t, clearComposerDraft]);
+  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, updateMessage, replyTo, editingMessageId, t, clearComposerDraft]);
+
+  const handleEditMessage = useCallback((message: ChatMessage) => {
+    if (message.direction !== "out") return;
+    setEditingMessageId(message.id);
+    setInput(message.body);
+    setComposerDraft(conversationId, message.body);
+    textareaRef.current?.focus();
+  }, [conversationId, setComposerDraft]);
+
+  const handleForwardMessage = useCallback((message: ChatMessage) => {
+    const next = `FWD: ${message.body}`;
+    setInput(next);
+    setComposerDraft(conversationId, next);
+    textareaRef.current?.focus();
+  }, [conversationId, setComposerDraft]);
+
+  const handleDeleteMessage = useCallback((message: ChatMessage) => {
+    updateMessage(conversationId, message.id, {
+      body: "Message deleted",
+      editedAt: Date.now(),
+      deletedAt: Date.now(),
+    });
+  }, [conversationId, updateMessage]);
+
+  const handleToggleStar = useCallback((message: ChatMessage) => {
+    toggleMessageStar(conversationId, message.id);
+  }, [conversationId, toggleMessageStar]);
+
+  const handleReact = useCallback((message: ChatMessage, emoji: string) => {
+    toggleMessageReaction(conversationId, message.id, emoji);
+  }, [conversationId, toggleMessageReaction]);
 
   const retryFailedMessage = useCallback((message: ChatMessage) => {
     if (!activeAccountId) return;
@@ -502,6 +606,8 @@ export default function MessageView({ conversationId }: { conversationId: string
           const isOwn = msg.direction === "out";
           const prev = messages[i - 1];
           const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
+          const unreadStartIdx = conversation.unreadCount > 0 ? Math.max(messages.length - conversation.unreadCount, 0) : -1;
+          const showUnreadDivider = unreadStartIdx === i && conversation.unreadCount > 0;
           return (
             <div
               key={msg.id}
@@ -510,6 +616,13 @@ export default function MessageView({ conversationId }: { conversationId: string
               data-mid={msg.id}
             >
               {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
+              {showUnreadDivider && (
+                <div className="flex items-center gap-3 py-2">
+                  <div className="flex-1 h-px bg-accent/40" />
+                  <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">Unread</span>
+                  <div className="flex-1 h-px bg-accent/40" />
+                </div>
+              )}
               {msg.direction === "system" ? (
                 <div className="msg-bubble-system">{msg.body}</div>
               ) : (
@@ -521,6 +634,11 @@ export default function MessageView({ conversationId }: { conversationId: string
                   onReply={setReplyTo}
                   onOpenImage={(src, alt) => setLightbox({ src, alt })}
                   onRetry={retryFailedMessage}
+                  onEdit={handleEditMessage}
+                  onForward={handleForwardMessage}
+                  onDelete={handleDeleteMessage}
+                  onToggleStar={handleToggleStar}
+                  onReact={handleReact}
                   sentLabel={t("chat.sentSent")}
                   readLabel={t("chat.sentRead")}
                 />
@@ -565,6 +683,22 @@ export default function MessageView({ conversationId }: { conversationId: string
       )}
 
       {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} title={t("chat.replyingTo")} />}
+      {editingMessageId && (
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
+          <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
+          <div className="flex-1 min-w-0 text-xs text-surface-200/70">Editing message</div>
+          <button
+            onClick={() => {
+              setEditingMessageId(null);
+              setInput("");
+              clearComposerDraft(conversationId);
+            }}
+            className="text-surface-200/30 hover:text-surface-200 p-1"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       <div ref={composerRef} className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0 relative">
         {pluginToolbarActions.length > 0 && (

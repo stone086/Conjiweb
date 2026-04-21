@@ -29,6 +29,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
   const updatePresence = useAccountStore((s) => s.updatePresence);
   const setConnected = useAccountStore((s) => s.setConnected);
   const [connecting, setConnecting] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const PRESENCES: { value: PresenceType; label: string; color: string }[] = [
     { value: "available", label: t("presence.available"), color: "bg-success" },
     { value: "away", label: t("presence.away"), color: "bg-warn" },
@@ -103,7 +104,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
               updatePresence(account.id, p.value);
               const client = getClient(account.id);
               if (client?.connected) {
-                client.setPresence(p.value);
+                client.setPresence(p.value, statusText.trim() || undefined);
               }
             }}
             className={clsx(
@@ -117,6 +118,26 @@ function AccountCard({ account }: { account: XmppAccount }) {
             {p.label}
           </button>
         ))}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          value={statusText}
+          onChange={(e) => setStatusText(e.target.value)}
+          className="input-field text-xs py-1.5 flex-1"
+          placeholder="Custom status (optional)"
+        />
+        <button
+          onClick={() => {
+            const client = getClient(account.id);
+            if (!client?.connected) return;
+            client.setPresence(account.presence, statusText.trim() || undefined);
+            toast.success("Status updated");
+          }}
+          className="btn-ghost text-xs py-1.5 px-2.5"
+        >
+          Apply
+        </button>
       </div>
 
       <div className="flex gap-2">

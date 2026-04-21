@@ -14,6 +14,10 @@ export interface ChatMessage {
   direction: MessageDirection;
   status: "pending" | "sent" | "delivered" | "read" | "failed";
   timestamp: number;
+  editedAt?: number;
+  deletedAt?: number;
+  starred?: boolean;
+  reactions?: Record<string, number>;
   replyToId?: string;
   attachments?: MessageAttachment[];
 }
@@ -59,6 +63,8 @@ interface ChatState {
   getComposerDraft: (conversationId: string) => string;
   clearAccountData: (accountId: string) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
+  toggleMessageStar: (conversationId: string, messageId: string) => void;
+  toggleMessageReaction: (conversationId: string, messageId: string, emoji: string) => void;
 }
 
 const MAX_MESSAGES_PER_CONVERSATION = 500;
@@ -310,6 +316,52 @@ export const useChatStore = create<ChatState>()(
             if (msg.id !== messageId) return msg;
             touched = true;
             return { ...msg, ...patch };
+          });
+          if (!touched) return s;
+          return {
+            messages: {
+              ...s.messages,
+              [conversationId]: updated,
+            },
+          };
+        }),
+
+      toggleMessageStar: (conversationId, messageId) =>
+        set((s) => {
+          const existing = s.messages[conversationId] ?? [];
+          if (existing.length === 0) return s;
+          let touched = false;
+          const updated = existing.map((msg) => {
+            if (msg.id !== messageId) return msg;
+            touched = true;
+            return { ...msg, starred: !msg.starred };
+          });
+          if (!touched) return s;
+          return {
+            messages: {
+              ...s.messages,
+              [conversationId]: updated,
+            },
+          };
+        }),
+
+      toggleMessageReaction: (conversationId, messageId, emoji) =>
+        set((s) => {
+          const existing = s.messages[conversationId] ?? [];
+          if (existing.length === 0) return s;
+          let touched = false;
+          const updated = existing.map((msg) => {
+            if (msg.id !== messageId) return msg;
+            touched = true;
+            const reactions = { ...(msg.reactions ?? {}) };
+            const current = reactions[emoji] ?? 0;
+            if (current > 0) {
+              if (current === 1) delete reactions[emoji];
+              else reactions[emoji] = current - 1;
+            } else {
+              reactions[emoji] = 1;
+            }
+            return { ...msg, reactions };
           });
           if (!touched) return s;
           return {

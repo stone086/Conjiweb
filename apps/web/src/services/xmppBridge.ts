@@ -15,6 +15,7 @@ import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 
 const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
+const avatarFetchInFlight = new Set<string>();
 
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
   const value = (show ?? "").toLowerCase();
@@ -54,6 +55,21 @@ export function initXmppBridge(client: XmppClient) {
         avatarUrl: existing?.avatarUrl,
         isBlocked: existing?.isBlocked ?? false,
       });
+
+      const avatarKey = `${accountId}::${normalizedJid}`;
+      if (!existing?.avatarUrl && !avatarFetchInFlight.has(avatarKey)) {
+        avatarFetchInFlight.add(avatarKey);
+        client.fetchVCardAvatar(normalizedJid).then((avatarUrl) => {
+          if (avatarUrl) {
+            const latest = useRosterStore.getState().getContact(accountId, normalizedJid);
+            if (latest) {
+              useRosterStore.getState().upsertContact({ ...latest, avatarUrl });
+            }
+          }
+        }).finally(() => {
+          avatarFetchInFlight.delete(avatarKey);
+        });
+      }
     });
   });
 
@@ -201,6 +217,21 @@ export function initXmppBridge(client: XmppClient) {
       replyToId: message.replyTo,
     };
 
+    if (message.replaceId) {
+      useChatStore.getState().updateMessage(convId, message.replaceId, {
+        body: message.body,
+        editedAt: message.timestamp,
+      });
+      cacheMessages([
+        {
+          ...(useChatStore.getState().messages[convId]?.find((m) => m.id === message.replaceId) ?? chatMsg),
+          body: message.body,
+          editedAt: message.timestamp,
+        },
+      ]).catch(() => {});
+      return;
+    }
+
     useChatStore.getState().addMessage(chatMsg);
     client.sendReceipt(message.from, message.id, "received");
     if (useChatStore.getState().activeConversationId === convId) {
@@ -313,6 +344,12 @@ export function initXmppBridge(client: XmppClient) {
       return;
     }
     useGroupStore.getState().setMembers(roomJid, [...without, nextMember]);
+  });
+
+  client.on("room.subject", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    useGroupStore.getState().updateRoomSubject(roomJid, String(data.subject ?? ""));
   });
 
   console.log(`[xmppBridge] Bridge initialized for account: ${accountId}`);
