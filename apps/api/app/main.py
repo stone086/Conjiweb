@@ -42,7 +42,7 @@ app = FastAPI(
         {"name": "accounts", "description": "XMPP account management. Admin token required."},
         {"name": "conversations", "description": "Conversation metadata APIs. Admin token required."},
         {"name": "contacts", "description": "Roster and contact APIs. Admin token required."},
-        {"name": "attachments", "description": "Secure attachment upload APIs. Admin token required."},
+        {"name": "attachments", "description": "Secure attachment upload APIs. User token required."},
         {"name": "messages", "description": "Message search and indexing APIs. Admin token required."},
         {"name": "plugins", "description": "Plugin lifecycle APIs. Admin token required."},
         {"name": "ai", "description": "AI utility APIs. Admin token required."},
@@ -68,7 +68,7 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(accounts.router, prefix="/accounts", tags=["accounts"], dependencies=admin_dep)
 app.include_router(conversations.router, prefix="/conversations", tags=["conversations"], dependencies=admin_dep)
 app.include_router(contacts.router, prefix="/contacts", tags=["contacts"], dependencies=admin_dep)
-app.include_router(attachments.router, prefix="/attachments", tags=["attachments"], dependencies=admin_dep)
+app.include_router(attachments.router, prefix="/attachments", tags=["attachments"])
 app.include_router(messages.router, prefix="/messages", tags=["messages"], dependencies=admin_dep)
 app.include_router(plugins.router, prefix="/plugins", tags=["plugins"], dependencies=admin_dep)
 app.include_router(ai.router, prefix="/ai", tags=["ai"], dependencies=admin_dep)

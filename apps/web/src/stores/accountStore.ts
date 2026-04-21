@@ -52,6 +52,7 @@ export const useAccountStore = create<AccountState>()(
       removeAccount: (id) =>
         set((s) => {
           sessionStorage.removeItem(`${PASSWORD_KEY_PREFIX}${id}`);
+          sessionStorage.removeItem(`${USER_TOKEN_KEY_PREFIX}${id}`);
           return {
             accounts: s.accounts.filter((a) => a.id !== id),
             activeAccountId:
@@ -84,6 +85,7 @@ export const useAccountStore = create<AccountState>()(
 );
 
 const PASSWORD_KEY_PREFIX = "conjiweb-account-password:";
+const USER_TOKEN_KEY_PREFIX = "conjiweb-user-token:";
 
 export function setAccountPassword(accountId: string, password: string) {
   sessionStorage.setItem(`${PASSWORD_KEY_PREFIX}${accountId}`, password);

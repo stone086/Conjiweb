@@ -5,6 +5,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.config import settings
 from app.models import Attachment
+from app.utils.security import get_current_user
 from minio import Minio
 from minio.error import S3Error
 import uuid, io
@@ -49,6 +50,7 @@ class UploadResponse(BaseModel):
 async def upload_file(
     file: UploadFile = File(...),
     message_id: Optional[str] = None,
+    _current_user: dict[str, str] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     ensure_bucket()
@@ -119,7 +121,10 @@ async def upload_file(
     summary="Get presigned URL",
     description="Return temporary signed download URL for one object key.",
 )
-async def get_presigned_url(object_key: str):
+async def get_presigned_url(
+    object_key: str,
+    _current_user: dict[str, str] = Depends(get_current_user),
+):
     try:
         url = minio_client.presigned_get_object(settings.MINIO_BUCKET, object_key)
         return {"url": url}

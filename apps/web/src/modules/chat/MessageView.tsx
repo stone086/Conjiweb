@@ -448,7 +448,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       const file = item.getAsFile();
       if (!file) continue;
       try {
-        const result = await attachmentsApi.upload(file);
+        const result = await attachmentsApi.upload(file, undefined, activeAccountId ?? undefined);
         setPendingFiles((prev) => [
           ...prev,
           {
@@ -539,7 +539,11 @@ export default function MessageView({ conversationId }: { conversationId: string
 
       {showUpload && (
         <div className="px-4 py-3 border-t border-white/5 bg-surface-900/30">
-          <FileUploadZone onUploaded={(f) => setPendingFiles((p) => [...p, f])} onCancel={() => setShowUpload(false)} />
+          <FileUploadZone
+            onUploaded={(f) => setPendingFiles((p) => [...p, f])}
+            onCancel={() => setShowUpload(false)}
+            accountId={activeAccountId ?? undefined}
+          />
         </div>
       )}
 

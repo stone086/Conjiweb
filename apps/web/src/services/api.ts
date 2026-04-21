@@ -1,5 +1,20 @@
 import axios from "axios";
+import { useAccountStore } from "@/stores/accountStore";
 export const ADMIN_SESSION_EXPIRED_EVENT = "conjiweb:admin-session-expired";
+const USER_TOKEN_KEY_PREFIX = "conjiweb-user-token:";
+
+function getUserToken(accountId?: string | null): string | null {
+  if (!accountId) return null;
+  return sessionStorage.getItem(`${USER_TOKEN_KEY_PREFIX}${accountId}`);
+}
+
+export function setUserToken(accountId: string, token: string) {
+  sessionStorage.setItem(`${USER_TOKEN_KEY_PREFIX}${accountId}`, token);
+}
+
+export function clearUserToken(accountId: string) {
+  sessionStorage.removeItem(`${USER_TOKEN_KEY_PREFIX}${accountId}`);
+}
 
 function normalizeApiUrl(raw?: string): string {
   const fallback = "/api";
@@ -40,8 +55,15 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("admin_token");
+  const accountHeader = config.headers?.["X-Conjiweb-Account-Id"];
+  const accountId =
+    (typeof accountHeader === "string" ? accountHeader : undefined) ??
+    useAccountStore.getState().activeAccountId;
+  const token = getUserToken(accountId) ?? localStorage.getItem("admin_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (config.headers && "X-Conjiweb-Account-Id" in config.headers) {
+    delete config.headers["X-Conjiweb-Account-Id"];
+  }
   return config;
 });
 
@@ -88,12 +110,15 @@ export const messagesApi = {
 
 // Attachments
 export const attachmentsApi = {
-  upload: (file: File, messageId?: string) => {
+  upload: (file: File, messageId?: string, accountId?: string) => {
     const form = new FormData();
     form.append("file", file);
     if (messageId) form.append("message_id", messageId);
     return api.post("/attachments/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: {
+        "Content-Type": "multipart/form-data",
+        ...(accountId ? { "X-Conjiweb-Account-Id": accountId } : {}),
+      },
     }).then((r) => r.data);
   },
 };
@@ -136,4 +161,6 @@ export const adminApi = {
 export const authApi = {
   register: (data: { jid: string; password: string }) =>
     api.post("/auth/register", data).then((r) => r.data),
+  getUserToken: (jid: string) =>
+    api.post("/auth/user-token", { jid }).then((r) => r.data),
 };

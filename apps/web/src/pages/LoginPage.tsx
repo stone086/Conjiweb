@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
-import { accountsApi, authApi } from "@/services/api";
+import { accountsApi, authApi, setUserToken } from "@/services/api";
 import { requestNotificationPermission } from "@/stores/notificationStore";
 import toast from "react-hot-toast";
 import { Wifi, Lock, User, Eye, EyeOff, UserPlus } from "lucide-react";
@@ -34,6 +34,10 @@ export default function LoginPage() {
     initXmppBridge(client);
     try {
       await client.connect();
+      const tokenRes = await authApi.getUserToken(jid);
+      if (tokenRes?.access_token) {
+        setUserToken(id, tokenRes.access_token);
+      }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       navigate("/");

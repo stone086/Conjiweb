@@ -23,6 +23,7 @@ interface FileUploadProps {
   onUploaded: (file: UploadedFile) => void;
   onCancel: () => void;
   messageId?: string;
+  accountId?: string;
 }
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
@@ -43,7 +44,7 @@ function FileIcon({ mimeType }: { mimeType: string }) {
   return <File size={16} className="text-surface-200/50" />;
 }
 
-export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadProps) {
+export function FileUploadZone({ onUploaded, onCancel, messageId, accountId }: FileUploadProps) {
   const { t } = useLanguage();
   const [files, setFiles] = useState<FileItem[]>([]);
 
@@ -75,7 +76,7 @@ export function FileUploadZone({ onUploaded, onCancel, messageId }: FileUploadPr
         ));
       }, 200);
 
-      const result = await attachmentsApi.upload(item.file, messageId);
+      const result = await attachmentsApi.upload(item.file, messageId, accountId);
       clearInterval(progressInterval);
 
       const uploaded: UploadedFile = {

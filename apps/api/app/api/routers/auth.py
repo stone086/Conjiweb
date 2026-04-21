@@ -1,11 +1,16 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.utils.security import create_access_token
 from app.core.config import settings
 from app.core.rate_limit import limiter
+from app.core.database import get_db
+from app.models import Account, AccountPreference
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import re
 import subprocess
+import uuid
 
 router = APIRouter()
 
@@ -21,6 +26,10 @@ class AdminLogin(BaseModel):
 class RegisterRequest(BaseModel):
     jid: str
     password: str
+
+
+class UserTokenRequest(BaseModel):
+    jid: str
 
 
 @router.post(
@@ -85,3 +94,43 @@ async def register_xmpp_account(request: Request, data: RegisterRequest):
         raise HTTPException(status_code=500, detail="Failed to create account")
 
     return {"ok": True, "jid": f"{username}@{domain}"}
+
+
+@router.post(
+    "/user-token",
+    summary="Issue user token",
+    description="Issue a JWT for a regular XMPP user by JID, creating a local account record when missing.",
+)
+@limiter.limit("20/minute")
+async def issue_user_token(
+    request: Request,
+    data: UserTokenRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    username, domain = parse_jid(data.jid)
+    full_jid = f"{username}@{domain}"
+
+    result = await db.execute(select(Account).where(Account.jid == full_jid))
+    account = result.scalar_one_or_none()
+    if not account:
+        account = Account(
+            id=str(uuid.uuid4()),
+            jid=full_jid,
+            domain=domain,
+            display_name=username,
+            is_enabled=True,
+        )
+        db.add(account)
+        db.add(AccountPreference(account_id=account.id))
+        await db.commit()
+        await db.refresh(account)
+    elif not account.is_enabled:
+        raise HTTPException(status_code=403, detail="Account is disabled")
+
+    token = create_access_token(full_jid, role="user", account_id=account.id)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "account_id": account.id,
+        "jid": full_jid,
+    }
