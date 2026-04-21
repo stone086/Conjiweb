@@ -26,6 +26,7 @@ export type XmppEvent =
   | "typing.stopped"
   | "message.delivered"
   | "message.read"
+  | "message.retracted"
   | "room.subject"
   | "room.member"
   | "error";
@@ -192,6 +193,15 @@ export class XmppClient {
         });
         return true;
       }
+      const retracted = stanza.querySelector('retract[xmlns="urn:xmpp:message-retract:1"]');
+      if (retracted) {
+        this.emit("message.retracted", {
+          accountId: this.config.accountId,
+          messageId: retracted.getAttribute("id"),
+          from,
+        });
+        return true;
+      }
 
       if (body) {
         const replyNode = stanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
@@ -352,6 +362,16 @@ export class XmppClient {
       this._$msg({ to: toJid, type: "chat" })
         .c(kind, { xmlns: "urn:xmpp:receipts", id: messageId })
     );
+  }
+
+  retractMessage(toJid: string, messageId: string, type: "chat" | "groupchat" = "chat") {
+    if (!this._connection || !this._connected || !messageId) return;
+    const stanza = this._$msg({ to: toJid, type })
+      .c("apply-to", { xmlns: "urn:xmpp:fasten:0", id: messageId })
+      .c("retract", { xmlns: "urn:xmpp:message-retract:1" })
+      .up()
+      .up();
+    this._connection.send(stanza);
   }
 
   setPresence(show: string, status?: string) {

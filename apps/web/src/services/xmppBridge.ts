@@ -326,6 +326,21 @@ export function initXmppBridge(client: XmppClient) {
     });
   });
 
+  client.on("message.retracted", (data: any) => {
+    const messageId = data.messageId as string | undefined;
+    if (!messageId) return;
+    const store = useChatStore.getState();
+    Object.entries(store.messages).forEach(([conversationId, list]) => {
+      if (list.some((m) => m.id === messageId)) {
+        store.updateMessage(conversationId, messageId, {
+          body: "Message deleted",
+          deletedAt: Date.now(),
+          editedAt: Date.now(),
+        });
+      }
+    });
+  });
+
   client.on("room.member", (data: any) => {
     const roomJid = normalizeBareJid(data.roomJid as string);
     if (!roomJid) return;

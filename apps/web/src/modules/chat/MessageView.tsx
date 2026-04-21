@@ -158,16 +158,20 @@ function MessageBubble({
               <button onClick={() => { onToggleStar(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
                 <Star size={12} /> {msg.starred ? "Unstar" : "Star"}
               </button>
-              <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
-                <Pencil size={12} /> Edit
-              </button>
+              {isOwn && (
+                <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
               <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
                 <Forward size={12} /> Forward
               </button>
               <button onClick={() => { onReact(msg, "👍"); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded">👍 React</button>
-              <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
-                <Trash2 size={12} /> Delete
-              </button>
+              {isOwn && (
+                <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
+                  <Trash2 size={12} /> Delete
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -507,12 +511,19 @@ export default function MessageView({ conversationId }: { conversationId: string
   }, [conversationId, setComposerDraft]);
 
   const handleDeleteMessage = useCallback((message: ChatMessage) => {
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    client?.retractMessage(
+      conversation?.peerJid ?? conversationId,
+      message.id,
+      conversation?.type === "group" ? "groupchat" : "chat"
+    );
     updateMessage(conversationId, message.id, {
       body: "Message deleted",
       editedAt: Date.now(),
       deletedAt: Date.now(),
     });
-  }, [conversationId, updateMessage]);
+  }, [activeAccountId, conversation, conversationId, updateMessage]);
 
   const handleToggleStar = useCallback((message: ChatMessage) => {
     toggleMessageStar(conversationId, message.id);

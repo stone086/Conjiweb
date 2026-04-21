@@ -8,7 +8,7 @@ import { deleteLocalConversationData } from "@/services/localDb";
 import { clsx } from "clsx";
 import {
   Search, UserPlus, MoreVertical, MessageSquare,
-  Ban, Trash2, ChevronDown, ChevronRight, Users, Unlock,
+  Ban, Trash2, ChevronDown, ChevronRight, Users, Unlock, Info,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
@@ -26,7 +26,15 @@ function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
   return <span className={clsx("w-2.5 h-2.5 rounded-full border-2 border-surface-900 flex-shrink-0", colors[presence] ?? colors.unavailable)} />;
 }
 
-function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid: string) => void }) {
+function ContactRow({
+  contact,
+  onChat,
+  onProfile,
+}: {
+  contact: RosterContact;
+  onChat: (jid: string) => void;
+  onProfile: (c: RosterContact) => void;
+}) {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -166,6 +174,10 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
           className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
           <MessageSquare size={13} />
         </button>
+        <button onClick={() => onProfile(contact)}
+          className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
+          <Info size={13} />
+        </button>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen(!menuOpen)}
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
@@ -203,8 +215,8 @@ function ContactRow({ contact, onChat }: { contact: RosterContact; onChat: (jid:
   );
 }
 
-function GroupSection({ name, contacts, onChat }: {
-  name: string; contacts: RosterContact[]; onChat: (jid: string) => void;
+function GroupSection({ name, contacts, onChat, onProfile }: {
+  name: string; contacts: RosterContact[]; onChat: (jid: string) => void; onProfile: (c: RosterContact) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -216,7 +228,7 @@ function GroupSection({ name, contacts, onChat }: {
         {name} ({contacts.length})
       </button>
       {!collapsed && contacts.map((c) => (
-        <ContactRow key={c.jid} contact={c} onChat={onChat} />
+        <ContactRow key={c.jid} contact={c} onChat={onChat} onProfile={onProfile} />
       ))}
     </div>
   );
@@ -227,6 +239,7 @@ export default function RosterPanel() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newJid, setNewJid] = useState("");
+  const [profileContact, setProfileContact] = useState<RosterContact | null>(null);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const contactMap = useRosterStore(useShallow((s) => s.contacts));
   const upsertContact = useRosterStore((s) => s.upsertContact);
@@ -333,7 +346,7 @@ export default function RosterPanel() {
       <div className="flex-1 overflow-y-auto py-1">
         {Object.entries(grouped).map(([group, list]) =>
           list.length > 0 && (
-            <GroupSection key={group} name={group} contacts={list} onChat={startChat} />
+            <GroupSection key={group} name={group} contacts={list} onChat={startChat} onProfile={setProfileContact} />
           )
         )}
         {contacts.length === 0 && (
@@ -343,6 +356,33 @@ export default function RosterPanel() {
           </div>
         )}
       </div>
+      {profileContact && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setProfileContact(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-white/10 bg-surface-900 p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-surface-800 overflow-hidden flex items-center justify-center text-lg font-semibold uppercase text-surface-100">
+                {profileContact.avatarUrl
+                  ? <img src={profileContact.avatarUrl} alt={profileContact.name ?? profileContact.jid} className="w-full h-full object-cover" />
+                  : (profileContact.name ?? profileContact.jid)[0]}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-surface-50 truncate">{profileContact.name ?? profileContact.jid.split("@")[0]}</div>
+                <div className="text-xs text-surface-200/50 truncate">{profileContact.jid}</div>
+              </div>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between"><span className="text-surface-200/60">Presence</span><span className="text-surface-100">{profileContact.presence}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">Subscription</span><span className="text-surface-100">{profileContact.subscription}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">Blocked</span><span className="text-surface-100">{profileContact.isBlocked ? "Yes" : "No"}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">Groups</span><span className="text-surface-100">{profileContact.groups.join(", ") || "-"}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">Status</span><span className="text-surface-100">{profileContact.statusText || "-"}</span></div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button className="btn-ghost text-xs" onClick={() => setProfileContact(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
