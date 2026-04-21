@@ -57,6 +57,9 @@ export interface OmemoEnvelopeKey {
   rid: number;
   value: string;
   prekey?: boolean;
+  n?: number;
+  ek?: string;
+  pkid?: number;
 }
 
 export interface OmemoEnvelope {
@@ -134,10 +137,17 @@ function parseOmemoEnvelope(stanza: Element): OmemoEnvelope | null {
       const rid = Number.parseInt(node.getAttribute("rid") ?? "", 10);
       const value = node.textContent?.trim() ?? "";
       if (!Number.isFinite(rid) || !value) return null;
+      const nRaw = node.getAttribute("n");
+      const n = nRaw == null ? undefined : Number.parseInt(nRaw, 10);
+      const pkidRaw = node.getAttribute("pkid");
+      const pkid = pkidRaw == null ? undefined : Number.parseInt(pkidRaw, 10);
       return {
         rid,
         value,
         prekey: node.getAttribute("prekey") === "true",
+        n: Number.isFinite(n as number) ? n : undefined,
+        ek: node.getAttribute("ek") ?? undefined,
+        pkid: Number.isFinite(pkid as number) ? pkid : undefined,
       } as OmemoEnvelopeKey;
     })
     .filter((x): x is OmemoEnvelopeKey => Boolean(x));
@@ -451,6 +461,9 @@ export class XmppClient {
       encrypted.c("key", {
         rid: String(key.rid),
         ...(key.prekey ? { prekey: "true" } : {}),
+        ...(typeof key.n === "number" ? { n: String(key.n) } : {}),
+        ...(typeof key.pkid === "number" ? { pkid: String(key.pkid) } : {}),
+        ...(key.ek ? { ek: key.ek } : {}),
       }).t(key.value).up();
     });
     encrypted.c("iv").t(envelope.iv).up().up().c("payload").t(envelope.payload).up().up();
