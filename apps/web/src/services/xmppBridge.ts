@@ -12,6 +12,14 @@ import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore } from "@/stores/groupStore";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
+import {
+  buildKeyExchangePayload,
+  decryptBodyFromPeer,
+  isEncryptedPayload,
+  parseKeyExchangePayload,
+  storePeerPublicKey,
+} from "@/services/e2ee";
+import { getOmemoEnabled } from "@/services/omemoSettings";
 
 const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
@@ -169,7 +177,7 @@ export function initXmppBridge(client: XmppClient) {
   });
 
   // Incoming messages -> ChatStore + notifications
-  client.on("message.received", (data: any) => {
+  client.on("message.received", async (data: any) => {
     const { message } = data;
     const from = normalizeBareJid(message.from);
     if (from === ownBareJid) return;
@@ -205,11 +213,29 @@ export function initXmppBridge(client: XmppClient) {
       });
     }
 
+    if (typeof message.body === "string") {
+      const keyPayload = parseKeyExchangePayload(message.body);
+      if (keyPayload) {
+        storePeerPublicKey(accountId, from, keyPayload);
+        if (getOmemoEnabled()) {
+          const replyPayload = await buildKeyExchangePayload(accountId);
+          client.sendMessage(from, replyPayload, "chat");
+        }
+        return;
+      }
+    }
+
+    let incomingBody = message.body;
+    if (typeof incomingBody === "string" && isEncryptedPayload(incomingBody)) {
+      const decrypted = await decryptBodyFromPeer(accountId, from, incomingBody);
+      incomingBody = decrypted ?? "[Encrypted message - unable to decrypt]";
+    }
+
     const chatMsg = {
       id: message.id,
       conversationId: convId,
       senderJid: from,
-      body: message.body,
+      body: incomingBody,
       bodyType: "text" as const,
       direction: "in" as const,
       status: "delivered" as const,
@@ -268,7 +294,7 @@ export function initXmppBridge(client: XmppClient) {
   });
 
   // MAM history messages
-  client.on("mam.message", (data: any) => {
+  client.on("mam.message", async (data: any) => {
     const { message } = data;
     const from = normalizeBareJid(message.from);
     const ownJid = normalizeBareJid(client.config.jid);
@@ -277,11 +303,17 @@ export function initXmppBridge(client: XmppClient) {
     if (!peerJid || peerJid === ownJid) return;
     const convId = generateConversationId(accountId, peerJid);
 
+    let body = message.body;
+    if (typeof body === "string" && isEncryptedPayload(body)) {
+      const decrypted = await decryptBodyFromPeer(accountId, peerJid, body);
+      body = decrypted ?? "[Encrypted message - unable to decrypt]";
+    }
+
     const chatMsg = {
       id: message.id,
       conversationId: convId,
       senderJid: from,
-      body: message.body,
+      body,
       bodyType: "text" as const,
       direction: isOwn ? ("out" as const) : ("in" as const),
       status: "delivered" as const,

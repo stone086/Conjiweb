@@ -201,7 +201,7 @@ export default function SettingsPage() {
     let cancelled = false;
     const run = async () => {
       const entries = await Promise.all(
-        accounts.map(async (acc) => [acc.id, await getOmemoFingerprintForJid(acc.jid)] as const)
+        accounts.map(async (acc) => [acc.id, await getOmemoFingerprintForJid(acc.jid, acc.id)] as const)
       );
       if (!cancelled) setOmemoFingerprints(Object.fromEntries(entries));
     };

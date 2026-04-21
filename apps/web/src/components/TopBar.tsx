@@ -79,8 +79,8 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             const next = !omemoEnabled;
             setOmemoEnabled(next);
             if (next) {
-              toast("OMEMO is not implemented yet. Messages are still plaintext.", {
-                icon: "⚠️",
+              toast("Secure mode enabled. First message will perform key exchange.", {
+                icon: "🔐",
                 duration: 4000,
               });
             }

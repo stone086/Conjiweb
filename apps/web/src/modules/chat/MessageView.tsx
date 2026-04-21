@@ -17,6 +17,8 @@ import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
+import { buildKeyExchangePayload, encryptBodyForPeer } from "@/services/e2ee";
+import { getOmemoEnabled } from "@/services/omemoSettings";
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
@@ -413,7 +415,7 @@ export default function MessageView({ conversationId }: { conversationId: string
     if (c.scrollTop < 80 && hasMore && !mamLoading) fetchHistory();
   };
 
-  const sendMessage = useCallback(() => {
+  const sendMessage = useCallback(async () => {
     const body = input.trim();
     if (!body && !pendingFiles.length) return;
     if (!activeAccountId) return;
@@ -424,9 +426,20 @@ export default function MessageView({ conversationId }: { conversationId: string
     }
     let id: string;
     try {
+      let outboundBody = body;
+      if (body && conversation?.type === "private" && getOmemoEnabled()) {
+        const encrypted = await encryptBodyForPeer(activeAccountId, conversation?.peerJid ?? conversationId, body);
+        if (!encrypted.usedPeerKey) {
+          const keyExchange = await buildKeyExchangePayload(activeAccountId);
+          client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
+          toast("Secure session handshake sent. Please resend after peer responds.", { icon: "🔐" });
+          return;
+        }
+        outboundBody = encrypted.encryptedBody;
+      }
       id = body ? client.sendMessage(
         conversation?.peerJid ?? conversationId,
-        body,
+        outboundBody,
         conversation?.type === "group" ? "groupchat" : "chat",
         editingMessageId
           ? { replaceId: editingMessageId }
@@ -481,8 +494,8 @@ export default function MessageView({ conversationId }: { conversationId: string
         editedAt: Date.now(),
       });
     } else {
-      addMessage(outgoingMessage);
-      cacheMessages([outgoingMessage]).catch(() => {});
+    addMessage(outgoingMessage);
+    cacheMessages([outgoingMessage]).catch(() => {});
     }
     setInput("");
     clearComposerDraft(conversationId);
@@ -587,7 +600,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      void sendMessage();
     }
   };
 
@@ -780,7 +793,7 @@ export default function MessageView({ conversationId }: { conversationId: string
             rows={1}
             className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px]"
           />
-          <button onClick={sendMessage} disabled={!input.trim() && !pendingFiles.length} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
+          <button onClick={() => void sendMessage()} disabled={!input.trim() && !pendingFiles.length} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
             <Send size={16} />
           </button>
         </div>
