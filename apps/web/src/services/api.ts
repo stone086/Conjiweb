@@ -161,6 +161,6 @@ export const adminApi = {
 export const authApi = {
   register: (data: { jid: string; password: string }) =>
     api.post("/auth/register", data).then((r) => r.data),
-  getUserToken: (jid: string) =>
-    api.post("/auth/user-token", { jid }).then((r) => r.data),
+  getUserToken: (jid: string, password: string) =>
+    api.post("/auth/user-token", { jid, password }).then((r) => r.data),
 };

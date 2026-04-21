@@ -34,7 +34,7 @@ export default function LoginPage() {
     initXmppBridge(client);
     try {
       await client.connect();
-      const tokenRes = await authApi.getUserToken(jid);
+      const tokenRes = await authApi.getUserToken(jid, form.password);
       if (tokenRes?.access_token) {
         setUserToken(id, tokenRes.access_token);
       }

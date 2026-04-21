@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import re
 import subprocess
+import uuid
 
 router = APIRouter()
 
@@ -29,6 +30,7 @@ class RegisterRequest(BaseModel):
 
 class UserTokenRequest(BaseModel):
     jid: str
+    password: str
 
 
 @router.post(
@@ -108,11 +110,42 @@ async def issue_user_token(
 ):
     username, domain = parse_jid(data.jid)
     full_jid = f"{username}@{domain}"
+    password = (data.password or "").strip()
+    if not password:
+        raise HTTPException(status_code=400, detail="Password is required")
+
+    verify_cmds = [
+        ["prosodyctl", "check", "password", full_jid, password],
+        ["prosodyctl", "check", "password", username, domain, password],
+    ]
+    verified = False
+    for cmd in verify_cmds:
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+        except FileNotFoundError:
+            raise HTTPException(status_code=500, detail="prosodyctl not found on server")
+        except subprocess.TimeoutExpired:
+            continue
+        if result.returncode == 0:
+            verified = True
+            break
+
+    if not verified:
+        raise HTTPException(status_code=401, detail="Invalid JID or password")
 
     result = await db.execute(select(Account).where(Account.jid == full_jid))
     account = result.scalar_one_or_none()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found. Register first.")
+        account = Account(
+            id=str(uuid.uuid4()),
+            jid=full_jid,
+            domain=domain,
+            display_name=username,
+            is_enabled=True,
+        )
+        db.add(account)
+        await db.commit()
+        await db.refresh(account)
     elif not account.is_enabled:
         raise HTTPException(status_code=403, detail="Account is disabled")
 

@@ -54,7 +54,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
       initXmppBridge(client);
       client.on("connection.changed", (d: any) => setConnected(account.id, d.status === "connected"));
       await client.connect();
-      const tokenRes = await authApi.getUserToken(account.jid).catch(() => null);
+      const tokenRes = await authApi.getUserToken(account.jid, runtimePassword).catch(() => null);
       if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
       toast.success(`${t("toast.connected")}: ${account.jid}`);
     } catch (e: any) {
@@ -273,7 +273,7 @@ export default function SettingsPage() {
       initXmppBridge(client);
       client.on("connection.changed", (d: any) => setConnected(id, d.status === "connected"));
       await client.connect();
-      const tokenRes = await authApi.getUserToken(form.jid).catch(() => null);
+      const tokenRes = await authApi.getUserToken(form.jid, form.password).catch(() => null);
       if (tokenRes?.access_token) setUserToken(id, tokenRes.access_token);
     } catch (error: any) {
       toast.error(error?.message ?? t("toast.connectionFailed"));
