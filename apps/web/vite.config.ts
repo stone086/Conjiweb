@@ -1,10 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 
-const APP_VERSION = readFileSync(path.resolve(__dirname, "../../VERSION"), "utf-8").trim();
+function readAppVersion(): string {
+  const candidates = [
+    path.resolve(__dirname, "../../VERSION"),
+    path.resolve(__dirname, "../VERSION"),
+    path.resolve(process.cwd(), "../VERSION"),
+    path.resolve(process.cwd(), "../../VERSION"),
+  ];
+  const found = candidates.find((p) => existsSync(p));
+  if (!found) return "dev";
+  return readFileSync(found, "utf-8").trim();
+}
+
+const APP_VERSION = readAppVersion();
 
 export default defineConfig({
   define: {
