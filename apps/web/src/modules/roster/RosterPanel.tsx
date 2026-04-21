@@ -13,6 +13,7 @@ import {
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
+import { useShallow } from "zustand/react/shallow";
 
 function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
   const colors: Record<string, string> = {
@@ -223,12 +224,16 @@ export default function RosterPanel() {
   const [showAdd, setShowAdd] = useState(false);
   const [newJid, setNewJid] = useState("");
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
-  const contacts = useRosterStore((s) => (activeAccountId ? s.listContacts(activeAccountId) : []));
+  const contactMap = useRosterStore(useShallow((s) => s.contacts));
   const upsertContact = useRosterStore((s) => s.upsertContact);
-  const accounts = useAccountStore((s) => s.accounts);
+  const accounts = useAccountStore(useShallow((s) => s.accounts));
   const upsertConversation = useChatStore((s) => s.upsertConversation);
   const navigate = useNavigate();
   const activeAccountJid = normalizeBareJid(accounts.find((a) => a.id === activeAccountId)?.jid ?? "");
+  const contacts = useMemo(
+    () => Object.values(contactMap).filter((c) => c.accountId === activeAccountId),
+    [contactMap, activeAccountId]
+  );
 
   const filtered = useMemo(() =>
     contacts.filter((c) =>

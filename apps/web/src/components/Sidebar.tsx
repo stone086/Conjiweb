@@ -6,6 +6,7 @@ import {
 import { useAccountStore } from "@/stores/accountStore";
 import { clsx } from "clsx";
 import { useLanguage } from "@/utils/i18n";
+import { useShallow } from "zustand/react/shallow";
 
 const navItems = [
   { to: "/", icon: MessageSquare, key: "nav.chats", end: true },
@@ -28,8 +29,12 @@ function PresenceBadge({ presence }: { presence: string }) {
 
 export default function Sidebar() {
   const { t } = useLanguage();
-  const accounts = useAccountStore((s) => s.accounts);
-  const activeId = useAccountStore((s) => s.activeAccountId);
+  const { accounts, activeId } = useAccountStore(
+    useShallow((s) => ({
+      accounts: s.accounts,
+      activeId: s.activeAccountId,
+    }))
+  );
   const setActive = useAccountStore((s) => s.setActiveAccount);
   const activeAccount = accounts.find((a) => a.id === activeId);
   const [browserOnline, setBrowserOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
