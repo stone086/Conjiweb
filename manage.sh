@@ -299,7 +299,7 @@ cmd_backup_verify() {
 cmd_env_check() {
   load_env
   local failed=0
-  for key in DOMAIN EMAIL XMPP_DOMAIN DB_PASS REDIS_PASS SECRET_KEY MINIO_ROOT_PASSWORD; do
+  for key in DOMAIN EMAIL XMPP_DOMAIN DB_PASS REDIS_PASS SECRET_KEY MINIO_ROOT_PASSWORD ADMIN_PASS PUBLIC_DOMAIN; do
     value="$(eval "printf '%s' \"\${$key:-}\"")"
     if [[ -z "${value}" ]]; then
       echo "MISSING: ${key}"

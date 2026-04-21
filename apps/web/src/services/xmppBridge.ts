@@ -452,7 +452,11 @@ export function initXmppBridge(client: XmppClient) {
     const messageId = data.messageId as string | undefined;
     if (!messageId) return;
     const store = useChatStore.getState();
-    Object.entries(store.messages).forEach(([conversationId, list]) => {
+    const relevantConvIds = Object.values(store.conversations)
+      .filter((c) => c.accountId === accountId)
+      .map((c) => c.id);
+    relevantConvIds.forEach((conversationId) => {
+      const list = store.messages[conversationId] ?? [];
       if (list.some((m) => m.id === messageId && m.direction === "out")) {
         store.updateMessage(conversationId, messageId, { status: "delivered" });
       }
@@ -463,7 +467,11 @@ export function initXmppBridge(client: XmppClient) {
     const messageId = data.messageId as string | undefined;
     if (!messageId) return;
     const store = useChatStore.getState();
-    Object.entries(store.messages).forEach(([conversationId, list]) => {
+    const relevantConvIds = Object.values(store.conversations)
+      .filter((c) => c.accountId === accountId)
+      .map((c) => c.id);
+    relevantConvIds.forEach((conversationId) => {
+      const list = store.messages[conversationId] ?? [];
       if (list.some((m) => m.id === messageId && m.direction === "out")) {
         store.updateMessage(conversationId, messageId, { status: "read" });
       }
@@ -474,15 +482,19 @@ export function initXmppBridge(client: XmppClient) {
     const messageId = data.messageId as string | undefined;
     if (!messageId) return;
     const store = useChatStore.getState();
-    Object.entries(store.messages).forEach(([conversationId, list]) => {
-      if (list.some((m) => m.id === messageId)) {
-        store.updateMessage(conversationId, messageId, {
-          body: "Message deleted",
-          deletedAt: Date.now(),
-          editedAt: Date.now(),
-        });
-      }
-    });
+    const relevantConvIds = Object.values(store.conversations)
+      .filter((c) => c.accountId === accountId)
+      .map((c) => c.id);
+    for (const conversationId of relevantConvIds) {
+      const list = store.messages[conversationId] ?? [];
+      if (!list.some((m) => m.id === messageId)) continue;
+      store.updateMessage(conversationId, messageId, {
+        body: "Message deleted",
+        deletedAt: Date.now(),
+        editedAt: Date.now(),
+      });
+      break;
+    }
   });
 
   client.on("room.member", (data: any) => {
