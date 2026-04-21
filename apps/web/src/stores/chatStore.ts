@@ -20,6 +20,7 @@ export interface ChatMessage {
   reactions?: Record<string, number>;
   encrypted?: boolean;
   decryptFailed?: boolean;
+  cipherPayload?: string;
   replyToId?: string;
   attachments?: MessageAttachment[];
 }

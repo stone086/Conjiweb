@@ -24,6 +24,26 @@ import { getOmemoEnabled } from "@/services/omemoSettings";
 const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
 const avatarFetchInFlight = new Set<string>();
+const keyAdvertisedToPeer = new Set<string>();
+
+async function retryDecryptConversation(accountId: string, peerJid: string) {
+  const convId = generateConversationId(accountId, peerJid);
+  const store = useChatStore.getState();
+  const list = store.messages[convId] ?? [];
+  for (const msg of list) {
+    if (!msg.decryptFailed || !msg.cipherPayload) continue;
+    const decrypted = await decryptBodyFromPeer(accountId, peerJid, msg.cipherPayload);
+    if (!decrypted) continue;
+    store.updateMessage(convId, msg.id, {
+      body: decrypted,
+      decryptFailed: false,
+    });
+    const updated = store.messages[convId]?.find((m) => m.id === msg.id);
+    if (updated) {
+      cacheMessages([updated]).catch(() => {});
+    }
+  }
+}
 
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
   const value = (show ?? "").toLowerCase();
@@ -77,6 +97,20 @@ export function initXmppBridge(client: XmppClient) {
         }).finally(() => {
           avatarFetchInFlight.delete(avatarKey);
         });
+      }
+
+      // Proactively advertise local key to known contacts so encrypted chat can start without manual retry.
+      if (getOmemoEnabled()) {
+        const advertiseKey = `${accountId}::${normalizedJid}`;
+        const canAdvertise = c.subscription === "both" || c.subscription === "to" || c.subscription === "from";
+        if (canAdvertise && !keyAdvertisedToPeer.has(advertiseKey)) {
+          keyAdvertisedToPeer.add(advertiseKey);
+          buildKeyExchangePayload(accountId)
+            .then((payload) => client.sendMessage(normalizedJid, payload, "chat"))
+            .catch(() => {
+              keyAdvertisedToPeer.delete(advertiseKey);
+            });
+        }
       }
     });
   });
@@ -217,6 +251,7 @@ export function initXmppBridge(client: XmppClient) {
       const keyPayload = parseKeyExchangePayload(message.body);
       if (keyPayload) {
         storePeerPublicKey(accountId, from, keyPayload);
+        await retryDecryptConversation(accountId, from);
         if (getOmemoEnabled()) {
           const replyPayload = await buildKeyExchangePayload(accountId);
           client.sendMessage(from, replyPayload, "chat");
@@ -249,6 +284,7 @@ export function initXmppBridge(client: XmppClient) {
       timestamp: message.timestamp,
       encrypted: incomingEncrypted,
       decryptFailed,
+      cipherPayload: incomingEncrypted ? String(message.body) : undefined,
       replyToId: message.replyTo,
     };
 
@@ -336,6 +372,7 @@ export function initXmppBridge(client: XmppClient) {
       timestamp: message.timestamp,
       encrypted,
       decryptFailed,
+      cipherPayload: encrypted ? String(message.body) : undefined,
       replyToId: message.replyTo,
     };
 
