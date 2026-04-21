@@ -8,6 +8,9 @@ const BUNDLE_SECRET_PREFIX = "conjiweb-e2ee-bundle-secret:";
 const SESSION_PREFIX = "conjiweb-e2ee-session:";
 const KEY_EXCHANGE_PREFIX = "[[E2EEKEY1]]";
 const CIPHER_PREFIX = "[[E2EE1]]";
+const SECURE_DB_NAME = "conjiweb-secure";
+const SECURE_DB_VERSION = 1;
+const SECURE_STORE_NAME = "securekv";
 
 export const OMEMO_NAMESPACE = "eu.siacs.conversations.axolotl";
 
@@ -65,6 +68,48 @@ interface SessionState {
   recvChain: string;
   sendCounter: number;
   recvCounter: number;
+}
+
+function openSecureStore(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(SECURE_DB_NAME, SECURE_DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(SECURE_STORE_NAME)) {
+        db.createObjectStore(SECURE_STORE_NAME);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("Failed to open secure store"));
+  });
+}
+
+async function secureGet(key: string): Promise<string | null> {
+  const db = await openSecureStore();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SECURE_STORE_NAME, "readonly");
+    const store = tx.objectStore(SECURE_STORE_NAME);
+    const req = store.get(key);
+    req.onsuccess = () => resolve(typeof req.result === "string" ? req.result : null);
+    req.onerror = () => reject(req.error ?? new Error("Failed to read secure key"));
+    tx.oncomplete = () => db.close();
+    tx.onabort = () => db.close();
+    tx.onerror = () => db.close();
+  });
+}
+
+async function secureSet(key: string, value: string): Promise<void> {
+  const db = await openSecureStore();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SECURE_STORE_NAME, "readwrite");
+    const store = tx.objectStore(SECURE_STORE_NAME);
+    const req = store.put(value, key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error ?? new Error("Failed to write secure key"));
+    tx.oncomplete = () => db.close();
+    tx.onabort = () => db.close();
+    tx.onerror = () => db.close();
+  });
 }
 
 function keyPairStoreKey(accountId: string) {
@@ -271,11 +316,15 @@ export function getOrCreateLocalDeviceId(accountId: string): number {
 
 export async function getOrCreateLocalKeyPair(accountId: string): Promise<StoredKeyPair> {
   const storeKey = keyPairStoreKey(accountId);
-  const existing = localStorage.getItem(storeKey);
+  const existing = await secureGet(storeKey) ?? localStorage.getItem(storeKey);
   if (existing) {
     try {
       const parsed = JSON.parse(existing) as StoredKeyPair;
-      if (parsed?.privateJwk && parsed?.publicRawB64) return parsed;
+      if (parsed?.privateJwk && parsed?.publicRawB64) {
+        await secureSet(storeKey, JSON.stringify(parsed));
+        localStorage.removeItem(storeKey);
+        return parsed;
+      }
     } catch {
       // regenerate
     }
@@ -289,7 +338,8 @@ export async function getOrCreateLocalKeyPair(accountId: string): Promise<Stored
   const privateJwk = (await crypto.subtle.exportKey("jwk", keyPair.privateKey)) as JsonWebKey;
   const publicRaw = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey));
   const created: StoredKeyPair = { privateJwk, publicRawB64: toB64(publicRaw) };
-  localStorage.setItem(storeKey, JSON.stringify(created));
+  await secureSet(storeKey, JSON.stringify(created));
+  localStorage.removeItem(storeKey);
   return created;
 }
 
