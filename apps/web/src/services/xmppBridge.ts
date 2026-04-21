@@ -14,6 +14,7 @@ import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 import {
   buildKeyExchangePayload,
+  decryptOmemoEnvelopeFromPeer,
   decryptBodyFromPeer,
   isEncryptedPayload,
   parseKeyExchangePayload,
@@ -31,8 +32,13 @@ async function retryDecryptConversation(accountId: string, peerJid: string) {
   const store = useChatStore.getState();
   const list = store.messages[convId] ?? [];
   for (const msg of list) {
-    if (!msg.decryptFailed || !msg.cipherPayload) continue;
-    const decrypted = await decryptBodyFromPeer(accountId, peerJid, msg.cipherPayload);
+    if (!msg.decryptFailed) continue;
+    let decrypted: string | null = null;
+    if (msg.omemoEnvelope) {
+      decrypted = await decryptOmemoEnvelopeFromPeer(accountId, peerJid, msg.omemoEnvelope);
+    } else if (msg.cipherPayload) {
+      decrypted = await decryptBodyFromPeer(accountId, peerJid, msg.cipherPayload);
+    }
     if (!decrypted) continue;
     store.updateMessage(convId, msg.id, {
       body: decrypted,
@@ -261,9 +267,18 @@ export function initXmppBridge(client: XmppClient) {
     }
 
     let incomingBody = message.body;
-    const incomingEncrypted = typeof incomingBody === "string" && isEncryptedPayload(incomingBody);
+    const incomingOmemo = message.omemo;
+    const incomingEncrypted = Boolean(incomingOmemo) || (typeof incomingBody === "string" && isEncryptedPayload(incomingBody));
     let decryptFailed = false;
-    if (incomingEncrypted) {
+    if (incomingOmemo) {
+      const decrypted = await decryptOmemoEnvelopeFromPeer(accountId, from, incomingOmemo);
+      if (decrypted == null) {
+        incomingBody = "[Encrypted message - unable to decrypt]";
+        decryptFailed = true;
+      } else {
+        incomingBody = decrypted;
+      }
+    } else if (incomingEncrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, from, incomingBody);
       if (decrypted == null) {
         incomingBody = "[Encrypted message - unable to decrypt]";
@@ -284,7 +299,8 @@ export function initXmppBridge(client: XmppClient) {
       timestamp: message.timestamp,
       encrypted: incomingEncrypted,
       decryptFailed,
-      cipherPayload: incomingEncrypted ? String(message.body) : undefined,
+      cipherPayload: incomingOmemo ? undefined : (incomingEncrypted ? String(message.body) : undefined),
+      omemoEnvelope: incomingOmemo ?? undefined,
       replyToId: message.replyTo,
     };
 
@@ -349,9 +365,18 @@ export function initXmppBridge(client: XmppClient) {
     const convId = generateConversationId(accountId, peerJid);
 
     let body = message.body;
-    const encrypted = typeof body === "string" && isEncryptedPayload(body);
+    const incomingOmemo = message.omemo;
+    const encrypted = Boolean(incomingOmemo) || (typeof body === "string" && isEncryptedPayload(body));
     let decryptFailed = false;
-    if (encrypted) {
+    if (incomingOmemo) {
+      const decrypted = await decryptOmemoEnvelopeFromPeer(accountId, peerJid, incomingOmemo);
+      if (decrypted == null) {
+        body = "[Encrypted message - unable to decrypt]";
+        decryptFailed = true;
+      } else {
+        body = decrypted;
+      }
+    } else if (encrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, peerJid, body);
       if (decrypted == null) {
         body = "[Encrypted message - unable to decrypt]";
@@ -372,7 +397,8 @@ export function initXmppBridge(client: XmppClient) {
       timestamp: message.timestamp,
       encrypted,
       decryptFailed,
-      cipherPayload: encrypted ? String(message.body) : undefined,
+      cipherPayload: incomingOmemo ? undefined : (encrypted ? String(message.body) : undefined),
+      omemoEnvelope: incomingOmemo ?? undefined,
       replyToId: message.replyTo,
     };
 

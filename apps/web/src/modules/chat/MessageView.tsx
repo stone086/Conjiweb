@@ -17,7 +17,7 @@ import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
-import { buildKeyExchangePayload, encryptBodyForPeer } from "@/services/e2ee";
+import { buildKeyExchangePayload, encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { getOmemoEnabled } from "@/services/omemoSettings";
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
@@ -430,23 +430,31 @@ export default function MessageView({ conversationId }: { conversationId: string
     try {
       let outboundBody = body;
       if (body && conversation?.type === "private" && getOmemoEnabled()) {
-        const encrypted = await encryptBodyForPeer(activeAccountId, conversation?.peerJid ?? conversationId, body);
-        if (!encrypted.usedPeerKey) {
+        const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, conversation?.peerJid ?? conversationId, body);
+        if (!encrypted.usedPeerKey || !encrypted.envelope) {
           const keyExchange = await buildKeyExchangePayload(activeAccountId);
           client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
           toast("Secure session handshake sent. Please resend after peer responds.", { icon: "🔐" });
           return;
         }
-        outboundBody = encrypted.encryptedBody;
+        id = client.sendOmemoMessage(
+          conversation?.peerJid ?? conversationId,
+          encrypted.envelope,
+          "chat",
+          editingMessageId
+            ? { replaceId: editingMessageId }
+            : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
+        );
+      } else {
+        id = body ? client.sendMessage(
+          conversation?.peerJid ?? conversationId,
+          outboundBody,
+          conversation?.type === "group" ? "groupchat" : "chat",
+          editingMessageId
+            ? { replaceId: editingMessageId }
+            : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
+        ) : crypto.randomUUID();
       }
-      id = body ? client.sendMessage(
-        conversation?.peerJid ?? conversationId,
-        outboundBody,
-        conversation?.type === "group" ? "groupchat" : "chat",
-        editingMessageId
-          ? { replaceId: editingMessageId }
-          : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
-      ) : crypto.randomUUID();
     } catch (error: any) {
       if (body) {
         const failedMessage: ChatMessage = {
@@ -556,16 +564,45 @@ export default function MessageView({ conversationId }: { conversationId: string
       toast.error(t("chat.notConnected"));
       return;
     }
-    try {
-      const newId = client.sendMessage(
-        conversation?.peerJid ?? conversationId,
-        message.body,
-        conversation?.type === "group" ? "groupchat" : "chat"
-      );
-      updateMessage(conversationId, message.id, { id: newId, status: "sent", timestamp: Date.now() });
-    } catch (error: any) {
-      toast.error(error?.message ?? t("chat.sendFailed"));
-    }
+    const retry = async () => {
+      try {
+        const isPrivateOmemo = Boolean(
+          message.encrypted
+            && conversation?.type === "private"
+            && getOmemoEnabled()
+            && message.body
+        );
+        let newId: string;
+        if (isPrivateOmemo) {
+          const encrypted = await encryptOmemoEnvelopeForPeer(
+            activeAccountId,
+            conversation?.peerJid ?? conversationId,
+            message.body
+          );
+          if (!encrypted.usedPeerKey || !encrypted.envelope) {
+            const keyExchange = await buildKeyExchangePayload(activeAccountId);
+            client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
+            toast("Secure session handshake sent. Please resend after peer responds.", { icon: "🔐" });
+            return;
+          }
+          newId = client.sendOmemoMessage(
+            conversation?.peerJid ?? conversationId,
+            encrypted.envelope,
+            "chat"
+          );
+        } else {
+          newId = client.sendMessage(
+            conversation?.peerJid ?? conversationId,
+            message.body,
+            conversation?.type === "group" ? "groupchat" : "chat"
+          );
+        }
+        updateMessage(conversationId, message.id, { id: newId, status: "sent", timestamp: Date.now() });
+      } catch (error: any) {
+        toast.error(error?.message ?? t("chat.sendFailed"));
+      }
+    };
+    void retry();
   }, [activeAccountId, conversation, conversationId, t, updateMessage]);
 
   const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {

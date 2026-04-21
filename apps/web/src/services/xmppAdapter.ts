@@ -44,12 +44,27 @@ export interface XmppMessage {
   stanzaId?: string;
   replyTo?: string;
   replaceId?: string;
+  omemo?: OmemoEnvelope;
 }
 
 interface SendMessageOptions {
   replyToId?: string;
   replyToJid?: string;
   replaceId?: string;
+}
+
+export interface OmemoEnvelopeKey {
+  rid: number;
+  value: string;
+  prekey?: boolean;
+}
+
+export interface OmemoEnvelope {
+  namespace: string;
+  sid: number;
+  iv: string;
+  keys: OmemoEnvelopeKey[];
+  payload: string;
 }
 
 export interface RosterContact {
@@ -85,6 +100,40 @@ function parseXmppDelayTimestamp(stanza: Element): number {
   if (!stamp) return Date.now();
   const parsed = Date.parse(stamp);
   return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+const OMEMO_NAMESPACE = "eu.siacs.conversations.axolotl";
+
+function parseOmemoEnvelope(stanza: Element): OmemoEnvelope | null {
+  const encrypted = stanza.querySelector(`encrypted[xmlns="${OMEMO_NAMESPACE}"]`);
+  if (!encrypted) return null;
+  const header = encrypted.querySelector("header");
+  const payload = encrypted.querySelector("payload")?.textContent?.trim();
+  const iv = header?.querySelector("iv")?.textContent?.trim();
+  const sidRaw = header?.getAttribute("sid");
+  if (!header || !payload || !iv || !sidRaw) return null;
+  const sid = Number.parseInt(sidRaw, 10);
+  if (!Number.isFinite(sid)) return null;
+  const keys: OmemoEnvelopeKey[] = Array.from(header.querySelectorAll("key"))
+    .map((node) => {
+      const rid = Number.parseInt(node.getAttribute("rid") ?? "", 10);
+      const value = node.textContent?.trim() ?? "";
+      if (!Number.isFinite(rid) || !value) return null;
+      return {
+        rid,
+        value,
+        prekey: node.getAttribute("prekey") === "true",
+      } as OmemoEnvelopeKey;
+    })
+    .filter((x): x is OmemoEnvelopeKey => Boolean(x));
+  if (keys.length === 0) return null;
+  return {
+    namespace: OMEMO_NAMESPACE,
+    sid,
+    iv,
+    keys,
+    payload,
+  };
 }
 
 export class XmppClient {
@@ -164,6 +213,7 @@ export class XmppClient {
       const from = stanza.getAttribute("from") ?? "";
       const type = stanza.getAttribute("type") ?? "chat";
       const body = stanza.querySelector("body")?.textContent ?? "";
+      const omemo = parseOmemoEnvelope(stanza);
       const id = stanza.getAttribute("id") ?? crypto.randomUUID();
       const subject = stanza.querySelector("subject")?.textContent ?? "";
       if (type === "groupchat" && subject) {
@@ -206,18 +256,19 @@ export class XmppClient {
         return true;
       }
 
-      if (body) {
+      if (body || omemo) {
         const replyNode = stanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
         const replaceNode = stanza.querySelector('replace[xmlns="urn:xmpp:message-correct:0"]');
         const msg: XmppMessage = {
           id,
           from,
           to: this.config.jid,
-          body,
+          body: body || "[OMEMO message]",
           timestamp: Date.now(),
           type: type as "chat" | "groupchat",
           replyTo: replyNode?.getAttribute("id") ?? undefined,
           replaceId: replaceNode?.getAttribute("id") ?? undefined,
+          omemo: omemo ?? undefined,
         };
         this.emit("message.received", { accountId: this.config.accountId, message: msg });
       }
@@ -345,6 +396,61 @@ export class XmppClient {
       type,
       replyTo: options?.replyToId,
       replaceId: options?.replaceId,
+    };
+    this.emit("message.sent", { accountId: this.config.accountId, message: msg });
+    return id;
+  }
+
+  sendOmemoMessage(
+    toJid: string,
+    envelope: OmemoEnvelope,
+    type: "chat" | "groupchat" = "chat",
+    options?: SendMessageOptions
+  ): string {
+    if (!this._connection || !this._connected) throw new Error("Not connected");
+    const id = crypto.randomUUID();
+    const stanza = this._$msg({ to: toJid, type, id })
+      .c("body").t("This message is OMEMO encrypted")
+      .up()
+      .c("request", { xmlns: "urn:xmpp:receipts" })
+      .up();
+    if (options?.replyToId) {
+      stanza.c("reply", {
+        xmlns: "urn:xmpp:reply:0",
+        id: options.replyToId,
+        to: options.replyToJid ?? toJid,
+      });
+      stanza.up();
+    }
+    if (options?.replaceId) {
+      stanza.c("replace", {
+        xmlns: "urn:xmpp:message-correct:0",
+        id: options.replaceId,
+      });
+      stanza.up();
+    }
+
+    const encrypted = stanza.c("encrypted", { xmlns: envelope.namespace })
+      .c("header", { sid: String(envelope.sid) });
+    envelope.keys.forEach((key) => {
+      encrypted.c("key", {
+        rid: String(key.rid),
+        ...(key.prekey ? { prekey: "true" } : {}),
+      }).t(key.value).up();
+    });
+    encrypted.c("iv").t(envelope.iv).up().up().c("payload").t(envelope.payload).up().up();
+
+    this._connection.send(stanza);
+    const msg: XmppMessage = {
+      id,
+      from: this.config.jid,
+      to: toJid,
+      body: "This message is OMEMO encrypted",
+      timestamp: Date.now(),
+      type,
+      replyTo: options?.replyToId,
+      replaceId: options?.replaceId,
+      omemo: envelope,
     };
     this.emit("message.sent", { accountId: this.config.accountId, message: msg });
     return id;
@@ -500,17 +606,19 @@ export class XmppClient {
       const msg = result.querySelector("forwarded message");
       if (!msg) return true;
       const body = msg.querySelector("body")?.textContent ?? "";
-      if (!body) return true;
+      const omemo = parseOmemoEnvelope(msg);
+      if (!body && !omemo) return true;
       const forwarded = result.querySelector("forwarded") as Element | null;
       const xmppMsg: XmppMessage = {
         id: msg.getAttribute("id") ?? crypto.randomUUID(),
         from: msg.getAttribute("from") ?? "",
         to: msg.getAttribute("to") ?? "",
-        body,
+        body: body || "[OMEMO message]",
         timestamp: forwarded ? parseXmppDelayTimestamp(forwarded) : Date.now(),
         type: (msg.getAttribute("type") ?? "chat") as "chat" | "groupchat",
         stanzaId: result.getAttribute("id") ?? undefined,
         replyTo: msg.querySelector('reply[xmlns="urn:xmpp:reply:0"]')?.getAttribute("id") ?? undefined,
+        omemo: omemo ?? undefined,
       };
       this.emit("mam.message", { accountId: this.config.accountId, message: xmppMsg, queryId });
       return true;

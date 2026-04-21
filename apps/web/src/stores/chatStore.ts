@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
+import type { OmemoEnvelope } from "@/services/xmppAdapter";
 
 export type MessageDirection = "in" | "out" | "system";
 export type ConversationType = "private" | "group" | "system";
@@ -21,6 +22,7 @@ export interface ChatMessage {
   encrypted?: boolean;
   decryptFailed?: boolean;
   cipherPayload?: string;
+  omemoEnvelope?: OmemoEnvelope;
   replyToId?: string;
   attachments?: MessageAttachment[];
 }

@@ -2,12 +2,39 @@ import { normalizeBareJid } from "@/utils/helpers";
 
 const KEY_PREFIX = "conjiweb-e2ee-keypair:";
 const PEER_PREFIX = "conjiweb-e2ee-peer:";
+const DEVICE_PREFIX = "conjiweb-e2ee-device:";
 const KEY_EXCHANGE_PREFIX = "[[E2EEKEY1]]";
 const CIPHER_PREFIX = "[[E2EE1]]";
+
+export const OMEMO_NAMESPACE = "eu.siacs.conversations.axolotl";
+
+export interface OmemoEnvelopeKey {
+  rid: number;
+  value: string;
+  prekey?: boolean;
+}
+
+export interface OmemoEnvelope {
+  namespace: string;
+  sid: number;
+  iv: string;
+  keys: OmemoEnvelopeKey[];
+  payload: string;
+}
 
 interface StoredKeyPair {
   privateJwk: JsonWebKey;
   publicRawB64: string;
+}
+
+interface PeerKeyInfo {
+  publicRawB64: string;
+  deviceId?: number;
+}
+
+interface KeyExchangeInfo {
+  publicRawB64: string;
+  deviceId?: number;
 }
 
 function keyPairStoreKey(accountId: string) {
@@ -16,6 +43,10 @@ function keyPairStoreKey(accountId: string) {
 
 function peerStoreKey(accountId: string) {
   return `${PEER_PREFIX}${accountId}`;
+}
+
+function deviceStoreKey(accountId: string) {
+  return `${DEVICE_PREFIX}${accountId}`;
 }
 
 function toB64(bytes: Uint8Array): string {
@@ -40,20 +71,60 @@ function fromB64Buffer(b64: string): ArrayBuffer {
   return fromB64(b64).buffer as ArrayBuffer;
 }
 
-function getPeerMap(accountId: string): Record<string, string> {
+function ensureDeviceId(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const int = Math.trunc(value);
+  return int > 0 ? int : undefined;
+}
+
+function normalizePeerMap(raw: unknown): Record<string, PeerKeyInfo> {
+  if (!raw || typeof raw !== "object") return {};
+  const input = raw as Record<string, unknown>;
+  const normalized: Record<string, PeerKeyInfo> = {};
+  Object.entries(input).forEach(([jid, value]) => {
+    if (typeof value === "string") {
+      normalized[jid] = { publicRawB64: value };
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const typed = value as { publicRawB64?: unknown; deviceId?: unknown; key?: unknown };
+    const pub = typeof typed.publicRawB64 === "string"
+      ? typed.publicRawB64
+      : (typeof typed.key === "string" ? typed.key : "");
+    if (!pub) return;
+    normalized[jid] = { publicRawB64: pub, deviceId: ensureDeviceId(typed.deviceId) };
+  });
+  return normalized;
+}
+
+function getPeerMap(accountId: string): Record<string, PeerKeyInfo> {
   try {
     const raw = localStorage.getItem(peerStoreKey(accountId));
     if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Record<string, string>;
+    return normalizePeerMap(JSON.parse(raw));
   } catch {
     return {};
   }
 }
 
-function setPeerMap(accountId: string, peers: Record<string, string>) {
+function setPeerMap(accountId: string, peers: Record<string, PeerKeyInfo>) {
   localStorage.setItem(peerStoreKey(accountId), JSON.stringify(peers));
+}
+
+function getPeerInfo(accountId: string, peerJid: string): PeerKeyInfo | null {
+  const normalizedPeer = normalizeBareJid(peerJid);
+  const peers = getPeerMap(accountId);
+  return peers[normalizedPeer] ?? null;
+}
+
+export function getOrCreateLocalDeviceId(accountId: string): number {
+  const key = deviceStoreKey(accountId);
+  const existing = ensureDeviceId(Number(localStorage.getItem(key)));
+  if (existing) return existing;
+  const random = crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
+  const created = Math.max(1, random);
+  localStorage.setItem(key, String(created));
+  return created;
 }
 
 export async function getOrCreateLocalKeyPair(accountId: string): Promise<StoredKeyPair> {
@@ -88,14 +159,12 @@ async function importPublicKey(rawB64: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", fromB64Buffer(rawB64), { name: "ECDH", namedCurve: "P-256" }, false, []);
 }
 
-async function deriveAesKey(accountId: string, peerJid: string): Promise<CryptoKey | null> {
-  const normalizedPeer = normalizeBareJid(peerJid);
-  const peers = getPeerMap(accountId);
-  const peerRawB64 = peers[normalizedPeer];
-  if (!peerRawB64) return null;
+async function deriveSessionKey(accountId: string, peerJid: string): Promise<CryptoKey | null> {
+  const peer = getPeerInfo(accountId, peerJid);
+  if (!peer?.publicRawB64) return null;
   const local = await getOrCreateLocalKeyPair(accountId);
   const privateKey = await importPrivateKey(local.privateJwk);
-  const publicKey = await importPublicKey(peerRawB64);
+  const publicKey = await importPublicKey(peer.publicRawB64);
   return crypto.subtle.deriveKey(
     { name: "ECDH", public: publicKey },
     privateKey,
@@ -105,41 +174,133 @@ async function deriveAesKey(accountId: string, peerJid: string): Promise<CryptoK
   );
 }
 
+function concatUint8(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
 export async function buildKeyExchangePayload(accountId: string): Promise<string> {
   const local = await getOrCreateLocalKeyPair(accountId);
-  return `${KEY_EXCHANGE_PREFIX}${local.publicRawB64}`;
+  const payload = {
+    v: 2,
+    deviceId: getOrCreateLocalDeviceId(accountId),
+    pub: local.publicRawB64,
+  };
+  return `${KEY_EXCHANGE_PREFIX}${JSON.stringify(payload)}`;
 }
 
-export function parseKeyExchangePayload(body: string): string | null {
+export function parseKeyExchangePayload(body: string): KeyExchangeInfo | null {
   if (!body.startsWith(KEY_EXCHANGE_PREFIX)) return null;
   const raw = body.slice(KEY_EXCHANGE_PREFIX.length).trim();
-  return raw || null;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { pub?: unknown; deviceId?: unknown };
+    if (typeof parsed.pub === "string" && parsed.pub) {
+      return { publicRawB64: parsed.pub, deviceId: ensureDeviceId(parsed.deviceId) };
+    }
+  } catch {
+    // Backward compatibility: v1 payload was just base64 public key.
+  }
+  return { publicRawB64: raw };
 }
 
-export function storePeerPublicKey(accountId: string, peerJid: string, publicRawB64: string) {
+export function storePeerPublicKey(accountId: string, peerJid: string, info: string | KeyExchangeInfo) {
   const normalizedPeer = normalizeBareJid(peerJid);
   const peers = getPeerMap(accountId);
-  peers[normalizedPeer] = publicRawB64;
+  if (typeof info === "string") {
+    peers[normalizedPeer] = { publicRawB64: info, deviceId: peers[normalizedPeer]?.deviceId };
+  } else {
+    peers[normalizedPeer] = {
+      publicRawB64: info.publicRawB64,
+      deviceId: info.deviceId ?? peers[normalizedPeer]?.deviceId,
+    };
+  }
   setPeerMap(accountId, peers);
 }
 
-export async function encryptBodyForPeer(
+export async function encryptOmemoEnvelopeForPeer(
   accountId: string,
   peerJid: string,
   plainText: string
-): Promise<{ encryptedBody: string; usedPeerKey: boolean }> {
-  const aesKey = await deriveAesKey(accountId, peerJid);
-  if (!aesKey) return { encryptedBody: plainText, usedPeerKey: false };
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(plainText);
-  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encoded));
-  const payload = JSON.stringify({
-    iv: toB64(iv),
-    ct: toB64(cipher),
-  });
-  return { encryptedBody: `${CIPHER_PREFIX}${payload}`, usedPeerKey: true };
+): Promise<{ envelope: OmemoEnvelope | null; usedPeerKey: boolean }> {
+  const sessionKey = await deriveSessionKey(accountId, peerJid);
+  if (!sessionKey) return { envelope: null, usedPeerKey: false };
+  const peer = getPeerInfo(accountId, peerJid);
+  const localSid = getOrCreateLocalDeviceId(accountId);
+  const receiverRid = peer?.deviceId ?? 1;
+
+  const messageKey = crypto.getRandomValues(new Uint8Array(32));
+  const messageIv = crypto.getRandomValues(new Uint8Array(12));
+  const payloadCipher = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: messageIv },
+      await crypto.subtle.importKey("raw", messageKey, { name: "AES-GCM" }, false, ["encrypt"]),
+      new TextEncoder().encode(plainText)
+    )
+  );
+
+  // Wrap the message key for the receiver device.
+  const keyIv = crypto.getRandomValues(new Uint8Array(12));
+  const wrappedKey = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv: keyIv }, sessionKey, messageKey)
+  );
+  const keyPayload = concatUint8(keyIv, wrappedKey);
+
+  return {
+    usedPeerKey: true,
+    envelope: {
+      namespace: OMEMO_NAMESPACE,
+      sid: localSid,
+      iv: toB64(messageIv),
+      keys: [
+        {
+          rid: receiverRid,
+          value: toB64(keyPayload),
+          prekey: true,
+        },
+      ],
+      payload: toB64(payloadCipher),
+    },
+  };
 }
 
+export async function decryptOmemoEnvelopeFromPeer(
+  accountId: string,
+  peerJid: string,
+  envelope: OmemoEnvelope
+): Promise<string | null> {
+  if (envelope.namespace !== OMEMO_NAMESPACE) return null;
+  const sessionKey = await deriveSessionKey(accountId, peerJid);
+  if (!sessionKey) return null;
+  const localRid = getOrCreateLocalDeviceId(accountId);
+  const wrappedForMe = envelope.keys.find((k) => k.rid === localRid) ?? envelope.keys[0];
+  if (!wrappedForMe?.value) return null;
+
+  try {
+    const packed = fromB64(wrappedForMe.value);
+    if (packed.length <= 12) return null;
+    const keyIv = packed.slice(0, 12);
+    const wrappedKey = packed.slice(12);
+    const messageKeyRaw = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: keyIv },
+      sessionKey,
+      wrappedKey
+    );
+    const msgKey = await crypto.subtle.importKey("raw", messageKeyRaw, { name: "AES-GCM" }, false, ["decrypt"]);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromB64Buffer(envelope.iv) },
+      msgKey,
+      fromB64Buffer(envelope.payload)
+    );
+    return new TextDecoder().decode(plain);
+  } catch {
+    return null;
+  }
+}
+
+// Legacy cipher support for backward compatibility with already-sent messages.
 export function isEncryptedPayload(body: string): boolean {
   return body.startsWith(CIPHER_PREFIX);
 }
@@ -150,14 +311,14 @@ export async function decryptBodyFromPeer(
   body: string
 ): Promise<string | null> {
   if (!isEncryptedPayload(body)) return body;
-  const aesKey = await deriveAesKey(accountId, peerJid);
-  if (!aesKey) return null;
+  const sessionKey = await deriveSessionKey(accountId, peerJid);
+  if (!sessionKey) return null;
   try {
     const raw = body.slice(CIPHER_PREFIX.length);
     const parsed = JSON.parse(raw) as { iv: string; ct: string };
     const plain = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: fromB64Buffer(parsed.iv) },
-      aesKey,
+      sessionKey,
       fromB64Buffer(parsed.ct)
     );
     return new TextDecoder().decode(plain);
@@ -165,3 +326,4 @@ export async function decryptBodyFromPeer(
     return null;
   }
 }
+
