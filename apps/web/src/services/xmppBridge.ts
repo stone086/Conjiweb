@@ -16,8 +16,11 @@ import {
   buildKeyExchangePayload,
   decryptOmemoEnvelopeFromPeer,
   decryptBodyFromPeer,
+  getOrCreateLocalDeviceId,
+  getOrCreateLocalOmemoBundle,
   isEncryptedPayload,
   parseKeyExchangePayload,
+  storePeerOmemoBundle,
   storePeerPublicKey,
 } from "@/services/e2ee";
 import { getOmemoEnabled } from "@/services/omemoSettings";
@@ -67,6 +70,19 @@ export function initXmppBridge(client: XmppClient) {
   // Connection changes
   client.on("connection.changed", (data: any) => {
     useAccountStore.getState().setConnected(accountId, data.status === "connected");
+    if (data.status === "connected") {
+      const publishLocalOmemo = async () => {
+        try {
+          const localDeviceId = getOrCreateLocalDeviceId(accountId);
+          const localBundle = await getOrCreateLocalOmemoBundle(accountId);
+          await client.publishOmemoDeviceList([localDeviceId]);
+          await client.publishOmemoBundle(localBundle);
+        } catch {
+          // keep chat flow running even if OMEMO publish fails
+        }
+      };
+      void publishLocalOmemo();
+    }
   });
 
   // Roster updates -> RosterStore
@@ -104,6 +120,21 @@ export function initXmppBridge(client: XmppClient) {
           avatarFetchInFlight.delete(avatarKey);
         });
       }
+
+      const syncPeerOmemo = async () => {
+        try {
+          const devices = await client.fetchOmemoDeviceList(normalizedJid);
+          for (const deviceId of devices) {
+            const bundle = await client.fetchOmemoBundle(normalizedJid, deviceId);
+            if (bundle) {
+              storePeerOmemoBundle(accountId, normalizedJid, bundle);
+            }
+          }
+        } catch {
+          // no-op; fallback handshake remains available
+        }
+      };
+      void syncPeerOmemo();
 
       // Proactively advertise local key to known contacts so encrypted chat can start without manual retry.
       if (getOmemoEnabled()) {

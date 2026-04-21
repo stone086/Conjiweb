@@ -67,6 +67,15 @@ export interface OmemoEnvelope {
   payload: string;
 }
 
+export interface OmemoBundle {
+  deviceId: number;
+  signedPreKeyId: number;
+  signedPreKeyPublic: string;
+  signedPreKeySignature: string;
+  identityKey: string;
+  preKeys: Array<{ preKeyId: number; value: string }>;
+}
+
 export interface RosterContact {
   jid: string;
   name?: string;
@@ -103,6 +112,12 @@ function parseXmppDelayTimestamp(stanza: Element): number {
 }
 
 const OMEMO_NAMESPACE = "eu.siacs.conversations.axolotl";
+const PUBSUB_NS = "http://jabber.org/protocol/pubsub";
+const OMEMO_DEVICELIST_NODE = `${OMEMO_NAMESPACE}.devicelist`;
+
+function bundleNodeFor(deviceId: number): string {
+  return `${OMEMO_NAMESPACE}.bundles:${deviceId}`;
+}
 
 function parseOmemoEnvelope(stanza: Element): OmemoEnvelope | null {
   const encrypted = stanza.querySelector(`encrypted[xmlns="${OMEMO_NAMESPACE}"]`);
@@ -578,6 +593,108 @@ export class XmppClient {
             return;
           }
           resolve(`data:${mime};base64,${b64}`);
+        },
+        () => resolve(null)
+      );
+    });
+  }
+
+  publishOmemoDeviceList(deviceIds: number[]) {
+    if (!this._connection) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const uniqueIds = Array.from(new Set(deviceIds.filter((id) => Number.isFinite(id) && id > 0)));
+      const iq = this._$iq({ type: "set" })
+        .c("pubsub", { xmlns: PUBSUB_NS })
+        .c("publish", { node: OMEMO_DEVICELIST_NODE })
+        .c("item", { id: "current" })
+        .c("list", { xmlns: OMEMO_NAMESPACE });
+      uniqueIds.forEach((id) => {
+        iq.c("device", { id: String(id) }).up();
+      });
+      this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("OMEMO devicelist publish failed")));
+    });
+  }
+
+  fetchOmemoDeviceList(jid: string): Promise<number[]> {
+    if (!this._connection) return Promise.resolve([]);
+    return new Promise((resolve) => {
+      const iq = this._$iq({ type: "get", to: jid })
+        .c("pubsub", { xmlns: PUBSUB_NS })
+        .c("items", { node: OMEMO_DEVICELIST_NODE });
+      this._connection.sendIQ(
+        iq.tree(),
+        (result: Element) => {
+          const list = result.querySelector(`list[xmlns="${OMEMO_NAMESPACE}"]`);
+          if (!list) {
+            resolve([]);
+            return;
+          }
+          const ids = Array.from(list.querySelectorAll("device"))
+            .map((node) => Number.parseInt(node.getAttribute("id") ?? "", 10))
+            .filter((id) => Number.isFinite(id) && id > 0);
+          resolve(Array.from(new Set(ids)));
+        },
+        () => resolve([])
+      );
+    });
+  }
+
+  publishOmemoBundle(bundle: OmemoBundle) {
+    if (!this._connection) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const iq = this._$iq({ type: "set" })
+        .c("pubsub", { xmlns: PUBSUB_NS })
+        .c("publish", { node: bundleNodeFor(bundle.deviceId) })
+        .c("item", { id: "current" })
+        .c("bundle", { xmlns: OMEMO_NAMESPACE })
+        .c("signedPreKeyPublic", { signedPreKeyId: String(bundle.signedPreKeyId) }).t(bundle.signedPreKeyPublic).up()
+        .c("signedPreKeySignature").t(bundle.signedPreKeySignature).up()
+        .c("identityKey").t(bundle.identityKey).up()
+        .c("prekeys");
+      bundle.preKeys.forEach((key) => {
+        iq.c("preKeyPublic", { preKeyId: String(key.preKeyId) }).t(key.value).up();
+      });
+      this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("OMEMO bundle publish failed")));
+    });
+  }
+
+  fetchOmemoBundle(jid: string, deviceId: number): Promise<OmemoBundle | null> {
+    if (!this._connection) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const iq = this._$iq({ type: "get", to: jid })
+        .c("pubsub", { xmlns: PUBSUB_NS })
+        .c("items", { node: bundleNodeFor(deviceId) });
+      this._connection.sendIQ(
+        iq.tree(),
+        (result: Element) => {
+          const bundleNode = result.querySelector(`bundle[xmlns="${OMEMO_NAMESPACE}"]`);
+          if (!bundleNode) {
+            resolve(null);
+            return;
+          }
+          const spk = bundleNode.querySelector("signedPreKeyPublic");
+          const sig = bundleNode.querySelector("signedPreKeySignature");
+          const ik = bundleNode.querySelector("identityKey");
+          if (!spk?.textContent || !sig?.textContent || !ik?.textContent) {
+            resolve(null);
+            return;
+          }
+          const preKeys = Array.from(bundleNode.querySelectorAll("prekeys preKeyPublic"))
+            .map((node) => {
+              const preKeyId = Number.parseInt(node.getAttribute("preKeyId") ?? "", 10);
+              const value = node.textContent?.trim() ?? "";
+              if (!Number.isFinite(preKeyId) || !value) return null;
+              return { preKeyId, value };
+            })
+            .filter((v): v is { preKeyId: number; value: string } => Boolean(v));
+          resolve({
+            deviceId,
+            signedPreKeyId: Number.parseInt(spk.getAttribute("signedPreKeyId") ?? "1", 10) || 1,
+            signedPreKeyPublic: spk.textContent.trim(),
+            signedPreKeySignature: sig.textContent.trim(),
+            identityKey: ik.textContent.trim(),
+            preKeys,
+          });
         },
         () => resolve(null)
       );

@@ -3,6 +3,7 @@ import { normalizeBareJid } from "@/utils/helpers";
 const KEY_PREFIX = "conjiweb-e2ee-keypair:";
 const PEER_PREFIX = "conjiweb-e2ee-peer:";
 const DEVICE_PREFIX = "conjiweb-e2ee-device:";
+const BUNDLE_PREFIX = "conjiweb-e2ee-bundle:";
 const KEY_EXCHANGE_PREFIX = "[[E2EEKEY1]]";
 const CIPHER_PREFIX = "[[E2EE1]]";
 
@@ -20,6 +21,15 @@ export interface OmemoEnvelope {
   iv: string;
   keys: OmemoEnvelopeKey[];
   payload: string;
+}
+
+export interface OmemoBundle {
+  deviceId: number;
+  signedPreKeyId: number;
+  signedPreKeyPublic: string;
+  signedPreKeySignature: string;
+  identityKey: string;
+  preKeys: Array<{ preKeyId: number; value: string }>;
 }
 
 interface StoredKeyPair {
@@ -47,6 +57,10 @@ function peerStoreKey(accountId: string) {
 
 function deviceStoreKey(accountId: string) {
   return `${DEVICE_PREFIX}${accountId}`;
+}
+
+function bundleStoreKey(accountId: string) {
+  return `${BUNDLE_PREFIX}${accountId}`;
 }
 
 function toB64(bytes: Uint8Array): string {
@@ -111,10 +125,34 @@ function setPeerMap(accountId: string, peers: Record<string, PeerKeyInfo>) {
   localStorage.setItem(peerStoreKey(accountId), JSON.stringify(peers));
 }
 
+function getBundleMap(accountId: string): Record<string, OmemoBundle> {
+  try {
+    const raw = localStorage.getItem(bundleStoreKey(accountId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, OmemoBundle>;
+  } catch {
+    return {};
+  }
+}
+
+function setBundleMap(accountId: string, bundles: Record<string, OmemoBundle>) {
+  localStorage.setItem(bundleStoreKey(accountId), JSON.stringify(bundles));
+}
+
 function getPeerInfo(accountId: string, peerJid: string): PeerKeyInfo | null {
   const normalizedPeer = normalizeBareJid(peerJid);
   const peers = getPeerMap(accountId);
   return peers[normalizedPeer] ?? null;
+}
+
+function getPeerBundles(accountId: string, peerJid: string): OmemoBundle[] {
+  const normalizedPeer = normalizeBareJid(peerJid);
+  const bundles = getBundleMap(accountId);
+  return Object.entries(bundles)
+    .filter(([k]) => k.startsWith(`${normalizedPeer}:`))
+    .map(([, v]) => v);
 }
 
 export function getOrCreateLocalDeviceId(accountId: string): number {
@@ -135,7 +173,7 @@ export async function getOrCreateLocalKeyPair(accountId: string): Promise<Stored
       const parsed = JSON.parse(existing) as StoredKeyPair;
       if (parsed?.privateJwk && parsed?.publicRawB64) return parsed;
     } catch {
-      // fall through and regenerate
+      // regenerate
     }
   }
 
@@ -151,6 +189,46 @@ export async function getOrCreateLocalKeyPair(accountId: string): Promise<Stored
   return created;
 }
 
+export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<OmemoBundle> {
+  const deviceId = getOrCreateLocalDeviceId(accountId);
+  const map = getBundleMap(accountId);
+  const existing = map[String(deviceId)];
+  if (existing?.identityKey && existing?.signedPreKeyPublic && existing?.preKeys?.length) return existing;
+
+  const identity = await getOrCreateLocalKeyPair(accountId);
+  const signedPreKey = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    ["deriveKey"]
+  );
+  const signedPreKeyPublic = toB64(new Uint8Array(await crypto.subtle.exportKey("raw", signedPreKey.publicKey)));
+  const signMaterial = `${identity.publicRawB64}.${signedPreKeyPublic}.${deviceId}`;
+  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signMaterial));
+  const signedPreKeySignature = toB64(new Uint8Array(signature));
+  const preKeys = await Promise.all(Array.from({ length: 20 }).map(async (_, i) => {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-256" },
+      true,
+      ["deriveKey"]
+    );
+    return {
+      preKeyId: i + 1,
+      value: toB64(new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))),
+    };
+  }));
+  const bundle: OmemoBundle = {
+    deviceId,
+    signedPreKeyId: 1,
+    signedPreKeyPublic,
+    signedPreKeySignature,
+    identityKey: identity.publicRawB64,
+    preKeys,
+  };
+  map[String(deviceId)] = bundle;
+  setBundleMap(accountId, map);
+  return bundle;
+}
+
 async function importPrivateKey(privateJwk: JsonWebKey): Promise<CryptoKey> {
   return crypto.subtle.importKey("jwk", privateJwk, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveKey"]);
 }
@@ -159,12 +237,10 @@ async function importPublicKey(rawB64: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", fromB64Buffer(rawB64), { name: "ECDH", namedCurve: "P-256" }, false, []);
 }
 
-async function deriveSessionKey(accountId: string, peerJid: string): Promise<CryptoKey | null> {
-  const peer = getPeerInfo(accountId, peerJid);
-  if (!peer?.publicRawB64) return null;
+async function deriveSessionKeyWithPeerPublic(accountId: string, peerPublicRawB64: string): Promise<CryptoKey | null> {
   const local = await getOrCreateLocalKeyPair(accountId);
   const privateKey = await importPrivateKey(local.privateJwk);
-  const publicKey = await importPublicKey(peer.publicRawB64);
+  const publicKey = await importPublicKey(peerPublicRawB64);
   return crypto.subtle.deriveKey(
     { name: "ECDH", public: publicKey },
     privateKey,
@@ -172,6 +248,12 @@ async function deriveSessionKey(accountId: string, peerJid: string): Promise<Cry
     false,
     ["encrypt", "decrypt"]
   );
+}
+
+async function deriveSessionKey(accountId: string, peerJid: string): Promise<CryptoKey | null> {
+  const peer = getPeerInfo(accountId, peerJid);
+  if (!peer?.publicRawB64) return null;
+  return deriveSessionKeyWithPeerPublic(accountId, peer.publicRawB64);
 }
 
 function concatUint8(a: Uint8Array, b: Uint8Array): Uint8Array {
@@ -201,7 +283,7 @@ export function parseKeyExchangePayload(body: string): KeyExchangeInfo | null {
       return { publicRawB64: parsed.pub, deviceId: ensureDeviceId(parsed.deviceId) };
     }
   } catch {
-    // Backward compatibility: v1 payload was just base64 public key.
+    // backward compatibility
   }
   return { publicRawB64: raw };
 }
@@ -220,17 +302,36 @@ export function storePeerPublicKey(accountId: string, peerJid: string, info: str
   setPeerMap(accountId, peers);
 }
 
+export function storePeerOmemoBundle(accountId: string, peerJid: string, bundle: OmemoBundle) {
+  const normalizedPeer = normalizeBareJid(peerJid);
+  const map = getBundleMap(accountId);
+  map[`${normalizedPeer}:${bundle.deviceId}`] = bundle;
+  setBundleMap(accountId, map);
+  storePeerPublicKey(accountId, normalizedPeer, {
+    publicRawB64: bundle.signedPreKeyPublic || bundle.identityKey,
+    deviceId: bundle.deviceId,
+  });
+}
+
 export async function encryptOmemoEnvelopeForPeer(
   accountId: string,
   peerJid: string,
   plainText: string
 ): Promise<{ envelope: OmemoEnvelope | null; usedPeerKey: boolean }> {
-  const sessionKey = await deriveSessionKey(accountId, peerJid);
-  if (!sessionKey) return { envelope: null, usedPeerKey: false };
+  const peerBundles = getPeerBundles(accountId, peerJid);
   const peer = getPeerInfo(accountId, peerJid);
-  const localSid = getOrCreateLocalDeviceId(accountId);
-  const receiverRid = peer?.deviceId ?? 1;
+  const targets: Array<{ rid: number; publicRawB64: string }> = [];
+  peerBundles.forEach((bundle) => {
+    const pub = bundle.signedPreKeyPublic || bundle.identityKey;
+    if (!pub) return;
+    targets.push({ rid: bundle.deviceId, publicRawB64: pub });
+  });
+  if (targets.length === 0 && peer?.publicRawB64) {
+    targets.push({ rid: peer.deviceId ?? 1, publicRawB64: peer.publicRawB64 });
+  }
+  if (targets.length === 0) return { envelope: null, usedPeerKey: false };
 
+  const localSid = getOrCreateLocalDeviceId(accountId);
   const messageKey = crypto.getRandomValues(new Uint8Array(32));
   const messageIv = crypto.getRandomValues(new Uint8Array(12));
   const payloadCipher = new Uint8Array(
@@ -240,27 +341,28 @@ export async function encryptOmemoEnvelopeForPeer(
       new TextEncoder().encode(plainText)
     )
   );
-
-  // Wrap the message key for the receiver device.
-  const keyIv = crypto.getRandomValues(new Uint8Array(12));
-  const wrappedKey = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv: keyIv }, sessionKey, messageKey)
-  );
-  const keyPayload = concatUint8(keyIv, wrappedKey);
-
+  const keys: OmemoEnvelopeKey[] = [];
+  for (const target of targets) {
+    const sessionKey = await deriveSessionKeyWithPeerPublic(accountId, target.publicRawB64);
+    if (!sessionKey) continue;
+    const keyIv = crypto.getRandomValues(new Uint8Array(12));
+    const wrappedKey = new Uint8Array(
+      await crypto.subtle.encrypt({ name: "AES-GCM", iv: keyIv }, sessionKey, messageKey)
+    );
+    keys.push({
+      rid: target.rid,
+      value: toB64(concatUint8(keyIv, wrappedKey)),
+      prekey: true,
+    });
+  }
+  if (keys.length === 0) return { envelope: null, usedPeerKey: false };
   return {
     usedPeerKey: true,
     envelope: {
       namespace: OMEMO_NAMESPACE,
       sid: localSid,
       iv: toB64(messageIv),
-      keys: [
-        {
-          rid: receiverRid,
-          value: toB64(keyPayload),
-          prekey: true,
-        },
-      ],
+      keys,
       payload: toB64(payloadCipher),
     },
   };
@@ -277,7 +379,6 @@ export async function decryptOmemoEnvelopeFromPeer(
   const localRid = getOrCreateLocalDeviceId(accountId);
   const wrappedForMe = envelope.keys.find((k) => k.rid === localRid) ?? envelope.keys[0];
   if (!wrappedForMe?.value) return null;
-
   try {
     const packed = fromB64(wrappedForMe.value);
     if (packed.length <= 12) return null;
@@ -300,7 +401,6 @@ export async function decryptOmemoEnvelopeFromPeer(
   }
 }
 
-// Legacy cipher support for backward compatibility with already-sent messages.
 export function isEncryptedPayload(body: string): boolean {
   return body.startsWith(CIPHER_PREFIX);
 }
