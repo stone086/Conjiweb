@@ -134,7 +134,7 @@ export function initXmppBridge(client: XmppClient) {
           for (const deviceId of devices) {
             const bundle = await client.fetchOmemoBundle(normalizedJid, deviceId);
             if (bundle) {
-              storePeerOmemoBundle(accountId, normalizedJid, bundle);
+              await storePeerOmemoBundle(accountId, normalizedJid, bundle);
             }
           }
         } catch {

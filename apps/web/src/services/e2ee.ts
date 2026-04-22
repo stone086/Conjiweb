@@ -197,6 +197,48 @@ async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array
   return new Uint8Array(sig);
 }
 
+function bundleSignaturePayload(bundle: Pick<OmemoBundle, "deviceId" | "signedPreKeyId" | "signedPreKeyPublic" | "identityKey">): Uint8Array {
+  return new TextEncoder().encode(
+    `${bundle.deviceId}.${bundle.signedPreKeyId}.${bundle.signedPreKeyPublic}.${bundle.identityKey}`
+  );
+}
+
+async function signBundleSignature(identityPrivateJwk: JsonWebKey, bundle: Pick<OmemoBundle, "deviceId" | "signedPreKeyId" | "signedPreKeyPublic" | "identityKey">): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    identityPrivateJwk,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    asArrayBuffer(bundleSignaturePayload(bundle))
+  );
+  return toB64(new Uint8Array(sig));
+}
+
+async function verifyBundleSignature(bundle: OmemoBundle): Promise<boolean> {
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      fromB64Buffer(bundle.identityKey),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+    return await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      fromB64Buffer(bundle.signedPreKeySignature),
+      asArrayBuffer(bundleSignaturePayload(bundle))
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function nextChainKey(chain: Uint8Array): Promise<Uint8Array> {
   return hmacSha256(chain, new TextEncoder().encode("next"));
 }
@@ -378,7 +420,16 @@ export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<Om
   const existing = map[String(deviceId)];
   const existingSecret = secretMap[String(deviceId)];
   if (existing?.identityKey && existing?.signedPreKeyPublic && existing?.preKeys?.length && existingSecret?.signedPreKeyPrivateJwk) {
-    return existing;
+    const signatureValid = await verifyBundleSignature(existing);
+    if (signatureValid) return existing;
+    const identity = await getOrCreateLocalKeyPair(accountId);
+    const resigned = {
+      ...existing,
+      signedPreKeySignature: await signBundleSignature(identity.privateJwk, existing),
+    };
+    map[String(deviceId)] = resigned;
+    setBundleMap(accountId, map);
+    return resigned;
   }
 
   const identity = await getOrCreateLocalKeyPair(accountId);
@@ -389,9 +440,6 @@ export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<Om
   );
   const signedPreKeyPublic = toB64(new Uint8Array(await crypto.subtle.exportKey("raw", signedPreKey.publicKey)));
   const signedPreKeyPrivateJwk = (await crypto.subtle.exportKey("jwk", signedPreKey.privateKey)) as JsonWebKey;
-  const signMaterial = `${identity.publicRawB64}.${signedPreKeyPublic}.${deviceId}`;
-  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signMaterial));
-  const signedPreKeySignature = toB64(new Uint8Array(signature));
   const preKeyPrivates: Record<string, JsonWebKey> = {};
   const preKeys = await Promise.all(Array.from({ length: 20 }).map(async (_, i) => {
     const keyPair = await crypto.subtle.generateKey(
@@ -409,10 +457,11 @@ export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<Om
     deviceId,
     signedPreKeyId: 1,
     signedPreKeyPublic,
-    signedPreKeySignature,
     identityKey: identity.publicRawB64,
     preKeys,
+    signedPreKeySignature: "",
   };
+  bundle.signedPreKeySignature = await signBundleSignature(identity.privateJwk, bundle);
   map[String(deviceId)] = bundle;
   secretMap[String(deviceId)] = { signedPreKeyPrivateJwk, preKeyPrivates };
   setBundleMap(accountId, map);
@@ -594,7 +643,9 @@ export function storePeerPublicKey(accountId: string, peerJid: string, info: str
   setPeerMap(accountId, peers);
 }
 
-export function storePeerOmemoBundle(accountId: string, peerJid: string, bundle: OmemoBundle) {
+export async function storePeerOmemoBundle(accountId: string, peerJid: string, bundle: OmemoBundle): Promise<boolean> {
+  const signatureValid = await verifyBundleSignature(bundle);
+  if (!signatureValid) return false;
   const normalizedPeer = normalizeBareJid(peerJid);
   const map = getBundleMap(accountId);
   map[`${normalizedPeer}:${bundle.deviceId}`] = bundle;
@@ -603,6 +654,7 @@ export function storePeerOmemoBundle(accountId: string, peerJid: string, bundle:
     publicRawB64: bundle.signedPreKeyPublic || bundle.identityKey,
     deviceId: bundle.deviceId,
   });
+  return true;
 }
 
 export async function encryptOmemoEnvelopeForPeer(
