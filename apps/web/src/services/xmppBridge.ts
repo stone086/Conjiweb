@@ -550,5 +550,4 @@ export function initXmppBridge(client: XmppClient) {
     useGroupStore.getState().updateRoomSubject(roomJid, String(data.subject ?? ""));
   });
 
-  console.log(`[xmppBridge] Bridge initialized for account: ${accountId}`);
 }
