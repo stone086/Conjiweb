@@ -295,17 +295,22 @@ export default function RosterPanel() {
 
   const addContact = () => {
     if (!newJid.trim() || !activeAccountId) return;
+    const normalized = normalizeBareJid(newJid.trim());
+    if (normalized === activeAccountJid) {
+      toast.error("You cannot add yourself as a contact");
+      return;
+    }
     const client = getClient(activeAccountId);
-    client?.addContact(newJid.trim());
+    client?.addContact(normalized);
     upsertContact({
       accountId: activeAccountId,
-      jid: newJid.trim(),
+      jid: normalized,
       groups: [],
       subscription: "none",
       presence: "unavailable",
       isBlocked: false,
     });
-    toast.success(`${t("roster.added")} ${newJid}`);
+    toast.success(`${t("roster.added")} ${normalized}`);
     setNewJid("");
     setShowAdd(false);
   };

@@ -163,6 +163,7 @@ export function initXmppBridge(client: XmppClient) {
     const jid = data.jid as string;
     if (!jid) return;
     const normalizedJid = normalizeBareJid(jid);
+    if (normalizedJid === ownBareJid) return;
     const dedupeKey = `${accountId}::${normalizedJid}`;
     const now = Date.now();
     const lastAt = lastSubscriptionRequestAt.get(dedupeKey) ?? 0;
@@ -187,6 +188,7 @@ export function initXmppBridge(client: XmppClient) {
   client.on("subscription.approved", (data: any) => {
     const normalizedJid = normalizeBareJid(data.jid as string);
     if (!normalizedJid) return;
+    if (normalizedJid === ownBareJid) return;
     const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     useRosterStore.getState().upsertContact({
       accountId,
@@ -211,6 +213,7 @@ export function initXmppBridge(client: XmppClient) {
   client.on("subscription.denied", (data: any) => {
     const normalizedJid = normalizeBareJid(data.jid as string);
     if (!normalizedJid) return;
+    if (normalizedJid === ownBareJid) return;
     const convId = generateConversationId(accountId, normalizedJid);
     const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     if (existing) {
