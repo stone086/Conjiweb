@@ -12,7 +12,10 @@ const SECURE_DB_NAME = "conjiweb-secure";
 const SECURE_DB_VERSION = 1;
 const SECURE_STORE_NAME = "securekv";
 
-export const OMEMO_NAMESPACE = "eu.siacs.conversations.axolotl";
+export const OMEMO_NAMESPACE_LEGACY = "eu.siacs.conversations.axolotl";
+export const OMEMO_NAMESPACE_MODERN = "urn:xmpp:omemo:2";
+export const OMEMO_SUPPORTED_NAMESPACES = [OMEMO_NAMESPACE_MODERN, OMEMO_NAMESPACE_LEGACY] as const;
+export const OMEMO_NAMESPACE = OMEMO_NAMESPACE_LEGACY;
 
 export interface OmemoEnvelopeKey {
   rid: number;
@@ -761,7 +764,9 @@ export async function decryptOmemoEnvelopeFromPeer(
   peerJid: string,
   envelope: OmemoEnvelope
 ): Promise<string | null> {
-  if (envelope.namespace !== OMEMO_NAMESPACE) return null;
+  if (!OMEMO_SUPPORTED_NAMESPACES.includes(envelope.namespace as (typeof OMEMO_SUPPORTED_NAMESPACES)[number])) {
+    return null;
+  }
   const localRid = getOrCreateLocalDeviceId(accountId);
   const wrappedForMe = envelope.keys.find((k) => k.rid === localRid) ?? envelope.keys[0];
   if (!wrappedForMe?.value) return null;

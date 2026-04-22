@@ -114,17 +114,28 @@ function parseXmppDelayTimestamp(stanza: Element): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
-const OMEMO_NAMESPACE = "eu.siacs.conversations.axolotl";
+const OMEMO_NAMESPACE_LEGACY = "eu.siacs.conversations.axolotl";
+const OMEMO_NAMESPACE_MODERN = "urn:xmpp:omemo:2";
+const OMEMO_NAMESPACES = [OMEMO_NAMESPACE_MODERN, OMEMO_NAMESPACE_LEGACY] as const;
 const PUBSUB_NS = "http://jabber.org/protocol/pubsub";
-const OMEMO_DEVICELIST_NODE = `${OMEMO_NAMESPACE}.devicelist`;
+function omemoDeviceListNode(namespace: string): string {
+  return namespace === OMEMO_NAMESPACE_MODERN
+    ? `${namespace}:devices`
+    : `${namespace}.devicelist`;
+}
 
-function bundleNodeFor(deviceId: number): string {
-  return `${OMEMO_NAMESPACE}.bundles:${deviceId}`;
+function bundleNodeFor(namespace: string, deviceId: number): string {
+  return namespace === OMEMO_NAMESPACE_MODERN
+    ? `${namespace}:bundles:${deviceId}`
+    : `${namespace}.bundles:${deviceId}`;
 }
 
 function parseOmemoEnvelope(stanza: Element): OmemoEnvelope | null {
-  const encrypted = stanza.querySelector(`encrypted[xmlns="${OMEMO_NAMESPACE}"]`);
+  const encrypted = OMEMO_NAMESPACES
+    .map((namespace) => stanza.querySelector(`encrypted[xmlns="${namespace}"]`))
+    .find((node): node is Element => Boolean(node));
   if (!encrypted) return null;
+  const namespace = encrypted.getAttribute("xmlns") ?? OMEMO_NAMESPACE_LEGACY;
   const header = encrypted.querySelector("header");
   const payload = encrypted.querySelector("payload")?.textContent?.trim();
   const iv = header?.querySelector("iv")?.textContent?.trim();
@@ -153,7 +164,7 @@ function parseOmemoEnvelope(stanza: Element): OmemoEnvelope | null {
     .filter((x): x is OmemoEnvelopeKey => Boolean(x));
   if (keys.length === 0) return null;
   return {
-    namespace: OMEMO_NAMESPACE,
+    namespace,
     sid,
     iv,
     keys,
@@ -614,104 +625,124 @@ export class XmppClient {
 
   publishOmemoDeviceList(deviceIds: number[]) {
     if (!this._connection) return Promise.resolve();
-    return new Promise<void>((resolve, reject) => {
-      const uniqueIds = Array.from(new Set(deviceIds.filter((id) => Number.isFinite(id) && id > 0)));
-      const iq = this._$iq({ type: "set" })
-        .c("pubsub", { xmlns: PUBSUB_NS })
-        .c("publish", { node: OMEMO_DEVICELIST_NODE })
-        .c("item", { id: "current" })
-        .c("list", { xmlns: OMEMO_NAMESPACE });
-      uniqueIds.forEach((id) => {
-        iq.c("device", { id: String(id) }).up();
+    const uniqueIds = Array.from(new Set(deviceIds.filter((id) => Number.isFinite(id) && id > 0)));
+    const publishToNamespace = (namespace: string) =>
+      new Promise<void>((resolve, reject) => {
+        const iq = this._$iq({ type: "set" })
+          .c("pubsub", { xmlns: PUBSUB_NS })
+          .c("publish", { node: omemoDeviceListNode(namespace) })
+          .c("item", { id: "current" })
+          .c("list", { xmlns: namespace });
+        uniqueIds.forEach((id) => {
+          iq.c("device", { id: String(id) }).up();
+        });
+        this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("OMEMO devicelist publish failed")));
       });
-      this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("OMEMO devicelist publish failed")));
+    return Promise.allSettled(OMEMO_NAMESPACES.map((ns) => publishToNamespace(ns))).then((results) => {
+      if (results.every((r) => r.status === "rejected")) {
+        throw new Error("OMEMO devicelist publish failed");
+      }
     });
   }
 
   fetchOmemoDeviceList(jid: string): Promise<number[]> {
     if (!this._connection) return Promise.resolve([]);
-    return new Promise((resolve) => {
-      const iq = this._$iq({ type: "get", to: jid })
-        .c("pubsub", { xmlns: PUBSUB_NS })
-        .c("items", { node: OMEMO_DEVICELIST_NODE });
-      this._connection.sendIQ(
-        iq.tree(),
-        (result: Element) => {
-          const list = result.querySelector(`list[xmlns="${OMEMO_NAMESPACE}"]`);
-          if (!list) {
-            resolve([]);
-            return;
-          }
-          const ids = Array.from(list.querySelectorAll("device"))
-            .map((node) => Number.parseInt(node.getAttribute("id") ?? "", 10))
-            .filter((id) => Number.isFinite(id) && id > 0);
-          resolve(Array.from(new Set(ids)));
-        },
-        () => resolve([])
-      );
-    });
+    const fetchFromNamespace = (namespace: string) =>
+      new Promise<number[]>((resolve) => {
+        const iq = this._$iq({ type: "get", to: jid })
+          .c("pubsub", { xmlns: PUBSUB_NS })
+          .c("items", { node: omemoDeviceListNode(namespace) });
+        this._connection.sendIQ(
+          iq.tree(),
+          (result: Element) => {
+            const list = result.querySelector(`list[xmlns="${namespace}"]`);
+            if (!list) {
+              resolve([]);
+              return;
+            }
+            const ids = Array.from(list.querySelectorAll("device"))
+              .map((node) => Number.parseInt(node.getAttribute("id") ?? "", 10))
+              .filter((id) => Number.isFinite(id) && id > 0);
+            resolve(Array.from(new Set(ids)));
+          },
+          () => resolve([])
+        );
+      });
+    return Promise.all(OMEMO_NAMESPACES.map((ns) => fetchFromNamespace(ns))).then((groups) =>
+      Array.from(new Set(groups.flat()))
+    );
   }
 
   publishOmemoBundle(bundle: OmemoBundle) {
     if (!this._connection) return Promise.resolve();
-    return new Promise<void>((resolve, reject) => {
-      const iq = this._$iq({ type: "set" })
-        .c("pubsub", { xmlns: PUBSUB_NS })
-        .c("publish", { node: bundleNodeFor(bundle.deviceId) })
-        .c("item", { id: "current" })
-        .c("bundle", { xmlns: OMEMO_NAMESPACE })
-        .c("signedPreKeyPublic", { signedPreKeyId: String(bundle.signedPreKeyId) }).t(bundle.signedPreKeyPublic).up()
-        .c("signedPreKeySignature").t(bundle.signedPreKeySignature).up()
-        .c("identityKey").t(bundle.identityKey).up()
-        .c("prekeys");
-      bundle.preKeys.forEach((key) => {
-        iq.c("preKeyPublic", { preKeyId: String(key.preKeyId) }).t(key.value).up();
+    const publishToNamespace = (namespace: string) =>
+      new Promise<void>((resolve, reject) => {
+        const iq = this._$iq({ type: "set" })
+          .c("pubsub", { xmlns: PUBSUB_NS })
+          .c("publish", { node: bundleNodeFor(namespace, bundle.deviceId) })
+          .c("item", { id: "current" })
+          .c("bundle", { xmlns: namespace })
+          .c("signedPreKeyPublic", { signedPreKeyId: String(bundle.signedPreKeyId) }).t(bundle.signedPreKeyPublic).up()
+          .c("signedPreKeySignature").t(bundle.signedPreKeySignature).up()
+          .c("identityKey").t(bundle.identityKey).up()
+          .c("prekeys");
+        bundle.preKeys.forEach((key) => {
+          iq.c("preKeyPublic", { preKeyId: String(key.preKeyId) }).t(key.value).up();
+        });
+        this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("OMEMO bundle publish failed")));
       });
-      this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("OMEMO bundle publish failed")));
+    return Promise.allSettled(OMEMO_NAMESPACES.map((ns) => publishToNamespace(ns))).then((results) => {
+      if (results.every((r) => r.status === "rejected")) {
+        throw new Error("OMEMO bundle publish failed");
+      }
     });
   }
 
   fetchOmemoBundle(jid: string, deviceId: number): Promise<OmemoBundle | null> {
     if (!this._connection) return Promise.resolve(null);
-    return new Promise((resolve) => {
-      const iq = this._$iq({ type: "get", to: jid })
-        .c("pubsub", { xmlns: PUBSUB_NS })
-        .c("items", { node: bundleNodeFor(deviceId) });
-      this._connection.sendIQ(
-        iq.tree(),
-        (result: Element) => {
-          const bundleNode = result.querySelector(`bundle[xmlns="${OMEMO_NAMESPACE}"]`);
-          if (!bundleNode) {
-            resolve(null);
-            return;
-          }
-          const spk = bundleNode.querySelector("signedPreKeyPublic");
-          const sig = bundleNode.querySelector("signedPreKeySignature");
-          const ik = bundleNode.querySelector("identityKey");
-          if (!spk?.textContent || !sig?.textContent || !ik?.textContent) {
-            resolve(null);
-            return;
-          }
-          const preKeys = Array.from(bundleNode.querySelectorAll("prekeys preKeyPublic"))
-            .map((node) => {
-              const preKeyId = Number.parseInt(node.getAttribute("preKeyId") ?? "", 10);
-              const value = node.textContent?.trim() ?? "";
-              if (!Number.isFinite(preKeyId) || !value) return null;
-              return { preKeyId, value };
-            })
-            .filter((v): v is { preKeyId: number; value: string } => Boolean(v));
-          resolve({
-            deviceId,
-            signedPreKeyId: Number.parseInt(spk.getAttribute("signedPreKeyId") ?? "1", 10) || 1,
-            signedPreKeyPublic: spk.textContent.trim(),
-            signedPreKeySignature: sig.textContent.trim(),
-            identityKey: ik.textContent.trim(),
-            preKeys,
-          });
-        },
-        () => resolve(null)
-      );
-    });
+    const fetchFromNamespace = (namespace: string) =>
+      new Promise<OmemoBundle | null>((resolve) => {
+        const iq = this._$iq({ type: "get", to: jid })
+          .c("pubsub", { xmlns: PUBSUB_NS })
+          .c("items", { node: bundleNodeFor(namespace, deviceId) });
+        this._connection.sendIQ(
+          iq.tree(),
+          (result: Element) => {
+            const bundleNode = result.querySelector(`bundle[xmlns="${namespace}"]`);
+            if (!bundleNode) {
+              resolve(null);
+              return;
+            }
+            const spk = bundleNode.querySelector("signedPreKeyPublic");
+            const sig = bundleNode.querySelector("signedPreKeySignature");
+            const ik = bundleNode.querySelector("identityKey");
+            if (!spk?.textContent || !sig?.textContent || !ik?.textContent) {
+              resolve(null);
+              return;
+            }
+            const preKeys = Array.from(bundleNode.querySelectorAll("prekeys preKeyPublic"))
+              .map((node) => {
+                const preKeyId = Number.parseInt(node.getAttribute("preKeyId") ?? "", 10);
+                const value = node.textContent?.trim() ?? "";
+                if (!Number.isFinite(preKeyId) || !value) return null;
+                return { preKeyId, value };
+              })
+              .filter((v): v is { preKeyId: number; value: string } => Boolean(v));
+            resolve({
+              deviceId,
+              signedPreKeyId: Number.parseInt(spk.getAttribute("signedPreKeyId") ?? "1", 10) || 1,
+              signedPreKeyPublic: spk.textContent.trim(),
+              signedPreKeySignature: sig.textContent.trim(),
+              identityKey: ik.textContent.trim(),
+              preKeys,
+            });
+          },
+          () => resolve(null)
+        );
+      });
+    return Promise.all(OMEMO_NAMESPACES.map((ns) => fetchFromNamespace(ns))).then((bundles) =>
+      bundles.find((bundle): bundle is OmemoBundle => Boolean(bundle)) ?? null
+    );
   }
 
   fetchMAM(targetJid: string, options: { before?: string; limit?: number; type?: "chat" | "groupchat" } = {}) {
