@@ -13,47 +13,18 @@ import { useGroupStore } from "@/stores/groupStore";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 import {
-  buildKeyExchangePayload,
   decryptOmemoEnvelopeFromPeer,
   decryptBodyFromPeer,
   getOrCreateLocalDeviceId,
   getOrCreateLocalOmemoBundle,
   isEncryptedPayload,
-  parseKeyExchangePayload,
   storePeerOmemoBundle,
-  storePeerPublicKey,
 } from "@/services/e2ee";
-import { getOmemoEnabled } from "@/services/omemoSettings";
 
 const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
 const avatarFetchInFlight = new Set<string>();
-const keyAdvertisedToPeer = new Set<string>();
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-async function retryDecryptConversation(accountId: string, peerJid: string) {
-  const convId = generateConversationId(accountId, peerJid);
-  const store = useChatStore.getState();
-  const list = store.messages[convId] ?? [];
-  for (const msg of list) {
-    if (!msg.decryptFailed) continue;
-    let decrypted: string | null = null;
-    if (msg.omemoEnvelope) {
-      decrypted = await decryptOmemoEnvelopeFromPeer(accountId, peerJid, msg.omemoEnvelope);
-    } else if (msg.cipherPayload) {
-      decrypted = await decryptBodyFromPeer(accountId, peerJid, msg.cipherPayload);
-    }
-    if (!decrypted) continue;
-    store.updateMessage(convId, msg.id, {
-      body: decrypted,
-      decryptFailed: false,
-    });
-    const updated = store.messages[convId]?.find((m) => m.id === msg.id);
-    if (updated) {
-      cacheMessages([updated]).catch(() => {});
-    }
-  }
-}
 
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
   const value = (show ?? "").toLowerCase();
@@ -143,19 +114,7 @@ export function initXmppBridge(client: XmppClient) {
       };
       void syncPeerOmemo();
 
-      // Proactively advertise local key to known contacts so encrypted chat can start without manual retry.
-      if (getOmemoEnabled()) {
-        const advertiseKey = `${accountId}::${normalizedJid}`;
-        const canAdvertise = c.subscription === "both" || c.subscription === "to" || c.subscription === "from";
-        if (canAdvertise && !keyAdvertisedToPeer.has(advertiseKey)) {
-          keyAdvertisedToPeer.add(advertiseKey);
-          buildKeyExchangePayload(accountId)
-            .then((payload) => client.sendMessage(normalizedJid, payload, "chat"))
-            .catch(() => {
-              keyAdvertisedToPeer.delete(advertiseKey);
-            });
-        }
-      }
+      // Standard flow: rely on published OMEMO device list + bundles (no private key-exchange stanzas).
     });
   });
 
@@ -292,19 +251,6 @@ export function initXmppBridge(client: XmppClient) {
         unreadCount: 0,
         pinned: false,
       });
-    }
-
-    if (typeof message.body === "string") {
-      const keyPayload = parseKeyExchangePayload(message.body);
-      if (keyPayload) {
-        storePeerPublicKey(accountId, from, keyPayload);
-        await retryDecryptConversation(accountId, from);
-        if (getOmemoEnabled()) {
-          const replyPayload = await buildKeyExchangePayload(accountId);
-          client.sendMessage(from, replyPayload, "chat");
-        }
-        return;
-      }
     }
 
     let incomingBody = message.body;

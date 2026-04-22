@@ -17,7 +17,7 @@ import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
-import { buildKeyExchangePayload, encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
+import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { getOmemoEnabled } from "@/services/omemoSettings";
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
@@ -438,9 +438,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       if (body && conversation?.type === "private" && getOmemoEnabled()) {
         const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, conversation?.peerJid ?? conversationId, body);
         if (!encrypted.usedPeerKey || !encrypted.envelope) {
-          const keyExchange = await buildKeyExchangePayload(activeAccountId);
-          client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
-          toast("Encrypted session initiated (Conjiweb-only, experimental). Only works between two Conjiweb clients.", { icon: "🔐" });
+          toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
           return;
         }
         id = client.sendOmemoMessage(
@@ -607,9 +605,7 @@ export default function MessageView({ conversationId }: { conversationId: string
             message.body
           );
           if (!encrypted.usedPeerKey || !encrypted.envelope) {
-            const keyExchange = await buildKeyExchangePayload(activeAccountId);
-            client.sendMessage(conversation?.peerJid ?? conversationId, keyExchange, "chat");
-            toast("Encrypted session initiated (Conjiweb-only, experimental). Only works between two Conjiweb clients.", { icon: "🔐" });
+            toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
             return;
           }
           newId = client.sendOmemoMessage(
