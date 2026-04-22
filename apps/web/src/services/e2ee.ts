@@ -202,9 +202,17 @@ function bundleSignaturePayload(bundle: Pick<OmemoBundle, "signedPreKeyPublic">)
 }
 
 async function signBundleSignature(identityPrivateJwk: JsonWebKey, bundle: Pick<OmemoBundle, "signedPreKeyPublic">): Promise<string> {
+  const ecdsaJwk: JsonWebKey = {
+    kty: identityPrivateJwk.kty,
+    crv: identityPrivateJwk.crv,
+    x: identityPrivateJwk.x,
+    y: identityPrivateJwk.y,
+    d: identityPrivateJwk.d,
+    ext: true,
+  };
   const key = await crypto.subtle.importKey(
     "jwk",
-    identityPrivateJwk,
+    ecdsaJwk,
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"]
