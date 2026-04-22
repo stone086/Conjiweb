@@ -241,6 +241,18 @@ async function verifyBundleSignature(bundle: OmemoBundle): Promise<boolean> {
       asArrayBuffer(bundleSignaturePayload(bundle))
     );
   } catch {
+    // continue to legacy compatibility check below
+  }
+
+  try {
+    // Legacy compatibility: older Conjiweb builds stored a SHA-256 digest string instead of a true signature.
+    const legacyMaterial = new TextEncoder().encode(
+      `${bundle.identityKey}.${bundle.signedPreKeyPublic}.${bundle.deviceId}`
+    );
+    const digest = await crypto.subtle.digest("SHA-256", legacyMaterial);
+    const legacyB64 = toB64(new Uint8Array(digest));
+    return legacyB64 === bundle.signedPreKeySignature;
+  } catch {
     return false;
   }
 }

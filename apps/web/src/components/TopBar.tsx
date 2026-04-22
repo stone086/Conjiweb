@@ -15,7 +15,6 @@ interface TopBarProps {
   onToggleRight?: () => void;
   showRightToggle?: boolean;
 }
-
 export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) {
   const { t } = useLanguage();
   const [theme, setTheme] = useState(getStoredTheme());
@@ -79,10 +78,7 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             const next = !omemoEnabled;
             setOmemoEnabled(next);
             if (next) {
-              toast("Secure mode enabled. First message will perform key exchange.", {
-                icon: "🔐",
-                duration: 4000,
-              });
+              toast("OMEMO mode enabled (experimental, Conjiweb-to-Conjiweb).", { duration: 4000 });
             }
           }}
           className="btn-ghost p-2"
@@ -134,3 +130,4 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
     </>
   );
 }
+
