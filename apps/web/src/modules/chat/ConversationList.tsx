@@ -1,19 +1,15 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useChatStore } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
+import { useRosterStore } from "@/stores/rosterStore";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { clsx } from "clsx";
-import { Users, User, MessageSquare, Trash2 } from "lucide-react";
+import { MessageSquare, Trash2 } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 import { deleteLocalConversationData } from "@/services/localDb";
 import { normalizeBareJid } from "@/utils/helpers";
 import { useShallow } from "zustand/react/shallow";
-
-function ConvIcon({ type }: { type: string }) {
-  if (type === "group") return <Users size={14} />;
-  return <User size={14} />;
-}
 
 export default function ConversationList() {
   const { lang, t } = useLanguage();
@@ -23,6 +19,7 @@ export default function ConversationList() {
   const composerDrafts = useChatStore((s) => s.composerDrafts);
   const setActive = useChatStore((s) => s.setActiveConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
+  const getContact = useRosterStore((s) => s.getContact);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
   const activeAccountJid = normalizeBareJid(accounts.find((a) => a.id === activeAccountId)?.jid ?? "");
@@ -46,6 +43,11 @@ export default function ConversationList() {
     await deleteLocalConversationData(id).catch(() => {});
   };
 
+  const getConversationPresence = (accountId: string, peerJid: string, type: string) => {
+    if (type !== "private") return "available";
+    return getContact(accountId, peerJid)?.presence ?? "unavailable";
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -62,7 +64,9 @@ export default function ConversationList() {
             <span className="text-xs">{t("conv.empty")}</span>
           </div>
         ) : (
-          filtered.map((conv) => (
+          filtered.map((conv) => {
+            const presence = getConversationPresence(conv.accountId, conv.peerJid, conv.type);
+            return (
             <button
               key={conv.id}
               onClick={() => handleSelect(conv.id)}
@@ -79,7 +83,12 @@ export default function ConversationList() {
                                 justify-center text-surface-200 text-sm font-medium uppercase">
                   {conv.title?.[0] ?? conv.peerJid?.[0] ?? "?"}
                 </div>
-                <span className={clsx("presence-dot absolute -bottom-0.5 -right-0.5", "available")} />
+                <span className={clsx("presence-dot absolute -bottom-0.5 -right-0.5", {
+                  available: presence === "available",
+                  away: presence === "away",
+                  dnd: presence === "dnd",
+                  unavailable: !["available", "away", "dnd"].includes(presence),
+                })} />
               </div>
 
               {/* Info */}
@@ -121,7 +130,8 @@ export default function ConversationList() {
                 <Trash2 size={13} />
               </div>
             </button>
-          ))
+            );
+          })
         )}
       </div>
     </div>
