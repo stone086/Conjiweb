@@ -232,6 +232,7 @@ function FilesTab({ conversationId }: { conversationId: string }) {
 }
 
 function StarredTab({ conversationId }: { conversationId: string }) {
+  const { t } = useLanguage();
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
   const starred = messages
     .filter((m) => Boolean(m.starred))
@@ -241,7 +242,7 @@ function StarredTab({ conversationId }: { conversationId: string }) {
     return (
       <div className="p-4 text-center text-sm text-surface-200/30 mt-4">
         <Star size={20} className="mx-auto mb-2 opacity-30" />
-        No starred messages yet.
+        {t("right.noStarred") === "right.noStarred" ? "No starred messages yet." : t("right.noStarred")}
       </div>
     );
   }
@@ -251,7 +252,11 @@ function StarredTab({ conversationId }: { conversationId: string }) {
       {starred.map((m) => (
         <div key={m.id} className="glass rounded-lg p-3">
           <div className="flex items-center justify-between gap-2 mb-1">
-            <span className="text-[10px] text-surface-200/40 uppercase tracking-wide">{m.direction === "out" ? "Sent" : "Received"}</span>
+            <span className="text-[10px] text-surface-200/40 uppercase tracking-wide">
+              {m.direction === "out"
+                ? (t("right.sent") === "right.sent" ? "Sent" : t("right.sent"))
+                : (t("right.received") === "right.received" ? "Received" : t("right.received"))}
+            </span>
             <span className="text-[10px] text-surface-200/30">{new Date(m.timestamp).toLocaleString()}</span>
           </div>
           <p className="text-xs text-surface-50 whitespace-pre-wrap break-words">{m.body || "(empty message)"}</p>
@@ -272,7 +277,11 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     { id: "info", icon: <Info size={14} />, label: t("right.info") },
     ...(conversation.type === "group" ? [{ id: "members" as RightTab, icon: <Users size={14} />, label: t("right.members") }] : []),
     { id: "files", icon: <FileText size={14} />, label: t("right.files") },
-    { id: "starred", icon: <Star size={14} />, label: "Starred" },
+    {
+      id: "starred",
+      icon: <Star size={14} />,
+      label: t("right.starred") === "right.starred" ? "Starred" : t("right.starred"),
+    },
     { id: "ai", icon: <Bot size={14} />, label: t("right.ai") },
   ];
 
