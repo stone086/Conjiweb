@@ -52,6 +52,7 @@ interface ChatState {
   conversations: Record<string, Conversation>;
   messages: Record<string, ChatMessage[]>; // keyed by conversationId
   composerDrafts: Record<string, string>;
+  typingPeers: Record<string, string | null>;
   activeConversationId: string | null;
 
   setActiveConversation: (id: string | null) => void;
@@ -70,6 +71,7 @@ interface ChatState {
   updateMessage: (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => void;
   toggleMessageStar: (conversationId: string, messageId: string) => void;
   toggleMessageReaction: (conversationId: string, messageId: string, emoji: string) => void;
+  setTypingPeer: (conversationId: string, jid: string | null, typing: boolean) => void;
 }
 
 const MAX_MESSAGES_PER_CONVERSATION = 500;
@@ -80,6 +82,7 @@ export const useChatStore = create<ChatState>()(
       conversations: {},
       messages: {},
       composerDrafts: {},
+      typingPeers: {},
       activeConversationId: null,
 
       setActiveConversation: (id) =>
@@ -266,13 +269,16 @@ export const useChatStore = create<ChatState>()(
           const nextConversations = { ...s.conversations };
           const nextMessages = { ...s.messages };
           const nextDrafts = { ...s.composerDrafts };
+          const nextTypingPeers = { ...s.typingPeers };
           delete nextConversations[conversationId];
           delete nextMessages[conversationId];
           delete nextDrafts[conversationId];
+          delete nextTypingPeers[conversationId];
           return {
             conversations: nextConversations,
             messages: nextMessages,
             composerDrafts: nextDrafts,
+            typingPeers: nextTypingPeers,
             activeConversationId: s.activeConversationId === conversationId ? null : s.activeConversationId,
           };
         }),
@@ -296,11 +302,13 @@ export const useChatStore = create<ChatState>()(
           const nextConversations = { ...s.conversations };
           const nextMessages = { ...s.messages };
           const nextDrafts = { ...s.composerDrafts };
+          const nextTypingPeers = { ...s.typingPeers };
           Object.entries(s.conversations).forEach(([id, conv]) => {
             if (conv.accountId !== accountId) return;
             delete nextConversations[id];
             delete nextMessages[id];
             delete nextDrafts[id];
+            delete nextTypingPeers[id];
           });
           const activeStillExists =
             s.activeConversationId && nextConversations[s.activeConversationId];
@@ -308,6 +316,7 @@ export const useChatStore = create<ChatState>()(
             conversations: nextConversations,
             messages: nextMessages,
             composerDrafts: nextDrafts,
+            typingPeers: nextTypingPeers,
             activeConversationId: activeStillExists ? s.activeConversationId : null,
           };
         }),
@@ -376,6 +385,14 @@ export const useChatStore = create<ChatState>()(
             },
           };
         }),
+
+      setTypingPeer: (conversationId, jid, typing) =>
+        set((s) => ({
+          typingPeers: {
+            ...s.typingPeers,
+            [conversationId]: typing ? jid : null,
+          },
+        })),
     }),
     {
       name: "conjiweb-chat",

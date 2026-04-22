@@ -29,6 +29,7 @@ const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
 const avatarFetchInFlight = new Set<string>();
 const keyAdvertisedToPeer = new Set<string>();
+const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 async function retryDecryptConversation(accountId: string, peerJid: string) {
   const convId = generateConversationId(accountId, peerJid);
@@ -70,6 +71,12 @@ export function initXmppBridge(client: XmppClient) {
   // Connection changes
   client.on("connection.changed", (data: any) => {
     useAccountStore.getState().setConnected(accountId, data.status === "connected");
+    if (data.status !== "connected") {
+      const store = useChatStore.getState();
+      Object.values(store.conversations)
+        .filter((c) => c.accountId === accountId)
+        .forEach((c) => store.setTypingPeer(c.id, null, false));
+    }
     if (data.status === "connected") {
       const publishLocalOmemo = async () => {
         try {
@@ -439,12 +446,32 @@ export function initXmppBridge(client: XmppClient) {
 
   // Typing indicators
   client.on("typing.started", (data: any) => {
-    // Could update a typing indicator store here
-    console.log(`[xmppBridge] ${data.from} is typing`);
+    const from = normalizeBareJid(String(data.from ?? ""));
+    if (!from || from === ownBareJid) return;
+    const convId = generateConversationId(accountId, from);
+    const store = useChatStore.getState();
+    store.setTypingPeer(convId, from, true);
+    const prev = typingTimers.get(convId);
+    if (prev) clearTimeout(prev);
+    typingTimers.set(
+      convId,
+      setTimeout(() => {
+        useChatStore.getState().setTypingPeer(convId, null, false);
+        typingTimers.delete(convId);
+      }, 5000)
+    );
   });
 
   client.on("typing.stopped", (data: any) => {
-    console.log(`[xmppBridge] ${data.from} stopped typing`);
+    const from = normalizeBareJid(String(data.from ?? ""));
+    if (!from || from === ownBareJid) return;
+    const convId = generateConversationId(accountId, from);
+    const prev = typingTimers.get(convId);
+    if (prev) {
+      clearTimeout(prev);
+      typingTimers.delete(convId);
+    }
+    useChatStore.getState().setTypingPeer(convId, null, false);
   });
 
   // Delivery receipts
