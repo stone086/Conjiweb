@@ -27,7 +27,10 @@ export default function ConversationList() {
   const filtered = conversations
     .filter((c) => c.accountId === activeAccountId)
     .filter((c) => c.type !== "private" || normalizeBareJid(c.peerJid) !== activeAccountJid)
-    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+    .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0);
+    });
 
   const handleSelect = (id: string) => {
     setActive(id);

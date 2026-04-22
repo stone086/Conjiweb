@@ -14,11 +14,14 @@ import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
 import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { getOmemoEnabled } from "@/services/omemoSettings";
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👎"] as const;
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
@@ -69,6 +72,7 @@ function MessageBubble({
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
     const onPointerDown = (event: MouseEvent | TouchEvent) => {
@@ -84,11 +88,30 @@ function MessageBubble({
       document.removeEventListener("touchstart", onPointerDown);
     };
   }, [menuOpen]);
+
+  const clearLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const openMenu = () => setMenuOpen(true);
   return (
     <div
       className={clsx("flex gap-2 group", isOwn ? "flex-row-reverse" : "flex-row")}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openMenu();
+      }}
+      onTouchStart={() => {
+        clearLongPress();
+        longPressTimer.current = setTimeout(() => openMenu(), 480);
+      }}
+      onTouchEnd={clearLongPress}
+      onTouchCancel={clearLongPress}
     >
       {!isOwn && (
         <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-[11px] font-medium uppercase flex-shrink-0 mt-auto mb-1 text-surface-200">
@@ -149,10 +172,22 @@ function MessageBubble({
           )}
         </div>
       </div>
-      <div className={clsx("flex items-center self-center transition-opacity", hovered ? "opacity-100" : "opacity-0")}>
+      <div className={clsx("flex items-center self-center transition-opacity", hovered || menuOpen ? "opacity-100" : "opacity-0")}>
         <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
           <CornerUpLeft size={13} />
         </button>
+        <div className="hidden md:flex items-center gap-1 mr-1">
+          {QUICK_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => onReact(msg, emoji)}
+              className="px-1.5 py-1 rounded-lg hover:bg-white/5 text-xs"
+              title={`React ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
             <MoreVertical size={13} />
@@ -170,7 +205,20 @@ function MessageBubble({
               <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
                 <Forward size={12} /> Forward
               </button>
-              <button onClick={() => { onReact(msg, "👍"); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded">👍 React</button>
+              <div className="px-2 py-1.5">
+                <p className="text-[10px] text-surface-200/50 mb-1">React</p>
+                <div className="grid grid-cols-6 gap-1">
+                  {QUICK_REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => { onReact(msg, emoji); setMenuOpen(false); }}
+                      className="rounded px-1 py-1 text-sm hover:bg-white/5"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {isOwn && (
                 <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
                   <Trash2 size={12} /> Delete
@@ -288,7 +336,16 @@ export default function MessageView({ conversationId }: { conversationId: string
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
   const forwardCandidates = allConversations
     .filter((c) => c.accountId === activeAccountId && c.id !== conversationId)
-    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+    .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0);
+    });
+  const rowVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 92,
+    overscan: 12,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -703,50 +760,63 @@ export default function MessageView({ conversationId }: { conversationId: string
             <p className="text-sm">{t("chat.noMessages")}</p>
           </div>
         )}
-        {messages.map((msg, i) => {
-          const isOwn = msg.direction === "out";
-          const prev = messages[i - 1];
-          const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
-          const unreadStartIdx = conversation.unreadCount > 0 ? Math.max(messages.length - conversation.unreadCount, 0) : -1;
-          const showUnreadDivider = unreadStartIdx === i && conversation.unreadCount > 0;
-          return (
-            <div
-              key={msg.id}
-              className="animate-fade-in"
-              ref={(node) => { messageNodeRefs.current[msg.id] = node; }}
-              data-mid={msg.id}
-            >
-              {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
-              {showUnreadDivider && (
-                <div className="flex items-center gap-3 py-2">
-                  <div className="flex-1 h-px bg-accent/40" />
-                  <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">Unread</span>
-                  <div className="flex-1 h-px bg-accent/40" />
+        {messages.length > 0 && (
+          <div
+            className="relative w-full"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const i = virtualRow.index;
+              const msg = messages[i];
+              const isOwn = msg.direction === "out";
+              const prev = messages[i - 1];
+              const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
+              const unreadStartIdx = conversation.unreadCount > 0 ? Math.max(messages.length - conversation.unreadCount, 0) : -1;
+              const showUnreadDivider = unreadStartIdx === i && conversation.unreadCount > 0;
+              return (
+                <div
+                  key={msg.id}
+                  className="absolute left-0 top-0 w-full animate-fade-in"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  ref={(node) => {
+                    if (node) rowVirtualizer.measureElement(node);
+                    messageNodeRefs.current[msg.id] = node;
+                  }}
+                  data-mid={msg.id}
+                >
+                  {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
+                  {showUnreadDivider && (
+                    <div className="flex items-center gap-3 py-2">
+                      <div className="flex-1 h-px bg-accent/40" />
+                      <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">Unread</span>
+                      <div className="flex-1 h-px bg-accent/40" />
+                    </div>
+                  )}
+                  {msg.direction === "system" ? (
+                    <div className="msg-bubble-system">{msg.body}</div>
+                  ) : (
+                    <MessageBubble
+                      msg={msg}
+                      replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
+                      replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
+                      isOwn={isOwn}
+                      onReply={setReplyTo}
+                      onOpenImage={(src, alt) => setLightbox({ src, alt })}
+                      onRetry={retryFailedMessage}
+                      onEdit={handleEditMessage}
+                      onForward={handleForwardMessage}
+                      onDelete={handleDeleteMessage}
+                      onToggleStar={handleToggleStar}
+                      onReact={handleReact}
+                      sentLabel={t("chat.sentSent")}
+                      readLabel={t("chat.sentRead")}
+                    />
+                  )}
                 </div>
-              )}
-              {msg.direction === "system" ? (
-                <div className="msg-bubble-system">{msg.body}</div>
-              ) : (
-                <MessageBubble
-                  msg={msg}
-                  replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
-                  replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
-                  isOwn={isOwn}
-                  onReply={setReplyTo}
-                  onOpenImage={(src, alt) => setLightbox({ src, alt })}
-                  onRetry={retryFailedMessage}
-                  onEdit={handleEditMessage}
-                  onForward={handleForwardMessage}
-                  onDelete={handleDeleteMessage}
-                  onToggleStar={handleToggleStar}
-                  onReact={handleReact}
-                  sentLabel={t("chat.sentSent")}
-                  readLabel={t("chat.sentRead")}
-                />
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
         {peerIsTyping && <TypingBubble name={conversation.peerJid.split("@")[0]} />}
         <div ref={messagesEndRef} />
       </div>
