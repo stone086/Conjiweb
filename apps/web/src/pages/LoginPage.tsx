@@ -128,7 +128,7 @@ export default function LoginPage() {
             </div>
           </form>
         </div>
-        <p className="text-center text-xs text-surface-200/20 mt-6">{t("login.version")}</p>
+        <p className="text-center text-xs text-surface-200/20 mt-6">Conjiweb · Open Source · v{__APP_VERSION__}</p>
       </div>
     </div>
   );
