@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import re
 import subprocess
-import uuid
 
 router = APIRouter()
 
@@ -136,17 +135,8 @@ async def issue_user_token(
     result = await db.execute(select(Account).where(Account.jid == full_jid))
     account = result.scalar_one_or_none()
     if not account:
-        account = Account(
-            id=str(uuid.uuid4()),
-            jid=full_jid,
-            domain=domain,
-            display_name=username,
-            is_enabled=True,
-        )
-        db.add(account)
-        await db.commit()
-        await db.refresh(account)
-    elif not account.is_enabled:
+        raise HTTPException(status_code=404, detail="Account not found. Register or login first.")
+    if not account.is_enabled:
         raise HTTPException(status_code=403, detail="Account is disabled")
 
     token = create_access_token(full_jid, role="user", account_id=account.id)

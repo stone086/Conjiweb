@@ -1,7 +1,6 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 import subprocess
-import uuid
 
 from app.api.routers import auth as auth_router
 from app.core.config import settings
@@ -142,7 +141,49 @@ async def test_user_token_issues_token_when_credentials_valid(monkeypatch):
         stdout = "ok"
         stderr = ""
 
+    class _EnabledAccount:
+        id = "acc-valid"
+        jid = "alice@example.com"
+        is_enabled = True
+
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _OkResult())
+
+    class _FakeExecuteResult:
+        @staticmethod
+        def scalar_one_or_none():
+            return _EnabledAccount()
+
+    class _FakeDB:
+        async def execute(self, *args, **kwargs):
+            return _FakeExecuteResult()
+
+    async def _fake_get_db():
+        yield _FakeDB()
+
+    app.dependency_overrides[get_db] = _fake_get_db
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/auth/user-token",
+                json={"jid": "alice@example.com", "password": "password123"},
+            )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["token_type"] == "bearer"
+    assert data["access_token"]
+    assert data["jid"] == "alice@example.com"
+    assert data["account_id"] == "acc-valid"
+
+
+@pytest.mark.anyio
+async def test_user_token_rejects_nonexistent_account(monkeypatch):
+    class _OkResult:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
 
     class _FakeExecuteResult:
         @staticmethod
@@ -153,35 +194,21 @@ async def test_user_token_issues_token_when_credentials_valid(monkeypatch):
         async def execute(self, *args, **kwargs):
             return _FakeExecuteResult()
 
-        def add(self, _obj):
-            return None
-
-        async def commit(self):
-            return None
-
-        async def refresh(self, _obj):
-            return None
-
     async def _fake_get_db():
         yield _FakeDB()
 
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _OkResult())
     app.dependency_overrides[get_db] = _fake_get_db
-    unique_jid = f"u{uuid.uuid4().hex[:8]}@example.com"
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/auth/user-token",
-                json={"jid": unique_jid, "password": "password123"},
+                json={"jid": "missing@example.com", "password": "password123"},
             )
     finally:
         app.dependency_overrides.pop(get_db, None)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["token_type"] == "bearer"
-    assert data["access_token"]
-    assert data["jid"] == unique_jid
-    assert data["account_id"]
+    assert resp.status_code == 404
 
 
 @pytest.mark.anyio
