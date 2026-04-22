@@ -4,12 +4,12 @@ import { useRosterStore } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore, MucMember } from "@/stores/groupStore";
 import { aiApi } from "@/services/api";
-import { X, Bot, Users, FileText, Info, Crown, Shield, Loader } from "lucide-react";
+import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 
-type RightTab = "info" | "members" | "files" | "ai";
+type RightTab = "info" | "members" | "files" | "starred" | "ai";
 
 interface RightPanelProps {
   conversationId: string;
@@ -231,6 +231,36 @@ function FilesTab({ conversationId }: { conversationId: string }) {
   );
 }
 
+function StarredTab({ conversationId }: { conversationId: string }) {
+  const messages = useChatStore((s) => s.messages[conversationId] ?? []);
+  const starred = messages
+    .filter((m) => Boolean(m.starred))
+    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+
+  if (starred.length === 0) {
+    return (
+      <div className="p-4 text-center text-sm text-surface-200/30 mt-4">
+        <Star size={20} className="mx-auto mb-2 opacity-30" />
+        No starred messages yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {starred.map((m) => (
+        <div key={m.id} className="glass rounded-lg p-3">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="text-[10px] text-surface-200/40 uppercase tracking-wide">{m.direction === "out" ? "Sent" : "Received"}</span>
+            <span className="text-[10px] text-surface-200/30">{new Date(m.timestamp).toLocaleString()}</span>
+          </div>
+          <p className="text-xs text-surface-50 whitespace-pre-wrap break-words">{m.body || "(empty message)"}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function RightPanel({ conversationId, onClose }: RightPanelProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<RightTab>("info");
@@ -242,6 +272,7 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     { id: "info", icon: <Info size={14} />, label: t("right.info") },
     ...(conversation.type === "group" ? [{ id: "members" as RightTab, icon: <Users size={14} />, label: t("right.members") }] : []),
     { id: "files", icon: <FileText size={14} />, label: t("right.files") },
+    { id: "starred", icon: <Star size={14} />, label: "Starred" },
     { id: "ai", icon: <Bot size={14} />, label: t("right.ai") },
   ];
 
@@ -275,6 +306,7 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
         {activeTab === "members" && <MembersTab roomJid={conversation.peerJid} />}
         {activeTab === "ai" && <AiSummaryTab conversationId={conversationId} />}
         {activeTab === "files" && <FilesTab conversationId={conversationId} />}
+        {activeTab === "starred" && <StarredTab conversationId={conversationId} />}
       </div>
     </div>
   );
