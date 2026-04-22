@@ -197,13 +197,11 @@ async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array
   return new Uint8Array(sig);
 }
 
-function bundleSignaturePayload(bundle: Pick<OmemoBundle, "deviceId" | "signedPreKeyId" | "signedPreKeyPublic" | "identityKey">): Uint8Array {
-  return new TextEncoder().encode(
-    `${bundle.deviceId}.${bundle.signedPreKeyId}.${bundle.signedPreKeyPublic}.${bundle.identityKey}`
-  );
+function bundleSignaturePayload(bundle: Pick<OmemoBundle, "signedPreKeyPublic">): Uint8Array {
+  return fromB64(bundle.signedPreKeyPublic);
 }
 
-async function signBundleSignature(identityPrivateJwk: JsonWebKey, bundle: Pick<OmemoBundle, "deviceId" | "signedPreKeyId" | "signedPreKeyPublic" | "identityKey">): Promise<string> {
+async function signBundleSignature(identityPrivateJwk: JsonWebKey, bundle: Pick<OmemoBundle, "signedPreKeyPublic">): Promise<string> {
   const key = await crypto.subtle.importKey(
     "jwk",
     identityPrivateJwk,
