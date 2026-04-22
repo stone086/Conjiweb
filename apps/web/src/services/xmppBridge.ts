@@ -454,6 +454,27 @@ export function initXmppBridge(client: XmppClient) {
     });
   });
 
+  client.on("reaction.received", (data: any) => {
+    const { messageId, emojis } = data as { messageId?: string; emojis?: string[] };
+    if (!messageId) return;
+    const store = useChatStore.getState();
+    const relevantConvIds = Object.values(store.conversations)
+      .filter((c) => c.accountId === accountId)
+      .map((c) => c.id);
+    for (const conversationId of relevantConvIds) {
+      const list = store.messages[conversationId] ?? [];
+      const msg = list.find((m) => m.id === messageId);
+      if (!msg) continue;
+      const next: Record<string, number> = { ...(msg.reactions ?? {}) };
+      (emojis ?? []).forEach((emoji) => {
+        if (!emoji) return;
+        next[emoji] = Math.max(1, next[emoji] ?? 0);
+      });
+      store.updateMessage(conversationId, messageId, { reactions: next });
+      break;
+    }
+  });
+
   client.on("message.retracted", (data: any) => {
     const messageId = data.messageId as string | undefined;
     if (!messageId) return;

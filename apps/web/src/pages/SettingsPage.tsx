@@ -17,6 +17,7 @@ import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings"
 import { useNotificationStore } from "@/stores/notificationStore";
 import { accountsApi, authApi, setUserToken } from "@/services/api";
 import { clearLocalAccountData } from "@/services/localDb";
+import { apiSocket } from "@/services/apiSocket";
 
 const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
 const DENSITY_KEY = "conjiweb-message-density";
@@ -57,6 +58,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
       accountsApi.create({ jid: account.jid, domain: account.jid.split("@")[1] ?? "localhost" }).catch(() => {});
       const tokenRes = await authApi.getUserToken(account.jid, runtimePassword).catch(() => null);
       if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
+      apiSocket.connect(account.id);
       toast.success(`${t("toast.connected")}: ${account.jid}`);
     } catch (e: any) {
       toast.error(e.message ?? t("toast.connectionFailed"));
@@ -67,6 +69,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
 
   const disconnect = () => {
     destroyClient(account.id);
+    apiSocket.disconnect();
     setConnected(account.id, false);
     toast(t("toast.disconnected"));
   };
@@ -277,6 +280,7 @@ export default function SettingsPage() {
       accountsApi.create({ jid: form.jid, domain: form.jid.split("@")[1] ?? "localhost" }).catch(() => {});
       const tokenRes = await authApi.getUserToken(form.jid, form.password).catch(() => null);
       if (tokenRes?.access_token) setUserToken(id, tokenRes.access_token);
+      apiSocket.connect(id);
     } catch (error: any) {
       toast.error(error?.message ?? t("toast.connectionFailed"));
     }

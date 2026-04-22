@@ -30,6 +30,7 @@ export type XmppEvent =
   | "message.delivered"
   | "message.read"
   | "message.retracted"
+  | "reaction.received"
   | "room.subject"
   | "room.member"
   | "error";
@@ -282,6 +283,22 @@ export class XmppClient {
         });
         return true;
       }
+      const reactionsEl = stanza.querySelector('reactions[xmlns="urn:xmpp:reactions:0"]');
+      if (reactionsEl) {
+        const msgId = reactionsEl.getAttribute("id");
+        const emojis = Array.from(reactionsEl.querySelectorAll("reaction"))
+          .map((r) => r.textContent?.trim() ?? "")
+          .filter(Boolean);
+        if (msgId) {
+          this.emit("reaction.received", {
+            accountId: this.config.accountId,
+            from,
+            messageId: msgId,
+            emojis,
+          });
+        }
+        return true;
+      }
       const retracted = stanza.querySelector('retract[xmlns="urn:xmpp:message-retract:1"]');
       if (retracted) {
         this.emit("message.retracted", {
@@ -519,6 +536,16 @@ export class XmppClient {
       .c("retract", { xmlns: "urn:xmpp:message-retract:1" })
       .up()
       .up();
+    this._connection.send(stanza);
+  }
+
+  sendReaction(toJid: string, messageId: string, emojis: string[], type: "chat" | "groupchat" = "chat") {
+    if (!this._connection || !this._connected || !messageId) return;
+    const stanza = this._$msg({ to: toJid, type })
+      .c("reactions", { xmlns: "urn:xmpp:reactions:0", id: messageId });
+    emojis.forEach((emoji) => {
+      if (emoji) stanza.c("reaction").t(emoji).up();
+    });
     this._connection.send(stanza);
   }
 

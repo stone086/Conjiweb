@@ -5,12 +5,14 @@ import { useChatStore } from "@/stores/chatStore";
 import { useXmppReconnect } from "@/hooks/useXmppReconnect";
 import { usePWA } from "@/hooks/usePWA";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { apiSocket } from "@/services/apiSocket";
 import MainLayout from "@/layouts/MainLayout";
 import LoginPage from "@/pages/LoginPage";
 import ChatPage from "@/pages/ChatPage";
 import SettingsPage from "@/pages/SettingsPage";
 import AdminPage from "@/pages/AdminPage";
 import PluginsPage from "@/pages/PluginsPage";
+import StarredPage from "@/pages/StarredPage";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const accounts = useAccountStore((s) => s.accounts);
@@ -23,6 +25,7 @@ function AppInner() {
   useXmppReconnect();
   usePWA();
   const mergeDuplicatePrivateConversations = useChatStore((s) => s.mergeDuplicatePrivateConversations);
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const [browserOnline, setBrowserOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
 
   useEffect(() => {
@@ -39,6 +42,17 @@ function AppInner() {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeAccountId) {
+      apiSocket.disconnect();
+      return;
+    }
+    apiSocket.connect(activeAccountId);
+    return () => {
+      apiSocket.disconnect();
+    };
+  }, [activeAccountId]);
 
   return (
     <>
@@ -63,6 +77,7 @@ function AppInner() {
           />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="plugins" element={<PluginsPage />} />
+          <Route path="starred" element={<StarredPage />} />
           <Route path="admin" element={<AdminPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

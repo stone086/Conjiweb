@@ -580,7 +580,21 @@ export default function MessageView({ conversationId }: { conversationId: string
 
   const handleReact = useCallback((message: ChatMessage, emoji: string) => {
     toggleMessageReaction(conversationId, message.id, emoji);
-  }, [conversationId, toggleMessageReaction]);
+    if (!activeAccountId) return;
+    const client = getClient(activeAccountId);
+    if (!client?.connected || !conversation?.peerJid) return;
+    const updatedMsg = useChatStore.getState().messages[conversationId]
+      ?.find((m) => m.id === message.id);
+    const emojis = Object.entries(updatedMsg?.reactions ?? {})
+      .filter(([, count]) => count > 0)
+      .map(([value]) => value);
+    client.sendReaction(
+      conversation.peerJid,
+      message.id,
+      emojis,
+      conversation.type === "group" ? "groupchat" : "chat"
+    );
+  }, [conversationId, toggleMessageReaction, activeAccountId, conversation]);
 
   const retryFailedMessage = useCallback((message: ChatMessage) => {
     if (!activeAccountId) return;

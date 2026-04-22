@@ -3,6 +3,7 @@ import { getAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient, getClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
 import { useReconnectStore } from "@/stores/reconnectStore";
+import { authApi, setUserToken } from "@/services/api";
 
 const RECONNECT_DELAYS = [3000, 5000, 10000, 30000]; // ms
 
@@ -53,6 +54,12 @@ export function useXmppReconnect() {
           attemptsRef.current[account.id] = 0;
           setConnected(account.id, true);
           setReconnecting(account.id, false);
+          try {
+            const tokenRes = await authApi.getUserToken(account.jid, runtimePassword).catch(() => null);
+            if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
+          } catch {
+            // Non-fatal: token refresh can be retried later.
+          }
         } catch {
           attemptsRef.current[account.id] = attempt + 1;
           setConnected(account.id, false);

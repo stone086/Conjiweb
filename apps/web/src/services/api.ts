@@ -3,7 +3,7 @@ import { useAccountStore } from "@/stores/accountStore";
 export const ADMIN_SESSION_EXPIRED_EVENT = "conjiweb:admin-session-expired";
 const USER_TOKEN_KEY_PREFIX = "conjiweb-user-token:";
 
-function getUserToken(accountId?: string | null): string | null {
+export function getUserToken(accountId?: string | null): string | null {
   if (!accountId) return null;
   return sessionStorage.getItem(`${USER_TOKEN_KEY_PREFIX}${accountId}`);
 }

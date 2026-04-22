@@ -1,15 +1,17 @@
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
-  MessageSquare, Settings, Puzzle, Plus, Wifi, WifiOff,
+  MessageSquare, Settings, Puzzle, Plus, Wifi, WifiOff, Star,
 } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { clsx } from "clsx";
 import { useLanguage } from "@/utils/i18n";
 import { useShallow } from "zustand/react/shallow";
+import { apiSocket } from "@/services/apiSocket";
 
 const navItems = [
   { to: "/", icon: MessageSquare, key: "nav.chats", end: true },
+  { to: "/starred", icon: Star, key: "nav.starred" },
   { to: "/settings", icon: Settings, key: "nav.settings" },
   { to: "/plugins", icon: Puzzle, key: "nav.plugins" },
 ];
@@ -64,7 +66,10 @@ export default function Sidebar() {
         {accounts.map((acc) => (
           <button
             key={acc.id}
-            onClick={() => setActive(acc.id)}
+            onClick={() => {
+              setActive(acc.id);
+              apiSocket.connect(acc.id);
+            }}
             className={clsx(
               "relative w-9 h-9 rounded-xl transition-all duration-150",
               acc.id === activeId

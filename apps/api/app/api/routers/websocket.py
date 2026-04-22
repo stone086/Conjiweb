@@ -1,15 +1,19 @@
-"""`nwebsocket.py - Real-time push endpoint.`nThe frontend connects here to receive server-pushed events`n(new message notifications, presence changes, etc.).`n"""
+"""
+websocket.py - Real-time push endpoint.
+The frontend connects here to receive server-pushed events
+(new message notifications, presence changes, etc.).
+"""
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict, Set
+from app.utils.security import decode_token
 import json
 import asyncio
 
 router = APIRouter()
 
-# Connection manager
 class ConnectionManager:
     def __init__(self):
-        self.connections: Dict[str, Set[WebSocket]] = {}  # account_id -> set of ws
+        self.connections: Dict[str, Set[WebSocket]] = {}
 
     async def connect(self, ws: WebSocket, account_id: str):
         await ws.accept()
@@ -45,13 +49,29 @@ manager = ConnectionManager()
 
 @router.websocket("/ws/{account_id}")
 async def websocket_endpoint(ws: WebSocket, account_id: str):
+    token = ws.query_params.get("token")
+    if not token:
+        await ws.close(code=4001, reason="Missing token")
+        return
+    try:
+        payload = decode_token(token)
+        role = payload.get("role")
+        token_account_id = payload.get("account_id")
+        if role == "user" and token_account_id != account_id:
+            await ws.close(code=4003, reason="Token account mismatch")
+            return
+        if role not in ("user", "admin"):
+            await ws.close(code=4003, reason="Invalid token role")
+            return
+    except Exception:
+        await ws.close(code=4001, reason="Invalid or expired token")
+        return
+
     await manager.connect(ws, account_id)
     try:
-        # Send connected ack
         await ws.send_json({"type": "connected", "account_id": account_id})
 
         while True:
-            # Keep alive - client sends pings
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=30)
                 msg = json.loads(data)
@@ -67,6 +87,5 @@ async def websocket_endpoint(ws: WebSocket, account_id: str):
         manager.disconnect(ws, account_id)
 
 
-# Helper to push events from other parts of the API
 async def push_event(account_id: str, event_type: str, payload: dict):
     await manager.send_to_account(account_id, {"type": event_type, **payload})

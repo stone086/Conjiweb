@@ -4,6 +4,7 @@ import { setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
 import { accountsApi, authApi, setUserToken } from "@/services/api";
+import { apiSocket } from "@/services/apiSocket";
 import { requestNotificationPermission } from "@/stores/notificationStore";
 import toast from "react-hot-toast";
 import { Wifi, Lock, User, Eye, EyeOff, UserPlus } from "lucide-react";
@@ -38,6 +39,7 @@ export default function LoginPage() {
       if (tokenRes?.access_token) {
         setUserToken(id, tokenRes.access_token);
       }
+      apiSocket.connect(id);
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       navigate("/");
