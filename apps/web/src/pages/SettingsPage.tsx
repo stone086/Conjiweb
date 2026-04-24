@@ -12,8 +12,9 @@ import { clsx } from "clsx";
 import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
 import { getStoredLanguage, Language, setLanguage, useLanguage } from "@/utils/i18n";
 import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDays, setStoredHistoryRetentionDays } from "@/services/historyRetention";
-import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
+import { getOmemoFingerprintForJid, getPeerOmemoFingerprints, OmemoDeviceFingerprint } from "@/services/omemoFingerprint";
 import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
+import { isPeerDeviceTrusted, setPeerDeviceTrust } from "@/services/omemoTrust";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { accountsApi, authApi, setUserToken } from "@/services/api";
 import { clearLocalAccountData } from "@/services/localDb";
@@ -197,6 +198,9 @@ export default function SettingsPage() {
   const [omemoFingerprints, setOmemoFingerprints] = useState<Record<string, string>>({});
   const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
   const [omemoEnabled, setOmemoEnabledState] = useState<boolean>(getOmemoEnabled());
+  const [peerJidInput, setPeerJidInput] = useState("");
+  const [peerDevices, setPeerDevices] = useState<OmemoDeviceFingerprint[]>([]);
+  const [peerLookupLoading, setPeerLookupLoading] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("add") === "1") {
@@ -313,6 +317,27 @@ export default function SettingsPage() {
     } catch {
       toast.error(t("settings.copyFailed"));
     }
+  };
+
+  const loadPeerFingerprints = async () => {
+    if (!activeAccountId || !peerJidInput.trim()) return;
+    setPeerLookupLoading(true);
+    try {
+      const values = await getPeerOmemoFingerprints(activeAccountId, peerJidInput.trim());
+      setPeerDevices(values);
+      if (values.length === 0) {
+        toast("No OMEMO devices found for this JID yet.");
+      }
+    } finally {
+      setPeerLookupLoading(false);
+    }
+  };
+
+  const toggleTrust = (item: OmemoDeviceFingerprint) => {
+    if (!activeAccountId || !peerJidInput.trim()) return;
+    const trusted = isPeerDeviceTrusted(activeAccountId, peerJidInput.trim(), item.deviceId, item.fingerprint);
+    setPeerDeviceTrust(activeAccountId, peerJidInput.trim(), item.deviceId, item.fingerprint, !trusted);
+    setPeerDevices((prev) => [...prev]);
   };
 
   return (
@@ -509,6 +534,44 @@ export default function SettingsPage() {
                 );
               })
             )}
+            <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
+              <p className="text-xs text-surface-200/60">Peer device verification (OMEMO trust)</p>
+              <div className="flex gap-2">
+                <input
+                  className="input-field text-sm flex-1"
+                  placeholder="peer@example.com"
+                  value={peerJidInput}
+                  onChange={(e) => setPeerJidInput(e.target.value)}
+                />
+                <button
+                  onClick={loadPeerFingerprints}
+                  disabled={!activeAccountId || !peerJidInput.trim() || peerLookupLoading}
+                  className="btn-ghost text-xs px-3"
+                >
+                  {peerLookupLoading ? "Loading..." : "Load"}
+                </button>
+              </div>
+              {peerDevices.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {peerDevices.map((item) => {
+                    const trusted = activeAccountId
+                      ? isPeerDeviceTrusted(activeAccountId, peerJidInput.trim(), item.deviceId, item.fingerprint)
+                      : false;
+                    return (
+                      <div key={item.deviceId} className="rounded-lg border border-white/10 bg-black/10 p-2.5">
+                        <div className="text-[11px] text-surface-200/60 mb-1">Device #{item.deviceId}</div>
+                        <div className="font-mono text-[11px] text-surface-50 break-all">{item.fingerprint}</div>
+                        <div className="mt-2 flex justify-end">
+                          <button onClick={() => toggleTrust(item)} className="btn-ghost text-xs py-1 px-2">
+                            {trusted ? "Unverify" : "Verify"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </section>
 

@@ -389,6 +389,10 @@ function getPeerBundles(accountId: string, peerJid: string): OmemoBundle[] {
     .map(([, v]) => v);
 }
 
+export function listPeerOmemoBundles(accountId: string, peerJid: string): OmemoBundle[] {
+  return getPeerBundles(accountId, peerJid);
+}
+
 function getPeerBundleForDevice(accountId: string, peerJid: string, deviceId: number): OmemoBundle | null {
   const normalizedPeer = normalizeBareJid(peerJid);
   const bundles = getBundleMap(accountId);
@@ -488,6 +492,11 @@ export async function getOrCreateLocalOmemoBundle(accountId: string): Promise<Om
   setBundleMap(accountId, map);
   await setBundleSecretMap(accountId, secretMap);
   return bundle;
+}
+
+export async function getLocalOmemoIdentityKey(accountId: string): Promise<string> {
+  const bundle = await getOrCreateLocalOmemoBundle(accountId);
+  return bundle.identityKey;
 }
 
 async function importPrivateKey(privateJwk: JsonWebKey): Promise<CryptoKey> {

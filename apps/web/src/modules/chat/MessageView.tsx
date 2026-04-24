@@ -20,6 +20,8 @@ import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
 import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { getOmemoEnabled } from "@/services/omemoSettings";
+import { getPeerOmemoFingerprints } from "@/services/omemoFingerprint";
+import { getUntrustedPeerDevices, setPeerDeviceTrust } from "@/services/omemoTrust";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👎"] as const;
 
@@ -493,6 +495,21 @@ export default function MessageView({ conversationId }: { conversationId: string
     try {
       let outboundBody = body;
       if (body && conversation?.type === "private" && getOmemoEnabled()) {
+        const peerJid = conversation?.peerJid ?? conversationId;
+        const peerDevices = await getPeerOmemoFingerprints(activeAccountId, peerJid);
+        const untrusted = getUntrustedPeerDevices(activeAccountId, peerJid, peerDevices);
+        if (untrusted.length > 0) {
+          const summary = untrusted
+            .map((d) => `device ${d.deviceId}: ${d.fingerprint}`)
+            .join("\n");
+          const proceed = window.confirm(
+            `Untrusted OMEMO device fingerprints detected:\n\n${summary}\n\nTrust these fingerprints and continue sending?`
+          );
+          if (!proceed) return;
+          untrusted.forEach((d) => {
+            setPeerDeviceTrust(activeAccountId, peerJid, d.deviceId, d.fingerprint, true);
+          });
+        }
         const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, conversation?.peerJid ?? conversationId, body);
         if (!encrypted.usedPeerKey || !encrypted.envelope) {
           toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
