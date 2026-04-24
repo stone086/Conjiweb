@@ -15,7 +15,7 @@ const SECURE_STORE_NAME = "securekv";
 export const OMEMO_NAMESPACE_LEGACY = "eu.siacs.conversations.axolotl";
 export const OMEMO_NAMESPACE_MODERN = "urn:xmpp:omemo:2";
 export const OMEMO_SUPPORTED_NAMESPACES = [OMEMO_NAMESPACE_MODERN, OMEMO_NAMESPACE_LEGACY] as const;
-export const OMEMO_NAMESPACE = OMEMO_NAMESPACE_LEGACY;
+export const OMEMO_NAMESPACE = OMEMO_NAMESPACE_MODERN;
 
 export interface OmemoEnvelopeKey {
   rid: number;
@@ -243,18 +243,6 @@ async function verifyBundleSignature(bundle: OmemoBundle): Promise<boolean> {
       fromB64Buffer(bundle.signedPreKeySignature),
       asArrayBuffer(bundleSignaturePayload(bundle))
     );
-  } catch {
-    // continue to legacy compatibility check below
-  }
-
-  try {
-    // Legacy compatibility: older Conjiweb builds stored a SHA-256 digest string instead of a true signature.
-    const legacyMaterial = new TextEncoder().encode(
-      `${bundle.identityKey}.${bundle.signedPreKeyPublic}.${bundle.deviceId}`
-    );
-    const digest = await crypto.subtle.digest("SHA-256", legacyMaterial);
-    const legacyB64 = toB64(new Uint8Array(digest));
-    return legacyB64 === bundle.signedPreKeySignature;
   } catch {
     return false;
   }
@@ -730,7 +718,7 @@ export async function encryptOmemoEnvelopeForPeer(
       if (!sessionKey) continue;
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const wrapped = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, sessionKey, messageKey));
-      keys.push({ rid: target.rid, value: toB64(concat(iv, wrapped)), prekey: true });
+      keys.push({ rid: target.rid, value: toB64(concat(iv, wrapped)) });
       continue;
     }
     if (!session) continue;
@@ -744,7 +732,7 @@ export async function encryptOmemoEnvelopeForPeer(
     keys.push({
       rid: target.rid,
       value: toB64(concat(wrapIv, wrapped)),
-      prekey: true,
+      ...(initMeta.ek ? { prekey: true } : {}),
       n: counter,
       ek: initMeta.ek,
       pkid: initMeta.pkid,

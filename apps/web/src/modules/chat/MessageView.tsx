@@ -18,10 +18,10 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
-import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
+import { encryptOmemoEnvelopeForPeer, storePeerOmemoBundle } from "@/services/e2ee";
 import { getOmemoEnabled } from "@/services/omemoSettings";
 import { getPeerOmemoFingerprints } from "@/services/omemoFingerprint";
-import { getUntrustedPeerDevices, setPeerDeviceTrust } from "@/services/omemoTrust";
+import { getUntrustedPeerDevices } from "@/services/omemoTrust";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👎"] as const;
 
@@ -482,6 +482,47 @@ export default function MessageView({ conversationId }: { conversationId: string
     if (c.scrollTop < 80 && hasMore && !mamLoading) fetchHistory();
   };
 
+  const refreshPeerOmemoBundles = useCallback(async (
+    accountId: string,
+    peerJid: string
+  ) => {
+    const client = getClient(accountId);
+    if (!client?.connected) return;
+    const devices = await client.fetchOmemoDeviceList(peerJid);
+    for (const deviceId of devices) {
+      const bundle = await client.fetchOmemoBundle(peerJid, deviceId);
+      if (bundle) {
+        await storePeerOmemoBundle(accountId, peerJid, bundle);
+      }
+    }
+  }, []);
+
+  const buildTrustedOmemoEnvelope = useCallback(async (
+    accountId: string,
+    peerJid: string,
+    body: string
+  ) => {
+    await refreshPeerOmemoBundles(accountId, peerJid);
+    const peerDevices = await getPeerOmemoFingerprints(accountId, peerJid);
+    if (peerDevices.length === 0) {
+      throw new Error("Peer OMEMO device list is empty. Ask peer to come online and publish OMEMO keys.");
+    }
+    const untrusted = getUntrustedPeerDevices(accountId, peerJid, peerDevices);
+    if (untrusted.length > 0) {
+      const summary = untrusted
+        .map((d) => `device ${d.deviceId}: ${d.fingerprint}`)
+        .join("\n");
+      throw new Error(
+        `Untrusted OMEMO fingerprints detected.\nVerify in Settings > OMEMO first:\n\n${summary}`
+      );
+    }
+    const encrypted = await encryptOmemoEnvelopeForPeer(accountId, peerJid, body);
+    if (!encrypted.usedPeerKey || !encrypted.envelope) {
+      throw new Error("Peer OMEMO keys are unavailable. Ask peer to come online with OMEMO enabled.");
+    }
+    return encrypted.envelope;
+  }, [refreshPeerOmemoBundles]);
+
   const sendMessage = useCallback(async () => {
     const body = input.trim();
     if (!body && !pendingFiles.length) return;
@@ -496,28 +537,10 @@ export default function MessageView({ conversationId }: { conversationId: string
       let outboundBody = body;
       if (body && conversation?.type === "private" && getOmemoEnabled()) {
         const peerJid = conversation?.peerJid ?? conversationId;
-        const peerDevices = await getPeerOmemoFingerprints(activeAccountId, peerJid);
-        const untrusted = getUntrustedPeerDevices(activeAccountId, peerJid, peerDevices);
-        if (untrusted.length > 0) {
-          const summary = untrusted
-            .map((d) => `device ${d.deviceId}: ${d.fingerprint}`)
-            .join("\n");
-          const proceed = window.confirm(
-            `Untrusted OMEMO device fingerprints detected:\n\n${summary}\n\nTrust these fingerprints and continue sending?`
-          );
-          if (!proceed) return;
-          untrusted.forEach((d) => {
-            setPeerDeviceTrust(activeAccountId, peerJid, d.deviceId, d.fingerprint, true);
-          });
-        }
-        const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, conversation?.peerJid ?? conversationId, body);
-        if (!encrypted.usedPeerKey || !encrypted.envelope) {
-          toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
-          return;
-        }
+        const envelope = await buildTrustedOmemoEnvelope(activeAccountId, peerJid, body);
         id = client.sendOmemoMessage(
           conversation?.peerJid ?? conversationId,
-          encrypted.envelope,
+          envelope,
           "chat",
           editingMessageId
             ? { replaceId: editingMessageId }
@@ -687,18 +710,14 @@ export default function MessageView({ conversationId }: { conversationId: string
         );
         let newId: string;
         if (isPrivateOmemo) {
-          const encrypted = await encryptOmemoEnvelopeForPeer(
+          const envelope = await buildTrustedOmemoEnvelope(
             activeAccountId,
             conversation?.peerJid ?? conversationId,
             message.body
           );
-          if (!encrypted.usedPeerKey || !encrypted.envelope) {
-            toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
-            return;
-          }
           newId = client.sendOmemoMessage(
             conversation?.peerJid ?? conversationId,
-            encrypted.envelope,
+            envelope,
             "chat"
           );
         } else {
@@ -714,7 +733,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       }
     };
     void retry();
-  }, [activeAccountId, conversation, conversationId, t, updateMessage]);
+  }, [activeAccountId, conversation, conversationId, t, updateMessage, buildTrustedOmemoEnvelope]);
 
   const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(event.clipboardData?.items ?? []);
