@@ -5,7 +5,7 @@ import { useRosterStore } from "@/stores/rosterStore";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { clsx } from "clsx";
-import { MessageSquare, Trash2 } from "lucide-react";
+import { MessageSquare, Pin, Trash2 } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 import { deleteLocalConversationData } from "@/services/localDb";
 import { normalizeBareJid } from "@/utils/helpers";
@@ -19,6 +19,7 @@ export default function ConversationList() {
   const composerDrafts = useChatStore((s) => s.composerDrafts);
   const setActive = useChatStore((s) => s.setActiveConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
+  const setConversationPinned = useChatStore((s) => s.setConversationPinned);
   const getContact = useRosterStore((s) => s.getContact);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
@@ -44,6 +45,10 @@ export default function ConversationList() {
       navigate("/chat");
     }
     await deleteLocalConversationData(id).catch(() => {});
+  };
+
+  const handleTogglePin = (id: string, pinned: boolean) => {
+    setConversationPinned(id, !pinned);
   };
 
   const getConversationPresence = (accountId: string, peerJid: string, type: string) => {
@@ -121,16 +126,32 @@ export default function ConversationList() {
                 </div>
               </div>
 
-              <div
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleDelete(conv.id);
-                }}
-                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
-                title="Delete conversation"
-              >
-                <Trash2 size={13} />
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleTogglePin(conv.id, conv.pinned);
+                  }}
+                  className={clsx(
+                    "opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 flex-shrink-0",
+                    conv.pinned ? "text-accent-soft" : "text-surface-200/40 hover:text-surface-200"
+                  )}
+                  title={conv.pinned ? "Unpin conversation" : "Pin conversation"}
+                >
+                  <Pin size={13} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDelete(conv.id);
+                  }}
+                  className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
+                  title="Delete conversation"
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
             </button>
             );
