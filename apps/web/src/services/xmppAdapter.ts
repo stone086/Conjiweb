@@ -72,6 +72,7 @@ export interface OmemoEnvelope {
 }
 
 export interface OmemoBundle {
+  namespace?: string;
   deviceId: number;
   signedPreKeyId: number;
   signedPreKeyPublic: string;
@@ -756,6 +757,7 @@ export class XmppClient {
               })
               .filter((v): v is { preKeyId: number; value: string } => Boolean(v));
             resolve({
+              namespace,
               deviceId,
               signedPreKeyId: Number.parseInt(spk.getAttribute("signedPreKeyId") ?? "1", 10) || 1,
               signedPreKeyPublic: spk.textContent.trim(),
