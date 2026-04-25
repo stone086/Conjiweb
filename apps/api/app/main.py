@@ -39,7 +39,7 @@ app = FastAPI(
     description="Backend API for the Conjiweb web XMPP client platform.",
     openapi_tags=[
         {"name": "auth", "description": "Authentication endpoints. Public."},
-        {"name": "accounts", "description": "XMPP account management. Admin token required."},
+        {"name": "accounts", "description": "XMPP account management."},
         {"name": "conversations", "description": "Conversation metadata APIs. Admin token required."},
         {"name": "contacts", "description": "Roster and contact APIs. Admin token required."},
         {"name": "attachments", "description": "Secure attachment upload APIs. User token required."},
@@ -65,7 +65,7 @@ app.add_middleware(
 admin_dep = [Depends(get_current_admin)]
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(accounts.router, prefix="/accounts", tags=["accounts"], dependencies=admin_dep)
+app.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
 app.include_router(conversations.router, prefix="/conversations", tags=["conversations"], dependencies=admin_dep)
 app.include_router(contacts.router, prefix="/contacts", tags=["contacts"], dependencies=admin_dep)
 app.include_router(attachments.router, prefix="/attachments", tags=["attachments"])
