@@ -35,11 +35,14 @@ export default function LoginPage() {
     initXmppBridge(client);
     try {
       await client.connect();
-      const tokenRes = await authApi.getUserToken(jid, form.password);
+      const tokenRes = await authApi.getUserToken(jid, form.password).catch(() => null);
       if (tokenRes?.access_token) {
         setUserToken(id, tokenRes.access_token);
+        apiSocket.connect(id);
+      } else {
+        // Non-fatal: XMPP is connected, but backend token endpoint may be unavailable.
+        toast("Connected, but backend token service is unavailable right now.");
       }
-      apiSocket.connect(id);
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       navigate("/");

@@ -39,6 +39,11 @@ class ApiSocketClient {
 
     this.accountId = accountId;
     const token = getUserToken(accountId) ?? localStorage.getItem("admin_token") ?? "";
+    if (!token) {
+      this._connected = false;
+      this.emit("disconnected", { accountId, code: 4001 });
+      return;
+    }
     const wsBase = (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
       .replace(/^https/, "wss")
       .replace(/^http/, "ws");
