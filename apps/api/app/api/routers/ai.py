@@ -121,3 +121,116 @@ async def smart_reply(message: str):
     )
     suggestions = [line.strip("- ").strip() for line in content.splitlines() if line.strip()]
     return {"suggestions": suggestions[:3]}
+
+
+
+# =====================================================
+# KILLER-01: @ai mention assistant for group chats
+# =====================================================
+class AssistantRequest(BaseModel):
+    """Request to the AI assistant when @ai is mentioned in a chat."""
+    prompt: str
+    context_messages: List[str] = []   # last N messages for context
+    conversation_id: Optional[str] = None
+    persona: Optional[str] = None       # "helpful" / "concise" / "translator"
+
+
+class AssistantResponse(BaseModel):
+    reply: str
+
+
+@router.post("/assistant", response_model=AssistantResponse)
+async def ai_assistant(req: AssistantRequest):
+    """
+    Group-chat AI assistant. Triggered when a user types @ai in a message.
+
+    The bridge layer detects "@ai" prefix, sends the prompt + recent context
+    to this endpoint, and posts the reply back into the conversation.
+
+    The assistant is persona-aware so admins can configure team-specific
+    behavior (e.g. always reply in English, always cite sources, etc.).
+    """
+    api_key, base_url, model = _provider_config()
+
+    persona_prompts = {
+        "helpful": "You are a helpful assistant in a group chat. Reply concisely.",
+        "concise": "You are a concise assistant. Reply in 1-2 sentences max.",
+        "translator": "You are a translator. Detect the language of the prompt and translate to English, or to the language of the rest of the chat if it differs.",
+    }
+    system = persona_prompts.get(req.persona or "helpful", persona_prompts["helpful"])
+
+    messages = [{"role": "system", "content": system}]
+    if req.context_messages:
+        messages.append({
+            "role": "system",
+            "content": "Recent conversation context:\n" + "\n".join(req.context_messages[-10:]),
+        })
+    messages.append({"role": "user", "content": req.prompt})
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json={"model": model, "messages": messages, "max_tokens": 500},
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            reply = data["choices"][0]["message"]["content"].strip()
+            return AssistantResponse(reply=reply)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+
+
+# =====================================================
+# KILLER-01: Conversation insights (sentiment, response time)
+# =====================================================
+class InsightRequest(BaseModel):
+    messages: List[str]
+
+
+class InsightResponse(BaseModel):
+    sentiment: str       # "positive" / "neutral" / "negative" / "urgent"
+    summary: str
+    suggested_action: Optional[str] = None
+
+
+@router.post("/insight", response_model=InsightResponse)
+async def conversation_insight(req: InsightRequest):
+    """
+    Quick conversation insight - sentiment + suggested action.
+    Used in the right-panel "smart suggestions" area.
+    """
+    if not req.messages:
+        return InsightResponse(sentiment="neutral", summary="")
+
+    api_key, base_url, model = _provider_config()
+    convo = "\n".join(req.messages[-20:])
+    prompt = (
+        "Analyze this conversation snippet. Reply ONLY with JSON like:\n"
+        '{"sentiment": "positive|neutral|negative|urgent", "summary": "<one sentence>", "suggested_action": "<optional next step>"}\n\n'
+        f"Conversation:\n{convo}"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 200,
+                    "response_format": {"type": "json_object"},
+                },
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            import json
+            parsed = json.loads(data["choices"][0]["message"]["content"])
+            return InsightResponse(
+                sentiment=parsed.get("sentiment", "neutral"),
+                summary=parsed.get("summary", ""),
+                suggested_action=parsed.get("suggested_action"),
+            )
+    except Exception:
+        return InsightResponse(sentiment="neutral", summary="")

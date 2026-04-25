@@ -26,6 +26,9 @@ modules_enabled = {
   "bosh";
   "http";
   "push";
+  "cloud_notify";   -- XEP-0357 push relay (community module)
+  "external_services"; -- XEP-0215 STUN/TURN credentials for Jingle
+  "turn_external";  -- coturn integration
   "version";
   "uptime";
   "time";
@@ -59,6 +62,20 @@ log = {
   info = "/var/log/prosody/prosody.log";
   error = "/var/log/prosody/prosody.err";
 }
+
+-- TURN/STUN configuration for Jingle calls (XEP-0215)
+-- Install.sh fills TURN_SECRET; coturn config also uses it
+turn_external_host = "turn.XMPP_DOMAIN"
+turn_external_port = 3478
+turn_external_secret = "TURN_SECRET_PLACEHOLDER"
+turn_external_ttl = 86400
+
+-- Push notification relay configuration
+-- mod_cloud_notify forwards push notifications to the Conjiweb FastAPI backend,
+-- which then dispatches them as Web Push to subscribed PWA clients.
+push_notification_with_body = false  -- privacy: don't include message body in push
+push_max_errors = 5
+push_max_devices = 5
 
 VirtualHost "XMPP_DOMAIN"
   authentication = "internal_hashed"

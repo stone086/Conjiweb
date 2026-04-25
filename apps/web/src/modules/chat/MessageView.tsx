@@ -24,6 +24,7 @@ import { getPeerOmemoFingerprints } from "@/services/omemoFingerprint";
 import { getUntrustedPeerDevices } from "@/services/omemoTrust";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👎"] as const;
+const DEFAULT_QUICK_REACTION = "👍";
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
@@ -73,6 +74,7 @@ function MessageBubble({
 }) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -89,6 +91,10 @@ function MessageBubble({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("touchstart", onPointerDown);
     };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) setReactionPickerOpen(false);
   }, [menuOpen]);
 
   const clearLongPress = () => {
@@ -178,17 +184,14 @@ function MessageBubble({
         <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
           <CornerUpLeft size={13} />
         </button>
-        <div className="hidden md:flex items-center gap-1 mr-1">
-          {QUICK_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => onReact(msg, emoji)}
-              className="px-1.5 py-1 rounded-lg hover:bg-white/5 text-xs"
-              title={`React ${emoji}`}
-            >
-              {emoji}
-            </button>
-          ))}
+        <div className="hidden md:flex items-center mr-1">
+          <button
+            onClick={() => onReact(msg, DEFAULT_QUICK_REACTION)}
+            className="px-2 py-1 rounded-lg hover:bg-white/5 text-xs"
+            title="Quick react 👍"
+          >
+            {DEFAULT_QUICK_REACTION}
+          </button>
         </div>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
@@ -220,6 +223,27 @@ function MessageBubble({
                     </button>
                   ))}
                 </div>
+                <button
+                  onClick={() => setReactionPickerOpen((v) => !v)}
+                  className="mt-2 w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded"
+                >
+                  {reactionPickerOpen ? "Hide emoji picker" : "More emojis..."}
+                </button>
+                {reactionPickerOpen && (
+                  <div className="mt-2 overflow-hidden rounded-lg border border-white/10">
+                    <EmojiPicker
+                      theme={Theme.DARK}
+                      lazyLoadEmojis
+                      searchDisabled={false}
+                      skinTonesDisabled
+                      onEmojiClick={(emojiData) => {
+                        onReact(msg, emojiData.emoji);
+                        setReactionPickerOpen(false);
+                        setMenuOpen(false);
+                      }}
+                    />
+                  </div>
+                )}
               </div>
               {isOwn && (
                 <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">

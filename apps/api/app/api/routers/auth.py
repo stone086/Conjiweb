@@ -118,7 +118,6 @@ async def issue_user_token(
         ["prosodyctl", "check", "password", username, domain, password],
     ]
     verified = False
-    check_password_unsupported = False
     for cmd in verify_cmds:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
@@ -126,22 +125,12 @@ async def issue_user_token(
             raise HTTPException(status_code=500, detail="prosodyctl not found on server")
         except subprocess.TimeoutExpired:
             continue
-        output = f"{result.stdout}\n{result.stderr}".lower()
-        if "usage:" in output and "prosodyctl check" in output:
-            check_password_unsupported = True
-            continue
-        if "where command may be one of" in output and "adduser" in output and "passwd" in output:
-            check_password_unsupported = True
-            continue
         if result.returncode == 0:
             verified = True
             break
 
     if not verified:
-        if check_password_unsupported:
-            verified = True
-        else:
-            raise HTTPException(status_code=401, detail="Invalid JID or password")
+        raise HTTPException(status_code=401, detail="Invalid JID or password")
 
     result = await db.execute(select(Account).where(Account.jid == full_jid))
     account = result.scalar_one_or_none()

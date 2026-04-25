@@ -11,6 +11,7 @@ import asyncio
 
 router = APIRouter()
 
+
 class ConnectionManager:
     def __init__(self):
         self.connections: Dict[str, Set[WebSocket]] = {}
@@ -49,6 +50,7 @@ manager = ConnectionManager()
 
 @router.websocket("/ws/{account_id}")
 async def websocket_endpoint(ws: WebSocket, account_id: str):
+    # Authenticate via token query param (WebSocket cannot use Authorization header)
     token = ws.query_params.get("token")
     if not token:
         await ws.close(code=4001, reason="Missing token")
@@ -57,6 +59,7 @@ async def websocket_endpoint(ws: WebSocket, account_id: str):
         payload = decode_token(token)
         role = payload.get("role")
         token_account_id = payload.get("account_id")
+        # Accept user token only for the matching account; admin token for any account
         if role == "user" and token_account_id != account_id:
             await ws.close(code=4003, reason="Token account mismatch")
             return
@@ -70,7 +73,6 @@ async def websocket_endpoint(ws: WebSocket, account_id: str):
     await manager.connect(ws, account_id)
     try:
         await ws.send_json({"type": "connected", "account_id": account_id})
-
         while True:
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=30)

@@ -445,11 +445,26 @@ install_redis() {
 
 install_prosody() {
   step "Install Prosody XMPP server"
-  apt install -y -qq prosody lua-dbi-postgresql
+  apt install -y -qq prosody lua-dbi-postgresql mercurial
   usermod -aG prosody "${APP_USER}" || true
+
+  # Install prosody-modules (community modules) for mod_cloud_notify
+  if [ ! -d /usr/lib/prosody-modules ]; then
+    hg clone https://hg.prosody.im/prosody-modules /usr/lib/prosody-modules 2>/dev/null \
+      || warn "Could not clone prosody-modules; mod_cloud_notify may be unavailable"
+  fi
 
   cp configs/prosody/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
   sed -i "s|XMPP_DOMAIN|${XMPP_DOMAIN}|g" /etc/prosody/prosody.cfg.lua
+  # Inject TURN secret if coturn was installed
+  if [ -n "${TURN_SECRET:-}" ]; then
+    sed -i "s|TURN_SECRET_PLACEHOLDER|${TURN_SECRET}|g" /etc/prosody/prosody.cfg.lua
+  fi
+
+  # Tell Prosody where to find community modules
+  if ! grep -q "plugin_paths" /etc/prosody/prosody.cfg.lua; then
+    sed -i "1i plugin_paths = { \"/usr/lib/prosody-modules\" }" /etc/prosody/prosody.cfg.lua
+  fi
 
   prosodyctl check config 2>/dev/null || true
   systemctl enable prosody
@@ -468,6 +483,51 @@ install_prosody() {
     fi
   fi
   success "Prosody installed, domain: ${XMPP_DOMAIN}"
+}
+
+install_coturn() {
+  step "Install coturn STUN/TURN server (for Jingle audio/video calls)"
+  apt install -y -qq coturn
+
+  TURN_SECRET="$(openssl rand -hex 32)"
+
+  cat > /etc/turnserver.conf <<EOF
+# Conjiweb coturn config (auto-generated)
+listening-port=3478
+tls-listening-port=5349
+
+fingerprint
+use-auth-secret
+static-auth-secret=${TURN_SECRET}
+
+realm=${DOMAIN}
+server-name=turn.${DOMAIN}
+
+# Use Let's Encrypt cert (renewed by certbot)
+cert=/etc/letsencrypt/live/${DOMAIN}/fullchain.pem
+pkey=/etc/letsencrypt/live/${DOMAIN}/privkey.pem
+
+# Limit relay range - prevents abuse
+min-port=49152
+max-port=65535
+
+# No anonymous relay
+no-multicast-peers
+no-cli
+no-tlsv1
+no-tlsv1_1
+
+# Logging
+log-file=/var/log/coturn.log
+verbose
+EOF
+
+  # Save TURN secret to api/.env so Prosody mod_external_services can use it
+  echo "TURN_SECRET=${TURN_SECRET}" >> "${INSTALL_DIR}/api/.env"
+
+  systemctl enable coturn
+  systemctl restart coturn
+  success "coturn installed (TURN secret saved to api/.env)"
 }
 
 install_minio() {
@@ -538,6 +598,18 @@ deploy_api() {
   .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
 
+  # Generate VAPID keypair for Web Push (PWA notifications)
+  if [ -z "${VAPID_PRIVATE_KEY:-}" ]; then
+    VAPID_PEM_FILE="$(mktemp)"
+    openssl ecparam -name prime256v1 -genkey -noout -out "$VAPID_PEM_FILE" 2>/dev/null
+    VAPID_PRIVATE_KEY="$(openssl pkey -in "$VAPID_PEM_FILE" -outform DER 2>/dev/null \
+        | tail -c 32 | base64 | tr '+/' '-_' | tr -d '=' | tr -d '\n')"
+    VAPID_PUBLIC_KEY="$(openssl ec -in "$VAPID_PEM_FILE" -pubout -outform DER 2>/dev/null \
+        | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=' | tr -d '\n')"
+    rm -f "$VAPID_PEM_FILE"
+  fi
+  PUSH_SHARED_SECRET="${PUSH_SHARED_SECRET:-$(openssl rand -hex 24)}"
+
   cat > "${INSTALL_DIR}/api/.env" << EOF
 DATABASE_URL=postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}
 REDIS_URL=redis://:${REDIS_PASS}@127.0.0.1:6379/0
@@ -561,6 +633,10 @@ DB_POOL_SIZE=${DB_POOL_SIZE}
 DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW}
 DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT}
 DB_POOL_RECYCLE=${DB_POOL_RECYCLE}
+VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+VAPID_EMAIL=admin@${DOMAIN}
+PUSH_SHARED_SECRET=${PUSH_SHARED_SECRET}
 EOF
   chmod 600 "${INSTALL_DIR}/api/.env"
   chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api/.env"
@@ -909,7 +985,11 @@ EOF
   ufw allow 80/tcp
   ufw allow 443/tcp
   ufw allow 5222/tcp   # XMPP TCP
-  ufw allow 5269/tcp   # XMPP server-to-server
+  ufw allow 5269/tcp
+  ufw allow 3478/tcp comment 'coturn STUN/TURN'
+  ufw allow 3478/udp comment 'coturn STUN/TURN'
+  ufw allow 5349/tcp comment 'coturn TLS'
+  ufw allow 49152:65535/udp comment 'coturn relay'   # XMPP server-to-server
   if prompt_yes_no "Disable ICMP ping (stricter security, but harder network diagnostics)?"; then
     ufw deny in from any to any proto icmp || warn "ICMP rule not applied by ufw, skipping"
   fi
@@ -1153,6 +1233,7 @@ main() {
   install_postgres
   install_redis
   install_prosody
+  install_coturn
   install_minio
   install_nodejs
   deploy_api

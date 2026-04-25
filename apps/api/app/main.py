@@ -15,6 +15,8 @@ from app.api.routers import (
     conversations,
     messages,
     plugins,
+    push,
+    webhooks,
 )
 from app.core.config import settings
 from app.core.database import Base, engine
@@ -39,7 +41,7 @@ app = FastAPI(
     description="Backend API for the Conjiweb web XMPP client platform.",
     openapi_tags=[
         {"name": "auth", "description": "Authentication endpoints. Public."},
-        {"name": "accounts", "description": "XMPP account management."},
+        {"name": "accounts", "description": "XMPP account management. Admin token required."},
         {"name": "conversations", "description": "Conversation metadata APIs. Admin token required."},
         {"name": "contacts", "description": "Roster and contact APIs. Admin token required."},
         {"name": "attachments", "description": "Secure attachment upload APIs. User token required."},
@@ -65,7 +67,7 @@ app.add_middleware(
 admin_dep = [Depends(get_current_admin)]
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
+app.include_router(accounts.router, prefix="/accounts", tags=["accounts"], dependencies=admin_dep)
 app.include_router(conversations.router, prefix="/conversations", tags=["conversations"], dependencies=admin_dep)
 app.include_router(contacts.router, prefix="/contacts", tags=["contacts"], dependencies=admin_dep)
 app.include_router(attachments.router, prefix="/attachments", tags=["attachments"])
@@ -73,6 +75,8 @@ app.include_router(messages.router, prefix="/messages", tags=["messages"], depen
 app.include_router(plugins.router, prefix="/plugins", tags=["plugins"], dependencies=admin_dep)
 app.include_router(ai.router, prefix="/ai", tags=["ai"], dependencies=admin_dep)
 app.include_router(admin.router, prefix="/admin", tags=["admin"], dependencies=admin_dep)
+app.include_router(push.router, tags=["push"])
+app.include_router(webhooks.router, tags=["webhooks"])
 
 
 @app.get(

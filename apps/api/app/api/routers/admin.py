@@ -117,3 +117,120 @@ async def service_health(db: AsyncSession = Depends(get_db)):
 
     overall = "healthy" if all(item["ok"] for item in services) else "degraded"
     return {"status": overall, "services": services}
+
+
+
+# =====================================================
+# KILLER-02: Enterprise dashboard endpoints
+# =====================================================
+from datetime import datetime, timedelta, UTC
+from sqlalchemy import select, func, and_
+
+@router.get("/dashboard/activity")
+async def dashboard_activity(
+    days: int = 7,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Per-day message activity for the last N days.
+    Returns a list of {date, message_count, active_users}.
+    Used by the admin dashboard to draw activity graphs.
+    """
+    from app.models import Message, Account
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+
+    result = await db.execute(
+        select(
+            func.date_trunc("day", Message.created_at).label("day"),
+            func.count(Message.id).label("count"),
+        )
+        .where(Message.created_at >= cutoff)
+        .group_by("day")
+        .order_by("day")
+    )
+    daily = [{"date": str(row.day.date()), "count": row.count} for row in result]
+
+    return {"daily_messages": daily, "window_days": days}
+
+
+@router.get("/dashboard/top-conversations")
+async def dashboard_top_conversations(
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Most active conversations by message count in the last 30 days.
+    Hidden by default behind admin auth - reveal for compliance audits.
+    """
+    from app.models import Message, Conversation
+    cutoff = datetime.now(UTC) - timedelta(days=30)
+
+    result = await db.execute(
+        select(
+            Conversation.id,
+            Conversation.peer_jid,
+            Conversation.type,
+            func.count(Message.id).label("count"),
+        )
+        .join(Message, Message.conversation_id == Conversation.id)
+        .where(Message.created_at >= cutoff)
+        .group_by(Conversation.id)
+        .order_by(func.count(Message.id).desc())
+        .limit(limit)
+    )
+    return [
+        {"id": r.id, "peer_jid": r.peer_jid, "type": r.type, "count": r.count}
+        for r in result
+    ]
+
+
+@router.get("/dashboard/storage-usage")
+async def dashboard_storage_usage(db: AsyncSession = Depends(get_db)):
+    """
+    Storage usage breakdown for capacity planning.
+    """
+    from app.models import Attachment
+
+    result = await db.execute(
+        select(
+            func.count(Attachment.id).label("file_count"),
+            func.coalesce(func.sum(Attachment.size_bytes), 0).label("total_bytes"),
+        )
+    )
+    row = result.first()
+    return {
+        "file_count": row.file_count if row else 0,
+        "total_bytes": int(row.total_bytes) if row and row.total_bytes else 0,
+        "total_mb": round((int(row.total_bytes) if row and row.total_bytes else 0) / (1024 * 1024), 2),
+    }
+
+
+@router.get("/dashboard/user-stats")
+async def dashboard_user_stats(db: AsyncSession = Depends(get_db)):
+    """
+    User-level statistics: total / active in last 24h / 7d / 30d.
+    """
+    from app.models import Account, Message
+
+    now = datetime.now(UTC)
+    total = (await db.execute(select(func.count(Account.id)))).scalar() or 0
+    enabled = (await db.execute(
+        select(func.count(Account.id)).where(Account.is_enabled == True)
+    )).scalar() or 0
+
+    # active = sent at least one message in window
+    async def _active(window_hours: int) -> int:
+        cutoff = now - timedelta(hours=window_hours)
+        r = await db.execute(
+            select(func.count(func.distinct(Message.conversation_id)))
+            .where(Message.created_at >= cutoff)
+        )
+        return r.scalar() or 0
+
+    return {
+        "total": total,
+        "enabled": enabled,
+        "active_24h": await _active(24),
+        "active_7d": await _active(24 * 7),
+        "active_30d": await _active(24 * 30),
+    }
