@@ -4,7 +4,7 @@ import { useRosterStore } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore, MucMember } from "@/stores/groupStore";
 import { aiApi } from "@/services/api";
-import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star } from "lucide-react";
+import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star, Image, Download, Send, Inbox } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
@@ -193,13 +193,21 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
 
 function FilesTab({ conversationId }: { conversationId: string }) {
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
-  const files = messages
-    .flatMap((m) => m.attachments ?? [])
-    .filter((a) => Boolean(a.downloadUrl));
+  const files = messages.flatMap((m) =>
+    (m.attachments ?? [])
+      .filter((a) => Boolean(a.downloadUrl))
+      .map((a) => ({
+        ...a,
+        messageId: m.id,
+        timestamp: m.timestamp,
+        direction: m.direction,
+        senderJid: m.senderJid,
+      }))
+  );
 
   const unique = Array.from(
-    new Map(files.map((f) => [f.id, f])).values()
-  );
+    new Map(files.map((f) => [f.id, f])).values(),
+  ).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 
   if (unique.length === 0) {
     return (
@@ -214,21 +222,43 @@ function FilesTab({ conversationId }: { conversationId: string }) {
     <div className="flex flex-col gap-2 p-3">
       {unique.map((f) => (
         <a
-          key={f.id}
+          key={`${f.messageId}:${f.id}`}
           href={f.downloadUrl}
           target="_blank"
           rel="noreferrer"
-          className="glass rounded-lg p-3 flex items-center gap-3 hover:bg-white/5"
+          className="glass rounded-lg p-3 flex items-start gap-3 hover:bg-white/5"
         >
-          <FileText size={14} className="text-surface-200/50 flex-shrink-0" />
+          <div className="w-8 h-8 rounded-lg bg-surface-800 flex items-center justify-center text-surface-200/60 flex-shrink-0">
+            {f.mimeType.startsWith("image/") ? <Image size={15} /> : <FileText size={15} />}
+          </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-surface-50 truncate">{f.fileName}</p>
-            <p className="text-[10px] text-surface-200/40">{(f.sizeBytes / 1024).toFixed(1)} KB</p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-surface-200/40">
+              <span>{formatFileSize(f.sizeBytes)}</span>
+              <span className="flex items-center gap-1">
+                {f.direction === "out" ? <Send size={10} /> : <Inbox size={10} />}
+                {f.direction === "out" ? "Sent" : "Received"}
+              </span>
+              <span>{new Date(f.timestamp).toLocaleString()}</span>
+            </div>
           </div>
+          <Download size={14} className="text-surface-200/35 flex-shrink-0 mt-1" />
         </a>
       ))}
     </div>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 function StarredTab({ conversationId }: { conversationId: string }) {
