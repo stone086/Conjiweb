@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.core.database import get_db
@@ -60,6 +61,12 @@ async def list_accounts(db: AsyncSession = Depends(get_db)):
     description="Create a local account record and default preference profile.",
 )
 async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)):
+    existing = (
+        await db.execute(select(Account).where(Account.jid == data.jid))
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+
     account = Account(
         id=str(uuid.uuid4()),
         jid=data.jid,
@@ -69,7 +76,16 @@ async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)
     db.add(account)
     pref = AccountPreference(account_id=account.id)
     db.add(pref)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = (
+            await db.execute(select(Account).where(Account.jid == data.jid))
+        ).scalar_one_or_none()
+        if existing:
+            return existing
+        raise
     await db.refresh(account)
     return account
 
