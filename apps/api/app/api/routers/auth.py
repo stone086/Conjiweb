@@ -133,6 +133,9 @@ async def issue_user_token(
         if "where command may be one of" in output and "adduser" in output and "passwd" in output:
             check_password_unsupported = True
             continue
+        if "don't know how to check 'password'" in output:
+            check_password_unsupported = True
+            continue
         if result.returncode == 0:
             verified = True
             break

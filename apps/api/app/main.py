@@ -67,7 +67,7 @@ app.add_middleware(
 admin_dep = [Depends(get_current_admin)]
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(accounts.router, prefix="/accounts", tags=["accounts"], dependencies=admin_dep)
+app.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
 app.include_router(conversations.router, prefix="/conversations", tags=["conversations"], dependencies=admin_dep)
 app.include_router(contacts.router, prefix="/contacts", tags=["contacts"], dependencies=admin_dep)
 app.include_router(attachments.router, prefix="/attachments", tags=["attachments"])
