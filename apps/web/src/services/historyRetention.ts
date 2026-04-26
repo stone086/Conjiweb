@@ -1,5 +1,7 @@
 import { clearLocalMessageHistory, pruneLocalMessagesBefore } from "@/services/localDb";
 import { useChatStore } from "@/stores/chatStore";
+import { useAccountStore } from "@/stores/accountStore";
+import { messagesApi } from "@/services/api";
 
 const HISTORY_RETENTION_DAYS_KEY = "conjiweb-history-retention-days";
 const DEFAULT_RETENTION_DAYS = 30;
@@ -18,6 +20,14 @@ export function setStoredHistoryRetentionDays(days: number) {
 }
 
 export async function clearAllHistoryNow() {
+  const accounts = useAccountStore.getState().accounts;
+  if (accounts.length > 0) {
+    const results = await Promise.allSettled(accounts.map((account) => messagesApi.clearHistory(account.id)));
+    const failed = results.some((result) => result.status === "rejected");
+    if (failed) {
+      throw new Error("Failed to clear server message history");
+    }
+  }
   await clearLocalMessageHistory();
   useChatStore.getState().clearAllHistory();
 }

@@ -1,13 +1,36 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import delete, select, update
 from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from app.core.database import get_db
-from app.models import Message, Conversation
+from app.models import Attachment, Message, Conversation
+from app.utils.security import bearer_scheme, decode_token
+from fastapi.security import HTTPAuthorizationCredentials
 import uuid
 
 router = APIRouter()
+
+
+def get_message_actor(
+    credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
+) -> dict[str, str | None]:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    role = payload.get("role")
+    if role == "admin":
+        return {"role": "admin", "sub": payload["sub"], "account_id": payload.get("account_id")}
+    if role == "user" and payload.get("account_id"):
+        return {"role": "user", "sub": payload["sub"], "account_id": payload["account_id"]}
+    raise HTTPException(status_code=403, detail="Message access denied")
+
+
+def require_account_access(account_id: str, actor: dict[str, str | None]) -> None:
+    if actor.get("role") == "admin":
+        return
+    if actor.get("account_id") != account_id:
+        raise HTTPException(status_code=403, detail="Account access denied")
 
 
 class MessageCreate(BaseModel):
@@ -39,7 +62,18 @@ class MessageResponse(BaseModel):
     summary="Index message",
     description="Persist one message into local searchable storage.",
 )
-async def index_message(data: MessageCreate, db: AsyncSession = Depends(get_db)):
+async def index_message(
+    data: MessageCreate,
+    actor: dict[str, str | None] = Depends(get_message_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    conv_result = await db.execute(
+        select(Conversation.account_id).where(Conversation.id == data.conversation_id)
+    )
+    account_id = conv_result.scalar_one_or_none()
+    if not account_id:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    require_account_access(account_id, actor)
     msg = Message(
         id=str(uuid.uuid4()),
         conversation_id=data.conversation_id,
@@ -67,10 +101,12 @@ async def search_messages(
     q: str = Query(..., min_length=1),
     account_id: Optional[str] = None,
     limit: int = 20,
+    actor: dict[str, str | None] = Depends(get_message_actor),
     db: AsyncSession = Depends(get_db),
 ):
     if not account_id:
         raise HTTPException(status_code=400, detail="account_id is required")
+    require_account_access(account_id, actor)
     safe_limit = max(1, min(limit, 100))
     stmt = (
         select(Message)
@@ -96,8 +132,16 @@ async def get_conversation_messages(
     conversation_id: str,
     limit: int = 50,
     offset: int = 0,
+    actor: dict[str, str | None] = Depends(get_message_actor),
     db: AsyncSession = Depends(get_db),
 ):
+    conv_result = await db.execute(
+        select(Conversation.account_id).where(Conversation.id == conversation_id)
+    )
+    account_id = conv_result.scalar_one_or_none()
+    if not account_id:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    require_account_access(account_id, actor)
     stmt = (
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -107,3 +151,36 @@ async def get_conversation_messages(
     )
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@router.delete(
+    "/history",
+    summary="Clear account message history",
+    description="Delete server-side indexed messages for one account and clear conversation history summaries.",
+)
+async def clear_account_history(
+    account_id: str = Query(..., min_length=1),
+    actor: dict[str, str | None] = Depends(get_message_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    require_account_access(account_id, actor)
+    conv_ids = select(Conversation.id).where(Conversation.account_id == account_id)
+    message_ids = select(Message.id).where(Message.conversation_id.in_(conv_ids))
+    await db.execute(
+        delete(Attachment)
+        .where(Attachment.message_id.in_(message_ids))
+        .execution_options(synchronize_session=False)
+    )
+    result = await db.execute(
+        delete(Message)
+        .where(Message.conversation_id.in_(conv_ids))
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(Conversation)
+        .where(Conversation.account_id == account_id)
+        .values(last_message_id=None, last_message_at=None, unread_count=0)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return {"ok": True, "deleted": result.rowcount or 0}

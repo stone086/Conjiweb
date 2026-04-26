@@ -106,6 +106,11 @@ export const messagesApi = {
   getConversation: (id: string, limit = 50) =>
     api.get(`/messages/conversation/${id}`, { params: { limit } }).then((r) => r.data),
   index: (data: object) => api.post("/messages/", data).then((r) => r.data),
+  clearHistory: (accountId: string) =>
+    api.delete("/messages/history", {
+      params: { account_id: accountId },
+      headers: { "X-Conjiweb-Account-Id": accountId },
+    }).then((r) => r.data),
 };
 
 // Attachments

@@ -423,8 +423,12 @@ export default function SettingsPage() {
 
   const handleClearHistory = async () => {
     if (!window.confirm(t("settings.clearHistoryConfirm"))) return;
-    await clearAllHistoryNow();
-    toast.success(t("settings.historyCleared"));
+    try {
+      await clearAllHistoryNow();
+      toast.success(t("settings.historyCleared"));
+    } catch (error: any) {
+      toast.error(error?.message ?? t("settings.copyFailed"));
+    }
   };
 
   const handleCopyFingerprint = async (accountId: string, fingerprint: string) => {
