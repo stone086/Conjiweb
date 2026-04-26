@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { normalizeBareJid } from "@/utils/helpers";
+import { isValidBareJid, normalizeBareJid } from "@/utils/helpers";
 
 export type SubscriptionState = "both" | "from" | "to" | "none" | "remove";
 
@@ -34,6 +34,7 @@ interface RosterState {
   getContact: (accountId: string, jid: string) => RosterContact | undefined;
   listContacts: (accountId: string) => RosterContact[];
   clearAccountData: (accountId: string) => void;
+  pruneInvalidContacts: () => void;
 }
 
 function contactKey(accountId: string, jid: string) {
@@ -48,15 +49,18 @@ export const useRosterStore = create<RosterState>()(
       setContacts: (contacts) =>
         set({
           contacts: Object.fromEntries(
-            contacts.map((c) => {
-              const jid = normalizeBareJid(c.jid);
-              return [contactKey(c.accountId, jid), { ...c, jid }];
-            })
+            contacts
+              .map((c) => {
+                const jid = normalizeBareJid(c.jid);
+                return [contactKey(c.accountId, jid), { ...c, jid }] as const;
+              })
+              .filter(([, c]) => isValidBareJid(c.jid))
           ),
         }),
 
       updatePresence: (accountId, jid, presence, statusText) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           const existing = s.contacts[key];
           if (!existing) return s;
@@ -71,6 +75,7 @@ export const useRosterStore = create<RosterState>()(
       upsertContact: (contact) =>
         set((s) => {
           const jid = normalizeBareJid(contact.jid);
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(contact.accountId, jid);
           const existing = s.contacts[key];
           const nextSubscription = (contact.subscription ?? existing?.subscription ?? "none") as SubscriptionState;
@@ -93,6 +98,7 @@ export const useRosterStore = create<RosterState>()(
 
       removeContact: (accountId, jid) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           const next = { ...s.contacts };
           delete next[key];
@@ -101,6 +107,7 @@ export const useRosterStore = create<RosterState>()(
 
       blockContact: (accountId, jid) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           return {
             contacts: s.contacts[key]
@@ -111,6 +118,7 @@ export const useRosterStore = create<RosterState>()(
 
       unblockContact: (accountId, jid) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           return {
             contacts: s.contacts[key]
@@ -121,6 +129,7 @@ export const useRosterStore = create<RosterState>()(
 
       markPendingIncoming: (accountId, jid) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           const existing = s.contacts[key];
           if (existing?.subscription && existing.subscription !== "none") return s;
@@ -143,6 +152,7 @@ export const useRosterStore = create<RosterState>()(
 
       setContactNotes: (accountId, jid, notes) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           const existing = s.contacts[key];
           if (!existing) return s;
@@ -156,6 +166,7 @@ export const useRosterStore = create<RosterState>()(
 
       setContactTags: (accountId, jid, tags) =>
         set((s) => {
+          if (!isValidBareJid(jid)) return s;
           const key = contactKey(accountId, jid);
           const existing = s.contacts[key];
           if (!existing) return s;
@@ -168,12 +179,13 @@ export const useRosterStore = create<RosterState>()(
         }),
 
       getContact: (accountId, jid) => {
+        if (!isValidBareJid(jid)) return undefined;
         const key = contactKey(accountId, jid);
         return get().contacts[key];
       },
 
       listContacts: (accountId) =>
-        Object.values(get().contacts).filter((c) => c.accountId === accountId),
+        Object.values(get().contacts).filter((c) => c.accountId === accountId && isValidBareJid(c.jid)),
 
       clearAccountData: (accountId) =>
         set((s) => {
@@ -183,7 +195,24 @@ export const useRosterStore = create<RosterState>()(
           });
           return { contacts: next };
         }),
+
+      pruneInvalidContacts: () =>
+        set((s) => {
+          const next = { ...s.contacts };
+          let changed = false;
+          Object.entries(next).forEach(([key, contact]) => {
+            if (isValidBareJid(contact.jid)) return;
+            delete next[key];
+            changed = true;
+          });
+          return changed ? { contacts: next } : s;
+        }),
     }),
-    { name: "conjiweb-roster" }
+    {
+      name: "conjiweb-roster",
+      onRehydrateStorage: () => (state) => {
+        state?.pruneInvalidContacts();
+      },
+    }
   )
 );

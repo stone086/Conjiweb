@@ -234,15 +234,20 @@ export default function RosterPanel() {
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const contactMap = useRosterStore(useShallow((s) => s.contacts));
   const upsertContact = useRosterStore((s) => s.upsertContact);
+  const pruneInvalidContacts = useRosterStore((s) => s.pruneInvalidContacts);
   const accounts = useAccountStore(useShallow((s) => s.accounts));
   const upsertConversation = useChatStore((s) => s.upsertConversation);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeAccountJid = normalizeBareJid(accounts.find((a) => a.id === activeAccountId)?.jid ?? "");
   const contacts = useMemo(
-    () => Object.values(contactMap).filter((c) => c.accountId === activeAccountId),
+    () => Object.values(contactMap).filter((c) => c.accountId === activeAccountId && isValidBareJid(c.jid)),
     [contactMap, activeAccountId]
   );
+
+  useEffect(() => {
+    pruneInvalidContacts();
+  }, [pruneInvalidContacts]);
 
   const filtered = useMemo(() =>
     contacts.filter((c) =>
