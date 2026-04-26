@@ -145,6 +145,7 @@ EOF
 cmd_update_api() {
   mkdir -p "${INSTALL_DIR}/api"
   cp -r "${SRC_DIR}/apps/api/." "${INSTALL_DIR}/api/"
+  [[ -f "${SRC_DIR}/VERSION" ]] && cp "${SRC_DIR}/VERSION" "${INSTALL_DIR}/api/VERSION"
   cd "${INSTALL_DIR}/api"
 
   if [[ ! -d .venv ]]; then
