@@ -3,7 +3,7 @@
 Conjiweb is a self-hosted Web XMPP platform for VPS deployment without Docker.
 
 ## Features
-- One-command native install on Debian 12
+- One-command native install on apt-based Linux distributions
 - Web chat client (React + Vite + TypeScript)
 - FastAPI backend with admin token auth and health endpoints
 - Prosody XMPP server with WebSocket bridge
@@ -14,14 +14,15 @@ Conjiweb is a self-hosted Web XMPP platform for VPS deployment without Docker.
 
 ## Tech Stack
 - Frontend: React, Vite, TypeScript
-- Backend: FastAPI, SQLAlchemy, Python 3.11+
+- Backend: FastAPI, SQLAlchemy, Python 3
 - Realtime: Prosody (XMPP)
 - Data: PostgreSQL 16, Redis 7
 - Storage: MinIO
 - Reverse Proxy: Nginx + Certbot
 
 ## Requirements
-- Debian 12 VPS (recommended)
+- Debian 12, Ubuntu 22.04/24.04, Zorin OS, or another apt-based system with systemd
+- Debian 12 VPS remains the primary recommended production target
 - Root shell access
 - Domain pointed to your VPS public IP
 - Open inbound ports: `80`, `443` (plus XMPP ports as required)
@@ -39,6 +40,8 @@ cd /opt/conjiweb-src
 cp .env.example .env
 bash install.sh
 ```
+
+By default the installer preserves your distribution package sources and skips a full system upgrade. Add `--upgrade-system` if you want it to run `apt-get upgrade` before installing dependencies.
 
 ## Architecture
 - Internet -> Nginx (`443`)

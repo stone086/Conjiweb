@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Target: Debian/Linux VPS (root)
+#  Target: apt-based Linux with systemd (Debian/Ubuntu/Zorin/etc.)
 #  Usage:  bash install.sh --repo <repo_url> --domain <domain> --email <email>
 # =============================================================================
 set -euo pipefail
@@ -55,6 +55,14 @@ DB_POOL_SIZE="${DB_POOL_SIZE:-10}"
 DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW:-20}"
 DB_POOL_TIMEOUT="${DB_POOL_TIMEOUT:-30}"
 DB_POOL_RECYCLE="${DB_POOL_RECYCLE:-1800}"
+OS_ID=""
+OS_VERSION_ID=""
+OS_VERSION_CODENAME=""
+OS_ID_LIKE=""
+APT_FRONTEND_READY=0
+PYTHON_BIN=""
+POSTGRES_VERSION=""
+UPGRADE_SYSTEM="${UPGRADE_SYSTEM:-0}"
 
 ensure_service_users() {
   if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -80,6 +88,8 @@ Optional:
   --path      Project path inside repo; auto-detected if omitted
   --target    Clone target directory (default: /opt/conjiweb-src)
   --ssh-port  SSH port(s) to keep open in UFW, supports comma/space list (default: auto-detect)
+  --upgrade-system
+              Run apt-get upgrade before installing dependencies (default: skip)
   --run-local Internal mode. Do not set manually.
   --help      Show this help
 EOF
@@ -101,6 +111,7 @@ parse_bootstrap_args() {
       --path) PROJECT_PATH="${2:-}"; shift 2 ;;
       --target) TARGET_DIR="${2:-}"; shift 2 ;;
       --ssh-port) SSH_PORT="${2:-}"; shift 2 ;;
+      --upgrade-system) UPGRADE_SYSTEM=1; shift ;;
       --run-local) RUN_LOCAL=1; shift ;;
       --help|-h) bootstrap_usage; exit 0 ;;
       *) error "Unknown option: $1" ;;
@@ -179,10 +190,12 @@ bootstrap_if_needed() {
 
   chmod +x install.sh manage.sh
   info "Starting install in $install_src"
+  local run_args=(--run-local)
+  [[ "${UPGRADE_SYSTEM}" = "1" ]] && run_args+=(--upgrade-system)
   if [[ -n "${SSH_PORT:-}" ]]; then
-    exec bash install.sh --run-local --ssh-port "$SSH_PORT"
+    run_args+=(--ssh-port "$SSH_PORT")
   fi
-  exec bash install.sh --run-local
+  exec bash install.sh "${run_args[@]}"
 }
 
 load_config() {
@@ -329,9 +342,21 @@ check_system() {
   step "System checks"
   [ "$(id -u)" -eq 0 ] || error "Please run as root"
 
-  OS=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
-  VER=$(grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"')
-  [ "$OS" = "debian" ] && [ "$VER" = "12" ] || warn "Debian 12 is recommended, current: $OS $VER"
+  [[ -f /etc/os-release ]] || error "/etc/os-release not found; unsupported Linux distribution"
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  OS_ID="${ID:-}"
+  OS_VERSION_ID="${VERSION_ID:-}"
+  OS_VERSION_CODENAME="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
+  OS_ID_LIKE="${ID_LIKE:-}"
+
+  command -v apt-get >/dev/null 2>&1 || error "This installer currently supports apt-based Linux distributions only (Debian/Ubuntu/Zorin/etc.)"
+  command -v systemctl >/dev/null 2>&1 || error "systemd is required"
+  case " ${OS_ID} ${OS_ID_LIKE} " in
+    *" debian "*|*" ubuntu "*) ;;
+    *) warn "Untested apt-based distribution: ${PRETTY_NAME:-${OS_ID} ${OS_VERSION_ID}}. Debian/Ubuntu/Zorin are the supported targets." ;;
+  esac
+  info "Detected OS: ${PRETTY_NAME:-${OS_ID} ${OS_VERSION_ID}}"
 
   MEM=$(free -m | awk '/^Mem:/{print $2}')
   info "Memory: ${MEM}MB"
@@ -340,21 +365,22 @@ check_system() {
   success "System checks passed"
 }
 
-setup_apt_mirror() {
-  step "Configure apt mirror"
-  cat > /etc/apt/sources.list << 'EOF'
-deb http://deb.debian.org/debian/ bookworm main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian/ bookworm-updates main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-EOF
-  apt update -qq
-  success "apt mirror configured (geo-aware deb.debian.org)"
+configure_package_repos() {
+  step "Prepare package manager"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  APT_FRONTEND_READY=1
+  success "Package manager ready (existing distribution repositories preserved)"
 }
 
 upgrade_system_packages() {
+  if [[ "${UPGRADE_SYSTEM}" != "1" ]]; then
+    info "Skipping system package upgrade (use --upgrade-system to enable)"
+    return
+  fi
   step "Upgrade system packages"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
+  [[ "$APT_FRONTEND_READY" -eq 1 ]] || apt-get update -qq
   apt-get -y -qq upgrade
   if [[ -f /var/run/reboot-required ]]; then
     warn "A reboot is required after package upgrade."
@@ -368,27 +394,43 @@ install_deps() {
   step "Install system dependencies"
   apt install -y -qq \
     curl wget git unzip build-essential \
-    ca-certificates gnupg lsb-release \
+    ca-certificates gnupg lsb-release sudo \
     openssl htop vim ufw fail2ban \
-    python3.11 python3.11-venv python3-pip \
+    python3 python3-venv python3-pip \
     libpq-dev libssl-dev libffi-dev
+  PYTHON_BIN="$(command -v python3.11 || command -v python3)"
+  [[ -n "$PYTHON_BIN" ]] || error "Python 3 not found after dependency installation"
   success "System dependencies installed"
 }
 
 install_postgres() {
-  step "Install PostgreSQL 16"
-  if [ ! -f /etc/apt/keyrings/postgresql.gpg ]; then
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
-      gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+  step "Install PostgreSQL"
+  mkdir -p /etc/apt/keyrings
+  local pgdg_codename="${OS_VERSION_CODENAME}"
+  if [[ -n "$pgdg_codename" ]]; then
+    if [ ! -f /etc/apt/keyrings/postgresql.gpg ]; then
+      curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
+        gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+    fi
+    echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${pgdg_codename}-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list
+    if apt-get update -qq && apt-cache show postgresql-16 >/dev/null 2>&1; then
+      apt install -y -qq postgresql-16
+    else
+      warn "PostgreSQL PGDG repo is unavailable for codename '${pgdg_codename}'; falling back to distribution PostgreSQL package"
+      rm -f /etc/apt/sources.list.d/pgdg.list
+      apt-get update -qq
+      apt install -y -qq postgresql
+    fi
+  else
+    warn "Could not detect distribution codename; installing distribution PostgreSQL package"
+    apt install -y -qq postgresql
   fi
-  echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] \
-    https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
-    > /etc/apt/sources.list.d/pgdg.list
-  apt update -qq
-  apt install -y -qq postgresql-16
 
   systemctl enable postgresql
   systemctl start postgresql
+  POSTGRES_VERSION="$(psql -V | awk '{print $3}' | cut -d. -f1)"
+  [[ -n "$POSTGRES_VERSION" ]] || error "Could not detect installed PostgreSQL version"
 
   # Idempotent role/database setup with strict error checking.
   if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${APP_USER}'" | grep -q 1; then
@@ -406,7 +448,7 @@ install_postgres() {
     -c "GRANT ALL PRIVILEGES ON DATABASE \"${APP_USER}\" TO \"${APP_USER}\";"
 
   # Dynamic memory tuning based on total RAM.
-  PG_CONF="/etc/postgresql/16/main/postgresql.conf"
+  PG_CONF="/etc/postgresql/${POSTGRES_VERSION}/main/postgresql.conf"
   TOTAL_MEM_MB="$(free -m | awk '/^Mem:/{print $2}')"
   SHARED_MB=$(( TOTAL_MEM_MB / 4 ))
   EFFECTIVE_MB=$(( TOTAL_MEM_MB * 3 / 4 ))
@@ -414,17 +456,21 @@ install_postgres() {
   (( SHARED_MB < 64 )) && SHARED_MB=64
   (( WORK_MB < 4 )) && WORK_MB=4
   (( WORK_MB > 64 )) && WORK_MB=64
-  sed -i "s|#shared_buffers = 128MB|shared_buffers = ${SHARED_MB}MB|" "$PG_CONF"
-  sed -i "s|#work_mem = 4MB|work_mem = ${WORK_MB}MB|" "$PG_CONF"
-  sed -i "s|#maintenance_work_mem = 64MB|maintenance_work_mem = 64MB|" "$PG_CONF"
-  sed -i "s|#effective_cache_size = 4GB|effective_cache_size = ${EFFECTIVE_MB}MB|" "$PG_CONF"
-  systemctl restart postgresql
+  if [[ -f "$PG_CONF" ]]; then
+    sed -i "s|#shared_buffers = 128MB|shared_buffers = ${SHARED_MB}MB|" "$PG_CONF"
+    sed -i "s|#work_mem = 4MB|work_mem = ${WORK_MB}MB|" "$PG_CONF"
+    sed -i "s|#maintenance_work_mem = 64MB|maintenance_work_mem = 64MB|" "$PG_CONF"
+    sed -i "s|#effective_cache_size = 4GB|effective_cache_size = ${EFFECTIVE_MB}MB|" "$PG_CONF"
+    systemctl restart postgresql
+  else
+    warn "PostgreSQL config not found at ${PG_CONF}; skipping memory tuning"
+  fi
 
   # Verify that password auth really works before continuing.
   PGPASSWORD="${DB_PASS}" psql -h 127.0.0.1 -U "${APP_USER}" -d "${APP_USER}" \
     -c "SELECT 1;" >/dev/null 2>&1 || error "PostgreSQL login check failed for user ${APP_USER}"
 
-  success "PostgreSQL 16 installed, database: ${APP_USER}"
+  success "PostgreSQL ${POSTGRES_VERSION} installed, database: ${APP_USER}"
 }
 
 install_redis() {
@@ -589,21 +635,43 @@ EOF
 }
 
 install_nodejs() {
-  step "Install Node.js 20"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
-  apt install -y -qq nodejs
+  step "Install Node.js"
+  local current_major=""
+  if command -v node >/dev/null 2>&1; then
+    current_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+    if [[ "$current_major" =~ ^[0-9]+$ ]] && (( current_major >= 18 )); then
+      success "Node.js $(node --version) already installed"
+      return
+    fi
+  fi
+
+  if curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1; then
+    apt install -y -qq nodejs
+  else
+    warn "NodeSource setup failed; trying distribution nodejs/npm packages"
+    apt install -y -qq nodejs npm
+  fi
+
+  command -v node >/dev/null 2>&1 || error "Node.js installation failed"
+  current_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+  if ! [[ "$current_major" =~ ^[0-9]+$ ]] || (( current_major < 18 )); then
+    error "Node.js 18+ is required, installed: $(node --version)"
+  fi
+  (( current_major < 20 )) && warn "Node.js 20+ is recommended; installed: $(node --version)"
   success "Node.js $(node --version) installed"
 }
 
 deploy_api() {
   step "Deploy FastAPI backend"
+  PYTHON_BIN="${PYTHON_BIN:-$(command -v python3.11 || command -v python3)}"
+  [[ -n "$PYTHON_BIN" ]] || error "Python 3 is required"
   mkdir -p "${INSTALL_DIR}"
   rm -rf "${INSTALL_DIR}/api"
   cp -r "${SRC_DIR}/apps/api" "${INSTALL_DIR}/api"
   chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api"
 
   cd "${INSTALL_DIR}/api"
-  python3.11 -m venv .venv
+  "${PYTHON_BIN}" -m venv .venv
   .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
 
@@ -1235,7 +1303,7 @@ main() {
   load_config
   setup_quick_check
   check_system
-  setup_apt_mirror
+  configure_package_repos
   upgrade_system_packages
   install_deps
   ensure_service_users
