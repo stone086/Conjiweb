@@ -461,6 +461,15 @@ install_prosody() {
     sed -i "s|TURN_SECRET_PLACEHOLDER|${TURN_SECRET}|g" /etc/prosody/prosody.cfg.lua
   fi
 
+  # Install Conjiweb push relay module
+  mkdir -p /usr/lib/prosody-modules/mod_conjiweb_push
+  cp configs/prosody/mod_conjiweb_push.lua /usr/lib/prosody-modules/mod_conjiweb_push/mod_conjiweb_push.lua
+
+  # Inject PUSH_SHARED_SECRET into prosody config
+  if [ -n "${PUSH_SHARED_SECRET:-}" ]; then
+    sed -i "s|PUSH_SHARED_SECRET_PLACEHOLDER|${PUSH_SHARED_SECRET}|g" /etc/prosody/prosody.cfg.lua
+  fi
+
   # Tell Prosody where to find community modules
   if ! grep -q "plugin_paths" /etc/prosody/prosody.cfg.lua; then
     sed -i "1i plugin_paths = { \"/usr/lib/prosody-modules\" }" /etc/prosody/prosody.cfg.lua
@@ -1232,6 +1241,10 @@ main() {
   ensure_service_users
   install_postgres
   install_redis
+  # Pre-generate PUSH_SHARED_SECRET so prosody and api both get the same value
+  PUSH_SHARED_SECRET="${PUSH_SHARED_SECRET:-$(openssl rand -hex 24)}"
+  export PUSH_SHARED_SECRET
+
   install_prosody
   install_coturn
   install_minio

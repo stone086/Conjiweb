@@ -5,7 +5,6 @@ import { useChatStore } from "@/stores/chatStore";
 import { useXmppReconnect } from "@/hooks/useXmppReconnect";
 import { usePWA } from "@/hooks/usePWA";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { apiSocket } from "@/services/apiSocket";
 import MainLayout from "@/layouts/MainLayout";
 import LoginPage from "@/pages/LoginPage";
 import ChatPage from "@/pages/ChatPage";
@@ -25,7 +24,6 @@ function AppInner() {
   useXmppReconnect();
   usePWA();
   const mergeDuplicatePrivateConversations = useChatStore((s) => s.mergeDuplicatePrivateConversations);
-  const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const [browserOnline, setBrowserOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
 
   useEffect(() => {
@@ -42,17 +40,6 @@ function AppInner() {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
-
-  useEffect(() => {
-    if (!activeAccountId) {
-      apiSocket.disconnect();
-      return;
-    }
-    apiSocket.connect(activeAccountId);
-    return () => {
-      apiSocket.disconnect();
-    };
-  }, [activeAccountId]);
 
   return (
     <>

@@ -6,25 +6,26 @@ import { getClient } from "@/services/xmppAdapter";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMAM } from "@/hooks/useMAM";
 import { FileUploadZone, UploadedFile, ImagePreview, FileCard } from "@/modules/media/FileUpload";
+import Avatar from "@/components/Avatar";
+import LinkPreviewCard, { extractFirstUrl } from "@/components/LinkPreviewCard";
+import VoiceRecorder from "@/components/VoiceRecorder";
 import { cacheMessages, getDraft, getLocalMessages, saveDraft } from "@/services/localDb";
 import { getChatToolbarActions } from "@/plugins/host";
 import type { ChatToolbarAction } from "@/plugins/sdk";
 import { format, isSameDay } from "date-fns";
+import { formatMsgTime, formatMsgTimeFull } from "@/utils/helpers";
 import { clsx } from "clsx";
-import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock } from "lucide-react";
+import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock, Phone, Video } from "lucide-react";
+import { callManager } from "@/services/jingle";
+import { processSlashCommand } from "@/services/slashCommands";
 import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
-import { encryptOmemoEnvelopeForPeer, storePeerOmemoBundle } from "@/services/e2ee";
+import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
+import { tryLibsignalEncrypt } from "@/services/xmppBridge";
 import { getOmemoEnabled } from "@/services/omemoSettings";
-import { getPeerOmemoFingerprints } from "@/services/omemoFingerprint";
-import { getUntrustedPeerDevices } from "@/services/omemoTrust";
-
-const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👎"] as const;
-const DEFAULT_QUICK_REACTION = "👍";
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
@@ -74,9 +75,7 @@ function MessageBubble({
 }) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
     const onPointerDown = (event: MouseEvent | TouchEvent) => {
@@ -92,43 +91,32 @@ function MessageBubble({
       document.removeEventListener("touchstart", onPointerDown);
     };
   }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) setReactionPickerOpen(false);
-  }, [menuOpen]);
-
-  const clearLongPress = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  const openMenu = () => setMenuOpen(true);
   return (
     <div
       className={clsx("flex gap-2 group", isOwn ? "flex-row-reverse" : "flex-row")}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        openMenu();
-      }}
-      onTouchStart={() => {
-        clearLongPress();
-        longPressTimer.current = setTimeout(() => openMenu(), 480);
-      }}
-      onTouchEnd={clearLongPress}
-      onTouchCancel={clearLongPress}
     >
       {!isOwn && (
-        <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-[11px] font-medium uppercase flex-shrink-0 mt-auto mb-1 text-surface-200">
-          {msg.senderJid[0]}
-        </div>
+        <Avatar name={msg.senderJid} size="xs" className="mt-auto mb-1" />
       )}
       <div className={clsx("flex flex-col gap-1 max-w-[70%] min-w-[8rem]", isOwn ? "items-end" : "items-start")}>
         {!isOwn && <span className="text-[10px] text-surface-200/40 px-1">{msg.senderJid.split("@")[0]}</span>}
-        <div className={isOwn ? "msg-bubble-out" : "msg-bubble-in"}>
+        <div
+          className={isOwn ? "msg-bubble-out" : "msg-bubble-in"}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenuOpen(true);
+          }}
+          onTouchStart={(e) => {
+            // long-press detection (500ms)
+            const target = e.currentTarget;
+            const timer = window.setTimeout(() => setMenuOpen(true), 500);
+            const cancel = () => { window.clearTimeout(timer); };
+            target.addEventListener("touchend", cancel, { once: true });
+            target.addEventListener("touchmove", cancel, { once: true });
+          }}
+        >
           {msg.replyToId && (
             <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-white/30 bg-black/15">
               <p className="text-[10px] text-surface-200/60">{replySender ?? "Reply"}</p>
@@ -138,7 +126,11 @@ function MessageBubble({
             </div>
           )}
           {msg.body && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>}
-          {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1">edited</p>}
+          {msg.body && (() => {
+            const url = extractFirstUrl(msg.body);
+            return url ? <LinkPreviewCard url={url} /> : null;
+          })()}
+          {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1 cursor-default" title={`Edited at ${formatMsgTimeFull(msg.editedAt)}`}>edited</p>}
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
               {att.mimeType.startsWith("image/") ? (
@@ -166,8 +158,8 @@ function MessageBubble({
           {msg.starred && <span className="text-[10px] text-warn">★</span>}
           {msg.encrypted && <Lock size={10} className="text-success" />}
           {msg.decryptFailed && <span className="text-[10px] text-danger">decrypt-failed</span>}
-          <span className="text-[10px] text-surface-200/25" title={format(msg.timestamp, "yyyy-MM-dd HH:mm:ss")}>
-            {format(msg.timestamp, "HH:mm")}
+          <span className="text-[10px] text-surface-200/25" title={formatMsgTimeFull(msg.timestamp)}>
+            {formatMsgTime(msg.timestamp)}
           </span>
           {isOwn && <span className="text-[10px] text-surface-200/25">{msg.status === "read" ? readLabel : sentLabel}</span>}
           {isOwn && msg.status === "failed" && (
@@ -180,19 +172,10 @@ function MessageBubble({
           )}
         </div>
       </div>
-      <div className={clsx("flex items-center self-center transition-opacity", hovered || menuOpen ? "opacity-100" : "opacity-0")}>
+      <div className={clsx("flex items-center self-center transition-opacity", hovered ? "opacity-100" : "opacity-0")}>
         <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
           <CornerUpLeft size={13} />
         </button>
-        <div className="hidden md:flex items-center mr-1">
-          <button
-            onClick={() => onReact(msg, DEFAULT_QUICK_REACTION)}
-            className="px-2 py-1 rounded-lg hover:bg-white/5 text-xs"
-            title="Quick react 👍"
-          >
-            {DEFAULT_QUICK_REACTION}
-          </button>
-        </div>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
             <MoreVertical size={13} />
@@ -210,40 +193,17 @@ function MessageBubble({
               <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
                 <Forward size={12} /> Forward
               </button>
-              <div className="px-2 py-1.5">
-                <p className="text-[10px] text-surface-200/50 mb-1">React</p>
-                <div className="grid grid-cols-6 gap-1">
-                  {QUICK_REACTIONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => { onReact(msg, emoji); setMenuOpen(false); }}
-                      className="rounded px-1 py-1 text-sm hover:bg-white/5"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setReactionPickerOpen((v) => !v)}
-                  className="mt-2 w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded"
-                >
-                  {reactionPickerOpen ? "Hide emoji picker" : "More emojis..."}
-                </button>
-                {reactionPickerOpen && (
-                  <div className="mt-2 overflow-hidden rounded-lg border border-white/10">
-                    <EmojiPicker
-                      theme={Theme.DARK}
-                      lazyLoadEmojis
-                      searchDisabled={false}
-                      skinTonesDisabled
-                      onEmojiClick={(emojiData) => {
-                        onReact(msg, emojiData.emoji);
-                        setReactionPickerOpen(false);
-                        setMenuOpen(false);
-                      }}
-                    />
-                  </div>
-                )}
+              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-white/5">
+                {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((em) => (
+                  <button
+                    key={em}
+                    onClick={() => { onReact(msg, em); setMenuOpen(false); }}
+                    className="w-7 h-7 rounded hover:bg-white/10 text-base transition-transform hover:scale-110"
+                    title={`React with ${em}`}
+                  >
+                    {em}
+                  </button>
+                ))}
               </div>
               {isOwn && (
                 <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
@@ -261,7 +221,7 @@ function MessageBubble({
 function TypingBubble({ name }: { name: string }) {
   return (
     <div className="flex gap-2 items-end">
-      <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-[11px] font-medium uppercase text-surface-200">{name[0]}</div>
+      <Avatar name={name} size="xs" />
       <div className="msg-bubble-in flex items-center gap-1 py-3">
         {[0, 1, 2].map((i) => (
           <span key={i} className="w-1.5 h-1.5 rounded-full bg-surface-200/40 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -282,6 +242,72 @@ function ReplyPreview({ msg, onCancel, title }: { msg: ChatMessage; onCancel: ()
       <button onClick={onCancel} className="text-surface-200/30 hover:text-surface-200 p-1">
         <X size={12} />
       </button>
+    </div>
+  );
+}
+
+function ForwardModal({
+  message,
+  candidates,
+  targetId,
+  onSelectTarget,
+  onConfirm,
+  onCancel,
+}: {
+  message: ChatMessage;
+  candidates: { id: string; title?: string; peerJid: string; type: string }[];
+  targetId: string;
+  onSelectTarget: (id: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = candidates.filter((c) =>
+    (c.title ?? c.peerJid).toLowerCase().includes(search.toLowerCase())
+  );
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-surface-50">转发消息</h3>
+        <p className="text-xs text-surface-200/50 line-clamp-2">{message.body}</p>
+        <input
+          autoFocus
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="搜索会话..."
+          className="input-field text-sm"
+        />
+        <div className="max-h-52 overflow-y-auto flex flex-col gap-1 pr-1">
+          {filtered.length === 0 && (
+            <p className="text-xs text-surface-200/30 text-center py-4">没有匹配的会话</p>
+          )}
+          {filtered.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onSelectTarget(c.id)}
+              className={clsx(
+                "w-full text-left text-sm px-3 py-2 rounded-lg transition-colors",
+                targetId === c.id
+                  ? "bg-accent/20 text-accent-soft"
+                  : "hover:bg-white/5 text-surface-200/70"
+              )}
+            >
+              {c.title ?? c.peerJid}
+              <span className="text-xs text-surface-200/30 ml-1.5">({c.type === "group" ? "群组" : "私聊"})</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onCancel} className="btn-ghost text-sm">取消</button>
+          <button
+            onClick={onConfirm}
+            disabled={!targetId}
+            className="btn-primary text-sm"
+          >
+            转发
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -350,6 +376,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const conversation = useChatStore((s) => s.conversations[conversationId]);
   const allConversations = useChatStore((s) => Object.values(s.conversations));
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
+  const messagesRef = useRef(messages);
   const composerDraft = useChatStore((s) => s.composerDrafts[conversationId] ?? "");
   const addMessage = useChatStore((s) => s.addMessage);
   const updateMessage = useChatStore((s) => s.updateMessage);
@@ -362,16 +389,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const { fetchHistory, loading: mamLoading, hasMore } = useMAM(conversation?.peerJid ?? "", conversationId);
   const forwardCandidates = allConversations
     .filter((c) => c.accountId === activeAccountId && c.id !== conversationId)
-    .sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0);
-    });
-  const rowVirtualizer = useVirtualizer({
-    count: messages.length,
-    getScrollElement: () => containerRef.current,
-    estimateSize: () => 92,
-    overscan: 12,
-  });
+    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
 
   useEffect(() => {
     let cancelled = false;
@@ -424,6 +442,12 @@ export default function MessageView({ conversationId }: { conversationId: string
     return () => window.clearTimeout(timer);
   }, [conversationId, input]);
 
+  // Keep messagesRef in sync so plugin actions always read the latest messages
+  // without re-triggering the plugin-load effect on every incoming message
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(() => {
     let cancelled = false;
     const loadActions = async () => {
@@ -435,7 +459,7 @@ export default function MessageView({ conversationId }: { conversationId: string
         accountId: activeAccountId,
         conversationId,
         peerJid: conversation.peerJid,
-        messages,
+        messages: messagesRef.current,
         addSystemMessage: (body: string) => {
           const systemMessage: ChatMessage = {
             id: crypto.randomUUID(),
@@ -459,7 +483,7 @@ export default function MessageView({ conversationId }: { conversationId: string
     return () => {
       cancelled = true;
     };
-  }, [activeAccountId, conversationId, conversation, messages, addMessage]);
+  }, [activeAccountId, conversationId, conversation?.peerJid, addMessage]);
 
   useEffect(() => {
     const c = containerRef.current;
@@ -506,51 +530,45 @@ export default function MessageView({ conversationId }: { conversationId: string
     if (c.scrollTop < 80 && hasMore && !mamLoading) fetchHistory();
   };
 
-  const refreshPeerOmemoBundles = useCallback(async (
-    accountId: string,
-    peerJid: string
-  ) => {
-    const client = getClient(accountId);
-    if (!client?.connected) return;
-    const devices = await client.fetchOmemoDeviceList(peerJid);
-    for (const deviceId of devices) {
-      const bundle = await client.fetchOmemoBundle(peerJid, deviceId);
-      if (bundle) {
-        await storePeerOmemoBundle(accountId, peerJid, bundle);
-      }
-    }
-  }, []);
-
-  const buildTrustedOmemoEnvelope = useCallback(async (
-    accountId: string,
-    peerJid: string,
-    body: string
-  ) => {
-    await refreshPeerOmemoBundles(accountId, peerJid);
-    const peerDevices = await getPeerOmemoFingerprints(accountId, peerJid);
-    if (peerDevices.length === 0) {
-      throw new Error("Peer OMEMO device list is empty. Ask peer to come online and publish OMEMO keys.");
-    }
-    const untrusted = getUntrustedPeerDevices(accountId, peerJid, peerDevices);
-    if (untrusted.length > 0) {
-      const summary = untrusted
-        .map((d) => `device ${d.deviceId}: ${d.fingerprint}`)
-        .join("\n");
-      throw new Error(
-        `Untrusted OMEMO fingerprints detected.\nVerify in Settings > OMEMO first:\n\n${summary}`
-      );
-    }
-    const encrypted = await encryptOmemoEnvelopeForPeer(accountId, peerJid, body);
-    if (!encrypted.usedPeerKey || !encrypted.envelope) {
-      throw new Error("Peer OMEMO keys are unavailable. Ask peer to come online with OMEMO enabled.");
-    }
-    return encrypted.envelope;
-  }, [refreshPeerOmemoBundles]);
-
   const sendMessage = useCallback(async () => {
-    const body = input.trim();
+    let body = input.trim();
     if (!body && !pendingFiles.length) return;
     if (!activeAccountId) return;
+
+    // Slash command interception
+    if (body.startsWith("/")) {
+      const result = await processSlashCommand(body, {
+        conversationId,
+        accountId: activeAccountId,
+        insertText: (text: string) => setInput(text),
+        showSystemMessage: (b: string) => {
+          const sysMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            conversationId,
+            senderJid: "system",
+            body: b,
+            bodyType: "text",
+            direction: "system",
+            status: "delivered",
+            timestamp: Date.now(),
+          };
+          addMessage(sysMsg);
+          cacheMessages([sysMsg]).catch(() => {});
+        },
+      });
+      if (result.handled) {
+        if (result.replacement === null) {
+          // command consumed - clear input, don't send anything
+          setInput("");
+          clearComposerDraft(conversationId);
+          return;
+        }
+        if (result.replacement) {
+          body = result.replacement;
+        }
+      }
+    }
+
     const client = getClient(activeAccountId);
     if (!client?.connected) {
       toast.error(t("chat.notConnected"));
@@ -561,9 +579,19 @@ export default function MessageView({ conversationId }: { conversationId: string
       let outboundBody = body;
       if (body && conversation?.type === "private" && getOmemoEnabled()) {
         const peerJid = conversation?.peerJid ?? conversationId;
-        const envelope = await buildTrustedOmemoEnvelope(activeAccountId, peerJid, body);
+        // Try libsignal-based OMEMO first (XEP-0384, interop with Conversations/Gajim).
+        // Fall back to legacy custom-protocol OMEMO if peer hasn't published a bundle.
+        let envelope: any = await tryLibsignalEncrypt(activeAccountId, peerJid, body);
+        if (!envelope) {
+          const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, peerJid, body);
+          if (!encrypted.usedPeerKey || !encrypted.envelope) {
+            toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
+            return;
+          }
+          envelope = encrypted.envelope;
+        }
         id = client.sendOmemoMessage(
-          conversation?.peerJid ?? conversationId,
+          peerJid,
           envelope,
           "chat",
           editingMessageId
@@ -700,19 +728,22 @@ export default function MessageView({ conversationId }: { conversationId: string
   }, [conversationId, toggleMessageStar]);
 
   const handleReact = useCallback((message: ChatMessage, emoji: string) => {
+    // Update local store immediately for responsiveness
     toggleMessageReaction(conversationId, message.id, emoji);
+    // Sync to XMPP peer via XEP-0444
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
     if (!client?.connected || !conversation?.peerJid) return;
+    // Build the full current reaction set for this user to send
     const updatedMsg = useChatStore.getState().messages[conversationId]
       ?.find((m) => m.id === message.id);
-    const emojis = Object.entries(updatedMsg?.reactions ?? {})
+    const myEmojis = Object.entries(updatedMsg?.reactions ?? {})
       .filter(([, count]) => count > 0)
-      .map(([value]) => value);
+      .map(([em]) => em);
     client.sendReaction(
       conversation.peerJid,
       message.id,
-      emojis,
+      myEmojis,
       conversation.type === "group" ? "groupchat" : "chat"
     );
   }, [conversationId, toggleMessageReaction, activeAccountId, conversation]);
@@ -734,13 +765,19 @@ export default function MessageView({ conversationId }: { conversationId: string
         );
         let newId: string;
         if (isPrivateOmemo) {
-          const envelope = await buildTrustedOmemoEnvelope(
-            activeAccountId,
-            conversation?.peerJid ?? conversationId,
-            message.body
-          );
+          const peerJid = conversation?.peerJid ?? conversationId;
+          // libsignal-first OMEMO encryption with legacy fallback
+          let envelope: any = await tryLibsignalEncrypt(activeAccountId, peerJid, message.body);
+          if (!envelope) {
+            const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, peerJid, message.body);
+            if (!encrypted.usedPeerKey || !encrypted.envelope) {
+              toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
+              return;
+            }
+            envelope = encrypted.envelope;
+          }
           newId = client.sendOmemoMessage(
-            conversation?.peerJid ?? conversationId,
+            peerJid,
             envelope,
             "chat"
           );
@@ -757,7 +794,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       }
     };
     void retry();
-  }, [activeAccountId, conversation, conversationId, t, updateMessage, buildTrustedOmemoEnvelope]);
+  }, [activeAccountId, conversation, conversationId, t, updateMessage]);
 
   const handleComposerPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(event.clipboardData?.items ?? []);
@@ -800,8 +837,38 @@ export default function MessageView({ conversationId }: { conversationId: string
 
   if (!conversation) return <div className="flex items-center justify-center h-full text-surface-200/30 text-sm">{t("chat.notFound")}</div>;
 
+  const handleStartCall = async (mediaTypes: ("audio" | "video")[]) => {
+    if (!conversation?.peerJid) return;
+    try {
+      await callManager.startCall(conversation.peerJid, mediaTypes);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Call failed");
+    }
+  };
+
   return (
     <div className="flex flex-col h-full relative">
+      {/* Chat header with peer info + call buttons */}
+      {conversation.type === "private" && (
+        <div className="flex items-center justify-end gap-1 px-4 py-2 border-b border-white/5 bg-surface-900/30">
+          <button
+            onClick={() => handleStartCall(["audio"])}
+            className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
+            title={t("chat.audioCall")}
+            aria-label={t("chat.audioCall")}
+          >
+            <Phone size={14} />
+          </button>
+          <button
+            onClick={() => handleStartCall(["audio", "video"])}
+            className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
+            title={t("chat.videoCall")}
+            aria-label={t("chat.videoCall")}
+          >
+            <Video size={14} />
+          </button>
+        </div>
+      )}
       <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
         {hasMore && (
           <div className="flex justify-center py-2">
@@ -820,63 +887,50 @@ export default function MessageView({ conversationId }: { conversationId: string
             <p className="text-sm">{t("chat.noMessages")}</p>
           </div>
         )}
-        {messages.length > 0 && (
-          <div
-            className="relative w-full"
-            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const i = virtualRow.index;
-              const msg = messages[i];
-              const isOwn = msg.direction === "out";
-              const prev = messages[i - 1];
-              const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
-              const unreadStartIdx = conversation.unreadCount > 0 ? Math.max(messages.length - conversation.unreadCount, 0) : -1;
-              const showUnreadDivider = unreadStartIdx === i && conversation.unreadCount > 0;
-              return (
-                <div
-                  key={msg.id}
-                  className="absolute left-0 top-0 w-full animate-fade-in"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                  ref={(node) => {
-                    if (node) rowVirtualizer.measureElement(node);
-                    messageNodeRefs.current[msg.id] = node;
-                  }}
-                  data-mid={msg.id}
-                >
-                  {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
-                  {showUnreadDivider && (
-                    <div className="flex items-center gap-3 py-2">
-                      <div className="flex-1 h-px bg-accent/40" />
-                      <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">Unread</span>
-                      <div className="flex-1 h-px bg-accent/40" />
-                    </div>
-                  )}
-                  {msg.direction === "system" ? (
-                    <div className="msg-bubble-system">{msg.body}</div>
-                  ) : (
-                    <MessageBubble
-                      msg={msg}
-                      replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
-                      replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
-                      isOwn={isOwn}
-                      onReply={setReplyTo}
-                      onOpenImage={(src, alt) => setLightbox({ src, alt })}
-                      onRetry={retryFailedMessage}
-                      onEdit={handleEditMessage}
-                      onForward={handleForwardMessage}
-                      onDelete={handleDeleteMessage}
-                      onToggleStar={handleToggleStar}
-                      onReact={handleReact}
-                      sentLabel={t("chat.sentSent")}
-                      readLabel={t("chat.sentRead")}
-                    />
-                  )}
+        {messages.map((msg, i) => {
+          const isOwn = msg.direction === "out";
+          const prev = messages[i - 1];
+          const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
+          const unreadStartIdx = conversation.unreadCount > 0 ? Math.max(messages.length - conversation.unreadCount, 0) : -1;
+          const showUnreadDivider = unreadStartIdx === i && conversation.unreadCount > 0;
+          return (
+            <div
+              key={msg.id}
+              className="animate-fade-in"
+              ref={(node) => { messageNodeRefs.current[msg.id] = node; }}
+              data-mid={msg.id}
+            >
+              {showDate && <DateDivider date={msg.timestamp} todayLabel={t("chat.today")} yesterdayLabel={t("chat.yesterday")} />}
+              {showUnreadDivider && (
+                <div className="flex items-center gap-3 py-2">
+                  <div className="flex-1 h-px bg-accent/40" />
+                  <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">Unread</span>
+                  <div className="flex-1 h-px bg-accent/40" />
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+              {msg.direction === "system" ? (
+                <div className="msg-bubble-system">{msg.body}</div>
+              ) : (
+                <MessageBubble
+                  msg={msg}
+                  replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
+                  replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
+                  isOwn={isOwn}
+                  onReply={setReplyTo}
+                  onOpenImage={(src, alt) => setLightbox({ src, alt })}
+                  onRetry={retryFailedMessage}
+                  onEdit={handleEditMessage}
+                  onForward={handleForwardMessage}
+                  onDelete={handleDeleteMessage}
+                  onToggleStar={handleToggleStar}
+                  onReact={handleReact}
+                  sentLabel={t("chat.sentSent")}
+                  readLabel={t("chat.sentRead")}
+                />
+              )}
+            </div>
+          );
+        })}
         {peerIsTyping && <TypingBubble name={conversation.peerJid.split("@")[0]} />}
         <div ref={messagesEndRef} />
       </div>
@@ -974,6 +1028,37 @@ export default function MessageView({ conversationId }: { conversationId: string
           >
             <Paperclip size={16} />
           </button>
+            <VoiceRecorder
+              onSend={async (file) => {
+                // Upload as attachment, then send as message
+                try {
+                  const resp = await attachmentsApi.upload(file, undefined, activeAccountId ?? undefined);
+                  // The upload returns { id, download_url, ... } - send as attachment
+                  const placeholderMsg: ChatMessage = {
+                    id: crypto.randomUUID(),
+                    conversationId,
+                    senderJid: getClient(activeAccountId ?? "")?.config.jid ?? "self",
+                    body: "",
+                    bodyType: "text",
+                    direction: "out",
+                    status: "sent",
+                    timestamp: Date.now(),
+                    attachments: [{
+                      id: resp.id,
+                      fileName: file.name,
+                      mimeType: file.type,
+                      sizeBytes: file.size,
+                      downloadUrl: resp.download_url,
+                    }],
+                  };
+                  addMessage(placeholderMsg);
+                  cacheMessages([placeholderMsg]).catch(() => {});
+                  toast.success(t("voice.sent"));
+                } catch (e: any) {
+                  toast.error(e?.message ?? t("voice.sendFailed"));
+                }
+              }}
+            />
           <button
             onClick={() => setShowEmojiPicker((v) => !v)}
             className={clsx("btn-ghost p-2 flex-shrink-0", showEmojiPicker && "text-accent")}
@@ -1028,38 +1113,14 @@ export default function MessageView({ conversationId }: { conversationId: string
         />
       )}
       {forwardingMessage && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
-            <h3 className="text-sm font-semibold text-surface-50">Forward Message</h3>
-            <p className="text-xs text-surface-200/50 line-clamp-2">{forwardingMessage.body}</p>
-            <select
-              value={forwardTargetId}
-              onChange={(e) => setForwardTargetId(e.target.value)}
-              className="input-field text-sm"
-            >
-              <option value="">Select conversation...</option>
-              {forwardCandidates.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title} ({c.type})
-                </option>
-              ))}
-            </select>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setForwardingMessage(null);
-                  setForwardTargetId("");
-                }}
-                className="btn-ghost text-sm"
-              >
-                Cancel
-              </button>
-              <button onClick={handleConfirmForward} disabled={!forwardTargetId} className="btn-primary text-sm">
-                Forward
-              </button>
-            </div>
-          </div>
-        </div>
+        <ForwardModal
+          message={forwardingMessage}
+          candidates={forwardCandidates}
+          targetId={forwardTargetId}
+          onSelectTarget={setForwardTargetId}
+          onConfirm={handleConfirmForward}
+          onCancel={() => { setForwardingMessage(null); setForwardTargetId(""); }}
+        />
       )}
     </div>
   );

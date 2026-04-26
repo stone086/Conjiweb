@@ -7,7 +7,6 @@ import { useAccountStore } from "@/stores/accountStore";
 import { clsx } from "clsx";
 import { useLanguage } from "@/utils/i18n";
 import { useShallow } from "zustand/react/shallow";
-import { apiSocket } from "@/services/apiSocket";
 
 const navItems = [
   { to: "/", icon: MessageSquare, key: "nav.chats", end: true },
@@ -66,10 +65,7 @@ export default function Sidebar() {
         {accounts.map((acc) => (
           <button
             key={acc.id}
-            onClick={() => {
-              setActive(acc.id);
-              apiSocket.connect(acc.id);
-            }}
+            onClick={() => setActive(acc.id)}
             className={clsx(
               "relative w-9 h-9 rounded-xl transition-all duration-150",
               acc.id === activeId

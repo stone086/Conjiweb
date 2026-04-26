@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
-import { format } from "date-fns";
-import { Star } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
+import { Star } from "lucide-react";
+import { format } from "date-fns";
 import { useLanguage } from "@/utils/i18n";
 
 export default function StarredPage() {

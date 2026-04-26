@@ -33,6 +33,8 @@ export type XmppEvent =
   | "reaction.received"
   | "room.subject"
   | "room.member"
+  | "jingle"
+  | "sm.failed"
   | "error";
 
 export interface XmppMessage {
@@ -72,7 +74,6 @@ export interface OmemoEnvelope {
 }
 
 export interface OmemoBundle {
-  namespace?: string;
   deviceId: number;
   signedPreKeyId: number;
   signedPreKeyPublic: string;
@@ -89,6 +90,13 @@ export interface RosterContact {
 }
 
 type EventHandler = (data: unknown) => void;
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
 
 function sanitizeXmlText(input: string): string {
   if (!input) return "";
@@ -221,7 +229,12 @@ export class XmppClient {
             this._connected = true;
             this.emit("connection.changed", { status: "connected", accountId: this.config.accountId });
             this._setupHandlers();
-            this._sendPresence();
+            this._setupDiscoHandler();      // XEP-0030 service discovery
+            this._setupSmHandlers();        // XEP-0198 stream management handlers
+            this._enableStreamManagement(); // XEP-0198 enable
+            this._enableCarbons();          // XEP-0280 multi-device sync
+            this._setupCsiHandling();       // XEP-0352 active/inactive
+            this._sendPresence();           // includes XEP-0115 caps
             this._requestRoster();
             resolve();
             break;
@@ -248,25 +261,48 @@ export class XmppClient {
 
     // Incoming messages
     conn.addHandler((stanza: Element) => {
-      const from = stanza.getAttribute("from") ?? "";
-      const type = stanza.getAttribute("type") ?? "chat";
-      const body = stanza.querySelector("body")?.textContent ?? "";
+      // XEP-0280 Message Carbons unwrapping:
+      // <message><sent|received><forwarded><message>...real message...
+      // Only trust carbons from our own bare JID.
+      const ownBareJid = this.config.jid.split("/")[0].toLowerCase();
+      const stanzaFromBare = (stanza.getAttribute("from") ?? "").split("/")[0].toLowerCase();
+
+      let realStanza: Element = stanza;
+      let isCarbonSent = false;
+      let isCarbonReceived = false;
+
+      const carbonSent = stanza.querySelector('sent[xmlns="urn:xmpp:carbons:2"]');
+      const carbonRecv = stanza.querySelector('received[xmlns="urn:xmpp:carbons:2"]');
+      if ((carbonSent || carbonRecv) && stanzaFromBare === ownBareJid) {
+        const wrapper = carbonSent ?? carbonRecv;
+        const forwarded = wrapper?.querySelector('forwarded[xmlns="urn:xmpp:forward:0"]');
+        const inner = forwarded?.querySelector("message");
+        if (inner) {
+          realStanza = inner;
+          isCarbonSent = !!carbonSent;
+          isCarbonReceived = !!carbonRecv;
+        }
+      }
+
+      const from = realStanza.getAttribute("from") ?? "";
+      const type = realStanza.getAttribute("type") ?? "chat";
+      const body = realStanza.querySelector("body")?.textContent ?? "";
       const omemo = parseOmemoEnvelope(stanza);
-      const id = stanza.getAttribute("id") ?? crypto.randomUUID();
-      const subject = stanza.querySelector("subject")?.textContent ?? "";
+      const id = realStanza.getAttribute("id") ?? crypto.randomUUID();
+      const subject = realStanza.querySelector("subject")?.textContent ?? "";
       if (type === "groupchat" && subject) {
         this.emit("room.subject", { accountId: this.config.accountId, roomJid: from.split("/")[0], subject });
         return true;
       }
 
-      if (stanza.querySelector("composing")) {
+      if (realStanza.querySelector("composing")) {
         this.emit("typing.started", { accountId: this.config.accountId, from });
       }
-      if (stanza.querySelector("paused") || stanza.querySelector("active")) {
+      if (realStanza.querySelector("paused") || realStanza.querySelector("active")) {
         this.emit("typing.stopped", { accountId: this.config.accountId, from });
       }
 
-      const received = stanza.querySelector("received");
+      const received = realStanza.querySelector("received");
       if (received) {
         this.emit("message.delivered", {
           accountId: this.config.accountId,
@@ -275,7 +311,7 @@ export class XmppClient {
         });
         return true;
       }
-      const displayed = stanza.querySelector("displayed");
+      const displayed = realStanza.querySelector("displayed");
       if (displayed) {
         this.emit("message.read", {
           accountId: this.config.accountId,
@@ -284,7 +320,8 @@ export class XmppClient {
         });
         return true;
       }
-      const reactionsEl = stanza.querySelector('reactions[xmlns="urn:xmpp:reactions:0"]');
+      // XEP-0444 Message Reactions
+      const reactionsEl = realStanza.querySelector('reactions[xmlns="urn:xmpp:reactions:0"]');
       if (reactionsEl) {
         const msgId = reactionsEl.getAttribute("id");
         const emojis = Array.from(reactionsEl.querySelectorAll("reaction"))
@@ -300,7 +337,8 @@ export class XmppClient {
         }
         return true;
       }
-      const retracted = stanza.querySelector('retract[xmlns="urn:xmpp:message-retract:1"]');
+
+      const retracted = realStanza.querySelector('retract[xmlns="urn:xmpp:message-retract:1"]');
       if (retracted) {
         this.emit("message.retracted", {
           accountId: this.config.accountId,
@@ -311,12 +349,12 @@ export class XmppClient {
       }
 
       if (body || omemo) {
-        const replyNode = stanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
-        const replaceNode = stanza.querySelector('replace[xmlns="urn:xmpp:message-correct:0"]');
+        const replyNode = realStanza.querySelector('reply[xmlns="urn:xmpp:reply:0"]');
+        const replaceNode = realStanza.querySelector('replace[xmlns="urn:xmpp:message-correct:0"]');
         const msg: XmppMessage = {
           id,
           from,
-          to: this.config.jid,
+          to: realStanza.getAttribute("to") ?? this.config.jid,
           body: body || "[OMEMO message]",
           timestamp: Date.now(),
           type: type as "chat" | "groupchat",
@@ -324,7 +362,12 @@ export class XmppClient {
           replaceId: replaceNode?.getAttribute("id") ?? undefined,
           omemo: omemo ?? undefined,
         };
-        this.emit("message.received", { accountId: this.config.accountId, message: msg });
+        this.emit("message.received", {
+          accountId: this.config.accountId,
+          message: msg,
+          isCarbonSent,
+          isCarbonReceived,
+        });
       }
       return true;
     }, null, "message");
@@ -381,6 +424,32 @@ export class XmppClient {
       this.emit("presence.updated", { accountId: this.config.accountId, jid: from, show, status });
       return true;
     }, null, "presence");
+
+    // Jingle (XEP-0166) IQ handler - audio/video calls
+    conn.addHandler((stanza: Element) => {
+      const jingle = stanza.querySelector('jingle[xmlns="urn:xmpp:jingle:1"]');
+      if (!jingle) return true;
+
+      const fromJid = stanza.getAttribute("from") ?? "";
+      const sid = jingle.getAttribute("sid") ?? "";
+      const action = jingle.getAttribute("action") ?? "";
+      const iqId = stanza.getAttribute("id") ?? "";
+
+      // Acknowledge the IQ immediately
+      const ack = this._$iq({ type: "result", to: fromJid, id: iqId });
+      conn.send(ack);
+
+      // Emit to bridge for routing to callManager
+      this.emit("jingle", {
+        accountId: this.config.accountId,
+        from: fromJid,
+        sid,
+        action,
+        jingleEl: jingle,
+      });
+      return true;
+    }, "urn:xmpp:jingle:1", "iq", "set");
+
   }
 
   private _parseRosterStanza(stanza: Element): RosterContact[] {
@@ -396,17 +465,40 @@ export class XmppClient {
     return contacts;
   }
 
-  private _sendPresence(show?: string, status?: string) {
-    if (!this._connection) return;
-    if (!show || show === "available") {
-      this._connection.send(this._$pres());
-    } else if (show === "unavailable") {
-      this._connection.send(this._$pres({ type: "unavailable" }));
-    } else {
-      const pres = this._$pres().c("show").t(show);
-      if (status) pres.up().c("status").t(status);
-      this._connection.send(pres);
+  private _capsHash: string | null = null;
+
+  private async _ensureCapsHash() {
+    if (this._capsHash) return this._capsHash;
+    try {
+      this._capsHash = await this._computeCapsHash();
+    } catch {
+      this._capsHash = null;
     }
+    return this._capsHash;
+  }
+
+  private async _sendPresence(show?: string, status?: string) {
+    if (!this._connection) return;
+    const hash = await this._ensureCapsHash();
+    let pres: any;
+    if (!show || show === "available") {
+      pres = this._$pres();
+    } else if (show === "unavailable") {
+      pres = this._$pres({ type: "unavailable" });
+    } else {
+      pres = this._$pres().c("show").t(show).up();
+      if (status) pres.c("status").t(status).up();
+    }
+    // XEP-0115 Entity Capabilities
+    if (hash && (!show || show !== "unavailable")) {
+      pres.c("c", {
+        xmlns: "http://jabber.org/protocol/caps",
+        hash: "sha-1",
+        node: "https://conjiweb.dev/caps",
+        ver: hash,
+      }).up();
+    }
+    this._connection.send(pres);
   }
 
   private _requestRoster() {
@@ -537,16 +629,6 @@ export class XmppClient {
       .c("retract", { xmlns: "urn:xmpp:message-retract:1" })
       .up()
       .up();
-    this._connection.send(stanza);
-  }
-
-  sendReaction(toJid: string, messageId: string, emojis: string[], type: "chat" | "groupchat" = "chat") {
-    if (!this._connection || !this._connected || !messageId) return;
-    const stanza = this._$msg({ to: toJid, type })
-      .c("reactions", { xmlns: "urn:xmpp:reactions:0", id: messageId });
-    emojis.forEach((emoji) => {
-      if (emoji) stanza.c("reaction").t(emoji).up();
-    });
     this._connection.send(stanza);
   }
 
@@ -757,7 +839,6 @@ export class XmppClient {
               })
               .filter((v): v is { preKeyId: number; value: string } => Boolean(v));
             resolve({
-              namespace,
               deviceId,
               signedPreKeyId: Number.parseInt(spk.getAttribute("signedPreKeyId") ?? "1", 10) || 1,
               signedPreKeyPublic: spk.textContent.trim(),
@@ -832,7 +913,435 @@ export class XmppClient {
     });
   }
 
+  sendReaction(toJid: string, messageId: string, emojis: string[], type: "chat" | "groupchat" = "chat") {
+    if (!this._connection || !this._connected) return;
+    const msg = this._$msg({ to: toJid, type })
+      .c("reactions", { xmlns: "urn:xmpp:reactions:0", id: messageId });
+    emojis.forEach((emoji) => msg.c("reaction").t(emoji).up());
+    this._connection.send(msg);
+  }
+
+  /**
+   * Send a Jingle stanza (XEP-0166). The Jingle XML is built by the bridge
+   * layer using sdpToJingleXml/candidateToJingleXml/terminateToJingleXml.
+   *
+   * Wraps the Jingle element in an IQ set and sends it.
+   */
+  sendJingle(peerJid: string, _sid: string, jingleXml: string): void {
+    if (!this._connection || !this._connected) return;
+    // Parse the jingleXml string into an Element via DOMParser
+    const doc = new DOMParser().parseFromString(jingleXml, "text/xml");
+    const jingleEl = doc.documentElement;
+    if (!jingleEl || jingleEl.localName !== "jingle") return;
+
+    const iq = this._$iq({ type: "set", to: peerJid });
+    // Append the jingle element to the IQ via cnode()
+    iq.cnode(jingleEl as any);
+    this._connection.send(iq);
+  }
+
+  // ============================================================
+  // XEP-0198 Stream Management
+  // ============================================================
+  /**
+   * Stream Management state for resilience against network drops.
+   *
+   * - We tell the server "enable" with resume=true so the server keeps
+   *   our session alive briefly after disconnect.
+   * - We track every outgoing stanza in _smOutgoingQueue.
+   * - When the server sends <a h="N"/>, we drop ack'd stanzas from queue.
+   * - When we reconnect, we send <resume previd="..." h="..."/> to recover
+   *   without re-authenticating, and the server replays missed inbound stanzas.
+   *
+   * Strophe.js does NOT include SM by default; we implement it directly.
+   */
+  private _smEnabled = false;
+  private _smResumeId: string | null = null;
+  private _smOutgoingCount = 0;        // h: count of stanzas WE sent
+  private _smIncomingCount = 0;        // h: count of stanzas WE received
+  private _smOutgoingQueue: Element[] = [];
+  private _smRequestTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Get current stream-management state. Persisted across reconnects
+   * via accountStore so resume can succeed.
+   */
+  getSmState(): { resumeId: string | null; h: number } {
+    return { resumeId: this._smResumeId, h: this._smIncomingCount };
+  }
+
+  private _enableStreamManagement() {
+    if (!this._connection || this._smEnabled) return;
+    // Send <enable xmlns="urn:xmpp:sm:3" resume="true"/>
+    const enable = this._buildElement("enable", {
+      xmlns: "urn:xmpp:sm:3",
+      resume: "true",
+    });
+    if (enable) this._connection.send(enable);
+  }
+
+  private _setupSmHandlers() {
+    if (!this._connection) return;
+    // Handle <enabled> response from server
+    this._connection.addHandler((stanza: Element) => {
+      this._smEnabled = true;
+      this._smResumeId = stanza.getAttribute("id");
+      this._smOutgoingCount = 0;
+      this._smIncomingCount = 0;
+      this._smOutgoingQueue = [];
+      this._startSmRequestTimer();
+      return true;
+    }, "urn:xmpp:sm:3", "enabled");
+
+    // Handle <a h="N"/> from server (acknowledgement of our sent stanzas)
+    this._connection.addHandler((stanza: Element) => {
+      const hStr = stanza.getAttribute("h");
+      if (hStr) {
+        const ack = parseInt(hStr, 10);
+        if (Number.isFinite(ack)) this._handleSmAck(ack);
+      }
+      return true;
+    }, "urn:xmpp:sm:3", "a");
+
+    // Handle <r/> from server: respond with our incoming count
+    this._connection.addHandler((_stanza: Element) => {
+      const reply = this._buildElement("a", {
+        xmlns: "urn:xmpp:sm:3",
+        h: String(this._smIncomingCount),
+      });
+      if (reply) this._connection.send(reply);
+      return true;
+    }, "urn:xmpp:sm:3", "r");
+
+    // Handle <resumed> from server (resume succeeded)
+    this._connection.addHandler((stanza: Element) => {
+      const hStr = stanza.getAttribute("h");
+      if (hStr) {
+        const ack = parseInt(hStr, 10);
+        if (Number.isFinite(ack)) this._handleSmAck(ack);
+      }
+      // Replay any unacked stanzas
+      const toReplay = [...this._smOutgoingQueue];
+      this._smOutgoingQueue = [];
+      this._smOutgoingCount -= toReplay.length;
+      if (this._smOutgoingCount < 0) this._smOutgoingCount = 0;
+      for (const s of toReplay) {
+        this._connection.send(s);
+        this._smOutgoingCount++;
+        this._smOutgoingQueue.push(s);
+      }
+      return true;
+    }, "urn:xmpp:sm:3", "resumed");
+
+    // Handle <failed/> from server (resume failed - need fresh auth)
+    this._connection.addHandler((_stanza: Element) => {
+      this._smEnabled = false;
+      this._smResumeId = null;
+      this._smOutgoingQueue = [];
+      this.emit("sm.failed", { accountId: this.config.accountId });
+      return true;
+    }, "urn:xmpp:sm:3", "failed");
+
+    // Track incoming stanzas: increment counter for any non-SM stanza
+    this._connection.addHandler((stanza: Element) => {
+      const ns = stanza.getAttribute("xmlns") ?? stanza.namespaceURI ?? "";
+      if (ns !== "urn:xmpp:sm:3") {
+        this._smIncomingCount++;
+      }
+      return true;  // don't consume; let other handlers process
+    }, null, null);
+  }
+
+  private _handleSmAck(ackedCount: number) {
+    // Server has acked stanzas up to this h count
+    // Drop already-acked entries from queue
+    const dropCount = ackedCount - (this._smOutgoingCount - this._smOutgoingQueue.length);
+    if (dropCount > 0) {
+      this._smOutgoingQueue.splice(0, dropCount);
+    }
+  }
+
+  private _startSmRequestTimer() {
+    if (this._smRequestTimer) return;
+    // Periodically request ack to keep queue from growing unbounded
+    this._smRequestTimer = setInterval(() => {
+      if (this._connection && this._connected && this._smEnabled
+          && this._smOutgoingQueue.length > 0) {
+        const r = this._buildElement("r", { xmlns: "urn:xmpp:sm:3" });
+        if (r) this._connection.send(r);
+      }
+    }, 30000);
+  }
+
+  private _stopSmRequestTimer() {
+    if (this._smRequestTimer) {
+      clearInterval(this._smRequestTimer);
+      this._smRequestTimer = null;
+    }
+  }
+
+  /**
+   * Wraps an outgoing stanza send, recording it for SM tracking.
+   * Called automatically from sendMessage if SM is enabled.
+   */
+  private _trackOutgoing(stanza: Element) {
+    if (!this._smEnabled) return;
+    this._smOutgoingCount++;
+    this._smOutgoingQueue.push(stanza);
+    // Cap queue at 100 entries to prevent memory growth
+    if (this._smOutgoingQueue.length > 100) {
+      this._smOutgoingQueue.shift();
+    }
+  }
+
+  // ============================================================
+  // XEP-0084 PEP User Avatar
+  // ============================================================
+  /**
+   * Publish own avatar via PEP. Accepts PNG/JPEG data URL or raw bytes.
+   * Computes SHA-1 hash and publishes to:
+   *   urn:xmpp:avatar:data (the bytes, keyed by hash)
+   *   urn:xmpp:avatar:metadata (info: hash, MIME, size, dims)
+   */
+  async publishPepAvatar(imageBytes: Uint8Array, mimeType: string = "image/png", width?: number, height?: number) {
+    if (!this._connection || !this._connected) return;
+    // SHA-1 hash
+    const imageBuffer = imageBytes.buffer.slice(
+      imageBytes.byteOffset,
+      imageBytes.byteOffset + imageBytes.byteLength
+    ) as ArrayBuffer;
+    const hashBuf = await crypto.subtle.digest("SHA-1", imageBuffer);
+    const hashBytes = new Uint8Array(hashBuf);
+    const hashHex = Array.from(hashBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    // base64 encode
+    let bin = "";
+    for (let i = 0; i < imageBytes.byteLength; i++) bin += String.fromCharCode(imageBytes[i]);
+    const dataB64 = btoa(bin);
+
+    // Publish data
+    const dataIq = this._$iq({ type: "set" })
+      .c("pubsub", { xmlns: "http://jabber.org/protocol/pubsub" })
+      .c("publish", { node: "urn:xmpp:avatar:data" })
+      .c("item", { id: hashHex })
+      .c("data", { xmlns: "urn:xmpp:avatar:data" }).t(dataB64);
+    await new Promise<void>((resolve) => {
+      this._connection.sendIQ(dataIq.tree(), () => resolve(), () => resolve());
+    });
+
+    // Publish metadata
+    const metaAttrs: Record<string, string> = {
+      bytes: String(imageBytes.byteLength),
+      id: hashHex,
+      type: mimeType,
+    };
+    if (width) metaAttrs.width = String(width);
+    if (height) metaAttrs.height = String(height);
+    const metaIq = this._$iq({ type: "set" })
+      .c("pubsub", { xmlns: "http://jabber.org/protocol/pubsub" })
+      .c("publish", { node: "urn:xmpp:avatar:metadata" })
+      .c("item", { id: hashHex })
+      .c("metadata", { xmlns: "urn:xmpp:avatar:metadata" })
+      .c("info", metaAttrs);
+    await new Promise<void>((resolve) => {
+      this._connection.sendIQ(metaIq.tree(), () => resolve(), () => resolve());
+    });
+  }
+
+  // ============================================================
+  // Generic PEP node publish / fetch (XEP-0163)
+  // Used by OMEMO (devicelist, bundles) and other PEP-based features.
+  // ============================================================
+  async publishPepNode(node: string, item: any, itemId: string = "current"): Promise<void> {
+    if (!this._connection || !this._connected) throw new Error("Not connected");
+    const iq = this._$iq({ type: "set" })
+      .c("pubsub", { xmlns: "http://jabber.org/protocol/pubsub" })
+      .c("publish", { node })
+      .c("item", { id: itemId });
+    // Build the inner item XML based on item.type
+    if (item.type === "devicelist") {
+      const list = iq.c("list", { xmlns: "eu.siacs.conversations.axolotl" });
+      for (const id of item.deviceIds as number[]) {
+        list.c("device", { id: String(id) }).up();
+      }
+    } else if (item.type === "bundle") {
+      const b = item.bundle;
+      const bn = iq.c("bundle", { xmlns: "eu.siacs.conversations.axolotl" });
+      bn.c("signedPreKeyPublic", { signedPreKeyId: String(b.signedPreKeyId) })
+        .t(arrayBufferToBase64(b.signedPreKey)).up();
+      bn.c("signedPreKeySignature").t(arrayBufferToBase64(b.signedPreKeySignature)).up();
+      bn.c("identityKey").t(arrayBufferToBase64(b.identityKey)).up();
+      const pks = bn.c("prekeys");
+      for (const pk of b.preKeys) {
+        pks.c("preKeyPublic", { preKeyId: String(pk.keyId) })
+          .t(arrayBufferToBase64(pk.publicKey)).up();
+      }
+    } else if (item.type === "raw" && item.xml) {
+      iq.cnode(item.xml);
+    }
+    await new Promise<void>((resolve, reject) => {
+      this._connection.sendIQ(iq.tree(), () => resolve(), (err: any) => reject(err));
+    });
+  }
+
+  async fetchPepNode(jid: string, node: string): Promise<Element | null> {
+    if (!this._connection || !this._connected) return null;
+    return new Promise((resolve) => {
+      const iq = this._$iq({ type: "get", to: jid })
+        .c("pubsub", { xmlns: "http://jabber.org/protocol/pubsub" })
+        .c("items", { node });
+      this._connection.sendIQ(iq.tree(), (result: Element) => {
+        resolve(result);
+      }, () => resolve(null));
+    });
+  }
+
+  /**
+   * Fetch a peer's PEP avatar. Returns data URL or null if not published.
+   */
+  async fetchPepAvatar(peerJid: string): Promise<string | null> {
+    if (!this._connection || !this._connected) return null;
+    return new Promise((resolve) => {
+      // First fetch metadata to get hash
+      const metaIq = this._$iq({ type: "get", to: peerJid })
+        .c("pubsub", { xmlns: "http://jabber.org/protocol/pubsub" })
+        .c("items", { node: "urn:xmpp:avatar:metadata" });
+      this._connection.sendIQ(metaIq.tree(), (metaResult: Element) => {
+        const info = metaResult.querySelector("metadata info");
+        const hash = info?.getAttribute("id");
+        const mime = info?.getAttribute("type") ?? "image/png";
+        if (!hash) { resolve(null); return; }
+
+        // Then fetch data by hash
+        const dataIq = this._$iq({ type: "get", to: peerJid })
+          .c("pubsub", { xmlns: "http://jabber.org/protocol/pubsub" })
+          .c("items", { node: "urn:xmpp:avatar:data" })
+          .c("item", { id: hash });
+        this._connection.sendIQ(dataIq.tree(), (dataResult: Element) => {
+          const dataB64 = dataResult.querySelector("data")?.textContent?.trim();
+          if (!dataB64) { resolve(null); return; }
+          resolve(`data:${mime};base64,${dataB64}`);
+        }, () => resolve(null));
+      }, () => resolve(null));
+    });
+  }
+
+  // ============================================================
+  // XEP-0280 Message Carbons
+  // ============================================================
+  private _enableCarbons() {
+    if (!this._connection) return;
+    const iq = this._$iq({ type: "set", id: "carbons-enable" })
+      .c("enable", { xmlns: "urn:xmpp:carbons:2" });
+    this._connection.sendIQ(iq.tree(), () => {
+      // success - server confirmed carbons enabled
+    }, () => {
+      // failed - server may not support carbons; non-fatal
+    });
+  }
+
+  // ============================================================
+  // XEP-0352 Client State Indication
+  // ============================================================
+  private _csiActive = true;
+  private _csiVisibilityHandler: (() => void) | null = null;
+
+  private _setupCsiHandling() {
+    if (typeof document === "undefined") return;
+    this._csiVisibilityHandler = () => {
+      if (document.hidden) this.setInactive();
+      else this.setActive();
+    };
+    document.addEventListener("visibilitychange", this._csiVisibilityHandler);
+  }
+
+  setActive() {
+    if (!this._connection || !this._connected || this._csiActive) return;
+    this._csiActive = true;
+    const stanza = this._buildElement("active", { xmlns: "urn:xmpp:csi:0" });
+    if (stanza) this._connection.send(stanza);
+  }
+
+  setInactive() {
+    if (!this._connection || !this._connected || !this._csiActive) return;
+    this._csiActive = false;
+    const stanza = this._buildElement("inactive", { xmlns: "urn:xmpp:csi:0" });
+    if (stanza) this._connection.send(stanza);
+  }
+
+  private _buildElement(name: string, attrs: Record<string, string>): Element | null {
+    if (!this._Strophe) return null;
+    return this._Strophe.xmlElement(name, attrs as any);
+  }
+
+  // ============================================================
+  // XEP-0030 Service Discovery + XEP-0115 Entity Capabilities
+  // ============================================================
+  private static readonly SUPPORTED_FEATURES = [
+    "http://jabber.org/protocol/disco#info",
+    "http://jabber.org/protocol/disco#items",
+    "urn:xmpp:carbons:2",
+    "urn:xmpp:csi:0",
+    "urn:xmpp:mam:2",
+    "urn:xmpp:ping",
+    "urn:xmpp:receipts",
+    "urn:xmpp:chat-markers:0",
+    "urn:xmpp:reactions:0",
+    "urn:xmpp:reply:0",
+    "urn:xmpp:message-correct:0",
+    "urn:xmpp:message-retract:1",
+    "urn:xmpp:fasten:0",
+    "urn:xmpp:avatar:metadata+notify",
+    "urn:xmpp:avatar:data",
+    "urn:xmpp:blocking",
+    "http://jabber.org/protocol/muc",
+    "http://jabber.org/protocol/chatstates",
+    "vcard-temp",
+    "jabber:x:conference",
+  ];
+
+  /**
+   * Compute the XEP-0115 caps verification string.
+   * Format: SHA-1 of "client/type/lang/name<feature1<feature2<...<"
+   */
+  private async _computeCapsHash(): Promise<string> {
+    const features = [...XmppClient.SUPPORTED_FEATURES].sort();
+    const idString = "client/web//Conjiweb<" + features.join("<") + "<";
+    const buf = new TextEncoder().encode(idString);
+    const hash = await crypto.subtle.digest("SHA-1", buf);
+    // base64 encode
+    const bytes = new Uint8Array(hash);
+    let bin = "";
+    for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  /**
+   * Setup handler for incoming disco#info queries about our capabilities.
+   */
+  private _setupDiscoHandler() {
+    if (!this._connection) return;
+    this._connection.addHandler((iq: Element) => {
+      const fromIq = iq.getAttribute("from") ?? "";
+      const idIq = iq.getAttribute("id") ?? "";
+      const reply = this._$iq({ type: "result", to: fromIq, id: idIq })
+        .c("query", { xmlns: "http://jabber.org/protocol/disco#info" })
+        .c("identity", { category: "client", type: "web", name: "Conjiweb" }).up();
+      for (const feature of XmppClient.SUPPORTED_FEATURES) {
+        reply.c("feature", { var: feature }).up();
+      }
+      this._connection.send(reply);
+      return true;
+    }, "http://jabber.org/protocol/disco#info", "iq", "get");
+  }
+
   disconnect() {
+    // Clean up CSI visibility listener
+    if (this._csiVisibilityHandler && typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this._csiVisibilityHandler);
+      this._csiVisibilityHandler = null;
+    }
+    // Stop SM request timer (keep queue intact for resume on reconnect)
+    this._stopSmRequestTimer();
     if (this._connection) {
       this._connection.disconnect();
       this._connected = false;
@@ -861,4 +1370,3 @@ export function destroyClient(accountId: string) {
 export function getAllClients(): XmppClient[] {
   return Array.from(clients.values());
 }
-

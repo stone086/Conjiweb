@@ -17,3 +17,5 @@ def get_app_version() -> str:
 
     return "0.0.0"
 
+
+APP_VERSION = get_app_version()

@@ -33,3 +33,24 @@ export function debounce<T extends (...args: any[]) => void>(fn: T, delay: numbe
     timer = setTimeout(() => fn(...args), delay);
   }) as T;
 }
+
+import { format, isToday, isYesterday, isThisWeek } from "date-fns";
+
+/**
+ * Format a message timestamp with context-aware precision:
+ * - Same day   → "HH:mm"
+ * - This week  → "EEE HH:mm"  (e.g. "Mon 14:30")
+ * - Older      → "MM/dd HH:mm"
+ *
+ * The full ISO timestamp is always available via title/aria-label.
+ */
+export function formatMsgTime(ts: number): string {
+  if (isToday(ts))     return format(ts, "HH:mm");
+  if (isYesterday(ts)) return format(ts, `昨天 HH:mm`);
+  if (isThisWeek(ts))  return format(ts, "EEE HH:mm");
+  return format(ts, "MM/dd HH:mm");
+}
+
+export function formatMsgTimeFull(ts: number): string {
+  return format(ts, "yyyy-MM-dd HH:mm:ss");
+}

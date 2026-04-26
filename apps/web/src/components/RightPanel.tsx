@@ -1,13 +1,15 @@
 ﻿import { useState } from "react";
+import OmemoTrustView from "./OmemoTrustView";
 import { useChatStore, Conversation } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore, MucMember } from "@/stores/groupStore";
 import { aiApi } from "@/services/api";
-import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star, Image, Download, Send, Inbox } from "lucide-react";
+import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
+import Avatar from "@/components/Avatar";
 
 type RightTab = "info" | "members" | "files" | "starred" | "ai";
 
@@ -129,9 +131,7 @@ function MembersTab({ roomJid }: { roomJid: string }) {
     <div className="flex flex-col gap-1 p-2">
       {members.map((m) => (
         <div key={m.jid} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/4">
-          <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-xs font-medium uppercase text-surface-200">
-            {m.nickname[0]}
-          </div>
+          <Avatar name={m.nickname} size="xs" />
           <div className="flex-1 min-w-0">
             <p className="text-sm text-surface-50 truncate">{m.nickname}</p>
             <p className="text-xs text-surface-200/40">{roleLabel[m.affiliation]}</p>
@@ -155,9 +155,7 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
   return (
     <div className="p-4 flex flex-col gap-4">
       <div className="flex flex-col items-center gap-2 py-2">
-        <div className="w-16 h-16 rounded-full bg-surface-800 flex items-center justify-center text-2xl font-bold uppercase text-surface-200">
-          {(conversation.title ?? conversation.peerJid)[0]}
-        </div>
+        <Avatar name={conversation.title ?? conversation.peerJid} size="xl" />
         <div className="text-center">
           <p className="font-semibold text-surface-50">{conversation.title ?? conversation.peerJid}</p>
           <p className="text-xs text-surface-200/40 mt-0.5">{conversation.peerJid}</p>
@@ -186,6 +184,138 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
           <p className="text-xs text-surface-200/40 mb-1">{t("right.type")}</p>
           <p className="text-sm text-surface-50 capitalize">{conversation.type}</p>
         </div>
+        {conversation.type === "private" && contact && activeAccountId && (
+          <>
+            <OmemoTrustButton peerJid={contact.jid} />
+            <ContactNotesEditor
+              accountId={activeAccountId}
+              jid={contact.jid}
+              initialNotes={contact.notes ?? ""}
+              initialTags={contact.tags ?? []}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OmemoTrustButton({ peerJid }: { peerJid: string }) {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="glass rounded-lg p-3 flex items-center gap-2 hover:bg-white/5 text-left"
+      >
+        <Shield size={14} className="text-accent-soft" />
+        <span className="text-sm text-surface-200">{t("omemo.trustTitle")}</span>
+      </button>
+      {open && <OmemoTrustView peerJid={peerJid} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function ContactNotesEditor({
+  accountId,
+  jid,
+  initialNotes,
+  initialTags,
+}: {
+  accountId: string;
+  jid: string;
+  initialNotes: string;
+  initialTags: string[];
+}) {
+  const { t } = useLanguage();
+  const setContactNotes = useRosterStore((s) => s.setContactNotes);
+  const setContactTags = useRosterStore((s) => s.setContactTags);
+  const [notes, setNotes] = useState(initialNotes);
+  const [newTag, setNewTag] = useState("");
+  const [tags, setTags] = useState<string[]>(initialTags);
+  const [editing, setEditing] = useState(false);
+
+  const saveNotes = () => {
+    setContactNotes(accountId, jid, notes);
+    setEditing(false);
+  };
+
+  const addTag = () => {
+    const v = newTag.trim();
+    if (!v || tags.includes(v)) return;
+    const next = [...tags, v];
+    setTags(next);
+    setContactTags(accountId, jid, next);
+    setNewTag("");
+  };
+
+  const removeTag = (tag: string) => {
+    const next = tags.filter((tg) => tg !== tag);
+    setTags(next);
+    setContactTags(accountId, jid, next);
+  };
+
+  return (
+    <div className="glass rounded-lg p-3 flex flex-col gap-2">
+      <p className="text-xs text-surface-200/40">{t("right.notes")}</p>
+      {editing ? (
+        <>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={t("right.notesPlaceholder")}
+            className="w-full text-sm bg-black/20 border border-white/5 rounded p-2 resize-none text-surface-50"
+            rows={3}
+            autoFocus
+          />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { setNotes(initialNotes); setEditing(false); }}
+                    className="text-xs px-2 py-1 rounded hover:bg-white/5 text-surface-200/60">
+              {t("common.cancel")}
+            </button>
+            <button onClick={saveNotes} className="btn-primary text-xs px-3 py-1">
+              {t("common.save")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="text-left text-sm text-surface-50/80 hover:text-surface-50 transition-colors"
+        >
+          {notes || <span className="text-surface-200/30 italic">{t("right.notesEmpty")}</span>}
+        </button>
+      )}
+
+      <div className="border-t border-white/5 pt-2 mt-1">
+        <p className="text-xs text-surface-200/40 mb-1">{t("right.tags")}</p>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-accent/20 text-accent-soft flex items-center gap-1"
+            >
+              {tag}
+              <button onClick={() => removeTag(tag)} className="opacity-60 hover:opacity-100">×</button>
+            </span>
+          ))}
+          {tags.length === 0 && (
+            <span className="text-[11px] text-surface-200/30 italic">{t("right.tagsEmpty")}</span>
+          )}
+        </div>
+        <div className="flex gap-1">
+          <input
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addTag()}
+            placeholder={t("right.addTagPlaceholder")}
+            className="flex-1 text-xs bg-black/20 border border-white/5 rounded px-2 py-1 text-surface-50"
+          />
+          <button onClick={addTag} className="text-xs px-2 py-1 rounded hover:bg-white/5 text-surface-200/60">
+            +
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -193,21 +323,13 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
 
 function FilesTab({ conversationId }: { conversationId: string }) {
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
-  const files = messages.flatMap((m) =>
-    (m.attachments ?? [])
-      .filter((a) => Boolean(a.downloadUrl))
-      .map((a) => ({
-        ...a,
-        messageId: m.id,
-        timestamp: m.timestamp,
-        direction: m.direction,
-        senderJid: m.senderJid,
-      }))
-  );
+  const files = messages
+    .flatMap((m) => m.attachments ?? [])
+    .filter((a) => Boolean(a.downloadUrl));
 
   const unique = Array.from(
-    new Map(files.map((f) => [f.id, f])).values(),
-  ).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+    new Map(files.map((f) => [f.id, f])).values()
+  );
 
   if (unique.length === 0) {
     return (
@@ -222,43 +344,21 @@ function FilesTab({ conversationId }: { conversationId: string }) {
     <div className="flex flex-col gap-2 p-3">
       {unique.map((f) => (
         <a
-          key={`${f.messageId}:${f.id}`}
+          key={f.id}
           href={f.downloadUrl}
           target="_blank"
           rel="noreferrer"
-          className="glass rounded-lg p-3 flex items-start gap-3 hover:bg-white/5"
+          className="glass rounded-lg p-3 flex items-center gap-3 hover:bg-white/5"
         >
-          <div className="w-8 h-8 rounded-lg bg-surface-800 flex items-center justify-center text-surface-200/60 flex-shrink-0">
-            {f.mimeType.startsWith("image/") ? <Image size={15} /> : <FileText size={15} />}
-          </div>
+          <FileText size={14} className="text-surface-200/50 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-surface-50 truncate">{f.fileName}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-surface-200/40">
-              <span>{formatFileSize(f.sizeBytes)}</span>
-              <span className="flex items-center gap-1">
-                {f.direction === "out" ? <Send size={10} /> : <Inbox size={10} />}
-                {f.direction === "out" ? "Sent" : "Received"}
-              </span>
-              <span>{new Date(f.timestamp).toLocaleString()}</span>
-            </div>
+            <p className="text-[10px] text-surface-200/40">{(f.sizeBytes / 1024).toFixed(1)} KB</p>
           </div>
-          <Download size={14} className="text-surface-200/35 flex-shrink-0 mt-1" />
         </a>
       ))}
     </div>
   );
-}
-
-function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 function StarredTab({ conversationId }: { conversationId: string }) {
@@ -350,5 +450,4 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     </div>
   );
 }
-
 

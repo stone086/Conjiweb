@@ -87,3 +87,13 @@ Component "conference.XMPP_DOMAIN" "muc"
   }
   restrict_room_creation = false
   max_history_messages = 100
+
+
+-- =====================================================
+-- Push notification appserver Component (Conjiweb custom relay)
+-- See configs/prosody/mod_conjiweb_push.lua
+-- =====================================================
+Component "push.XMPP_DOMAIN"
+  modules_enabled = { "conjiweb_push" }
+  conjiweb_push_url = "http://127.0.0.1:8000/push/notify"
+  conjiweb_push_secret = "PUSH_SHARED_SECRET_PLACEHOLDER"

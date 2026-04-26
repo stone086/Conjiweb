@@ -234,3 +234,113 @@ async def conversation_insight(req: InsightRequest):
             )
     except Exception:
         return InsightResponse(sentiment="neutral", summary="")
+
+
+
+# =====================================================
+# KILLER-01: RAG question answering over conversation history
+# =====================================================
+class RagRequest(BaseModel):
+    """Ask a question, AI answers using cached message history as context."""
+    question: str
+    account_id: str
+    max_messages: int = 200          # how many recent messages to use as context
+    conversation_ids: List[str] = []  # if empty, all conversations of this account
+
+
+class RagResponse(BaseModel):
+    answer: str
+    sources: List[dict] = []  # list of {conversation_id, message_id, snippet, timestamp}
+
+
+@router.post("/rag", response_model=RagResponse)
+async def rag_query(req: RagRequest):
+    """
+    Retrieval-augmented generation over the user's local message history.
+
+    1. Pull recent messages from DB (server-side store)
+    2. Build a context block with sender + body + timestamp
+    3. Send to LLM with instruction to answer + cite source IDs
+    4. Parse cited message IDs and return as sources
+    """
+    from app.core.database import async_session
+    from app.models import Message, Conversation
+    from sqlalchemy import select, and_, desc
+
+    api_key, base_url, model = _provider_config()
+
+    async with async_session() as db:
+        query = select(Message, Conversation).join(
+            Conversation, Conversation.id == Message.conversation_id
+        ).where(Conversation.account_id == req.account_id)
+
+        if req.conversation_ids:
+            query = query.where(Message.conversation_id.in_(req.conversation_ids))
+
+        query = query.order_by(desc(Message.created_at)).limit(req.max_messages)
+        result = await db.execute(query)
+        rows = result.all()
+
+    if not rows:
+        return RagResponse(answer="No messages in history to answer from.", sources=[])
+
+    # Reverse for chronological order in context
+    rows = list(reversed(rows))
+    context_lines: List[str] = []
+    source_index: dict[str, dict] = {}
+    for i, (msg, conv) in enumerate(rows):
+        if not msg.body:
+            continue
+        ref_id = f"M{i}"
+        source_index[ref_id] = {
+            "conversation_id": conv.id,
+            "message_id": msg.id,
+            "snippet": msg.body[:200],
+            "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+            "sender": msg.sender_jid,
+        }
+        context_lines.append(
+            f"[{ref_id}] ({msg.sender_jid}, {msg.created_at.strftime('%Y-%m-%d %H:%M') if msg.created_at else '?'}): {msg.body[:300]}"
+        )
+
+    if not context_lines:
+        return RagResponse(answer="No text messages to answer from.", sources=[])
+
+    system_prompt = (
+        "You are a helpful assistant answering questions about a user's chat history. "
+        "Each message is prefixed with [Mxxx] - use these IDs to cite sources. "
+        "Format citations as [Mxxx] inline. Be accurate, concise, and cite sources. "
+        "If the answer isn't in the messages, say so."
+    )
+    user_prompt = (
+        f"Chat history:\n{chr(10).join(context_lines)}\n\n"
+        f"Question: {req.question}\n\n"
+        "Answer:"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": 800,
+                },
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            answer = data["choices"][0]["message"]["content"].strip()
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"AI provider error: {e}")
+
+    # Extract cited message IDs and resolve to source objects
+    import re
+    cited_refs = set(re.findall(r"\[M(\d+)\]", answer))
+    sources = [source_index[f"M{ref}"] for ref in cited_refs if f"M{ref}" in source_index]
+
+    return RagResponse(answer=answer, sources=sources)

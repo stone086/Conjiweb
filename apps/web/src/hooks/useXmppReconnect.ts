@@ -54,11 +54,16 @@ export function useXmppReconnect() {
           attemptsRef.current[account.id] = 0;
           setConnected(account.id, true);
           setReconnecting(account.id, false);
+          // Refresh user-token after reconnect so file uploads keep working
           try {
-            const tokenRes = await authApi.getUserToken(account.jid, runtimePassword).catch(() => null);
-            if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
+            const tokenRes = await authApi.getUserToken(
+              account.jid, runtimePassword
+            ).catch(() => null);
+            if (tokenRes?.access_token) {
+              setUserToken(account.id, tokenRes.access_token);
+            }
           } catch {
-            // Non-fatal: token refresh can be retried later.
+            // Non-fatal: upload will retry on next attempt
           }
         } catch {
           attemptsRef.current[account.id] = attempt + 1;

@@ -1,11 +1,11 @@
 /**
  * apiSocket.ts
  * Connects to the FastAPI WebSocket endpoint for real-time server push.
- * Separate from XMPP - this handles backend-originated events
+ * Separate from XMPP — this handles backend-originated events
  * (AI job completions, admin alerts, plugin events, etc.).
  *
- * Authentication: passes a JWT as query param because WebSocket
- * connections do not carry Authorization headers.
+ * Authentication: passes the user JWT as ?token= query param
+ * because WebSocket connections cannot carry Authorization headers.
  */
 
 import { getUserToken } from "@/services/api";
@@ -34,16 +34,10 @@ class ApiSocketClient {
   }
 
   connect(accountId: string) {
-    if (this.ws?.readyState === WebSocket.OPEN && this.accountId === accountId) return;
-    if (this.accountId && this.accountId !== accountId) this.disconnect();
-
+    if (this.ws?.readyState === WebSocket.OPEN) return;
     this.accountId = accountId;
+
     const token = getUserToken(accountId) ?? localStorage.getItem("admin_token") ?? "";
-    if (!token) {
-      this._connected = false;
-      this.emit("disconnected", { accountId, code: 4001 });
-      return;
-    }
     const wsBase = (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
       .replace(/^https/, "wss")
       .replace(/^http/, "ws");
@@ -61,16 +55,14 @@ class ApiSocketClient {
       try {
         const data = JSON.parse(ev.data);
         this.emit(data.type as ApiSocketEvent, data);
-      } catch {
-        // Ignore malformed payloads
-      }
+      } catch { /* ignore malformed messages */ }
     };
 
     this.ws.onclose = (ev) => {
       this._connected = false;
-      this.emit("disconnected", { accountId, code: ev.code });
       this._stopPing();
-      // Auth failure - do not reconnect in a loop.
+      this.emit("disconnected", { accountId, code: ev.code });
+      // 4001/4003 = auth failure, do not reconnect
       if (ev.code !== 4001 && ev.code !== 4003) {
         this._scheduleReconnect();
       }

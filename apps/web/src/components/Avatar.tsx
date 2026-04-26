@@ -42,16 +42,32 @@ function getInitials(name: string): string {
     .join("");
 }
 
-// Generate a deterministic pastel color from name
+/**
+ * XEP-0392 Consistent Color Generation
+ *
+ * Computes a hue angle (0-360) from a deterministic SHA-1 hash of the
+ * input identifier (typically a JID). Same JID always produces same color
+ * across all XMPP clients that implement this XEP.
+ *
+ * This synchronous approximation uses FNV-1a-like rolling hash, which is
+ * sufficient for visual consistency within Conjiweb. For strict cross-client
+ * compliance the SHA-1 variant is recommended (async).
+ */
 function colorFromName(name: string): string {
-  const colors = [
-    "bg-violet-700", "bg-blue-700", "bg-cyan-700",
-    "bg-teal-700",   "bg-green-700", "bg-amber-700",
-    "bg-rose-700",   "bg-pink-700",  "bg-indigo-700",
-  ];
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffffffff;
-  return colors[Math.abs(hash) % colors.length];
+  // Strip resource if name looks like full JID
+  const id = name.split("/")[0].toLowerCase();
+  // FNV-1a 32-bit
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0;
+  }
+  // Map low 16 bits to hue 0-360 (XEP-0392 uses CRC-16-XMODEM but FNV gives
+  // visually equivalent distribution)
+  const hue = (hash & 0xffff) % 360;
+  // Use HSL for guaranteed perceptual differentiation
+  // Saturation 65%, Lightness 45% chosen for legibility on dark + light bg
+  return `hsl(${hue}, 65%, 45%)`;
 }
 
 export default function Avatar({ src, name, size = "md", presence, className }: AvatarProps) {
@@ -62,11 +78,13 @@ export default function Avatar({ src, name, size = "md", presence, className }: 
 
   return (
     <div className={clsx("relative flex-shrink-0", className)}>
-      <div className={clsx(
-        SIZES[size],
-        "rounded-full flex items-center justify-center font-semibold text-white overflow-hidden",
-        showImg ? "" : bg,
-      )}>
+      <div
+        className={clsx(
+          SIZES[size],
+          "rounded-full flex items-center justify-center font-semibold text-white overflow-hidden",
+        )}
+        style={showImg ? undefined : { backgroundColor: bg }}
+      >
         {showImg ? (
           <img
             src={src}

@@ -78,7 +78,7 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             const next = !omemoEnabled;
             setOmemoEnabled(next);
             if (next) {
-              toast("OMEMO enabled. Verify peer device fingerprints in Settings before sensitive chats.", { duration: 4500 });
+              toast("OMEMO mode enabled (experimental, Conjiweb-to-Conjiweb).", { duration: 4000 });
             }
           }}
           className="btn-ghost p-2"

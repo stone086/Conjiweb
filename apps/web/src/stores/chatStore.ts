@@ -64,7 +64,6 @@ interface ChatState {
   pruneHistoryOlderThan: (cutoffTs: number) => void;
   mergeDuplicatePrivateConversations: () => void;
   deleteConversation: (conversationId: string) => void;
-  setConversationPinned: (conversationId: string, pinned: boolean) => void;
   setComposerDraft: (conversationId: string, draft: string) => void;
   clearComposerDraft: (conversationId: string) => void;
   getComposerDraft: (conversationId: string) => string;
@@ -281,18 +280,6 @@ export const useChatStore = create<ChatState>()(
             composerDrafts: nextDrafts,
             typingPeers: nextTypingPeers,
             activeConversationId: s.activeConversationId === conversationId ? null : s.activeConversationId,
-          };
-        }),
-
-      setConversationPinned: (conversationId, pinned) =>
-        set((s) => {
-          const conv = s.conversations[conversationId];
-          if (!conv) return s;
-          return {
-            conversations: {
-              ...s.conversations,
-              [conversationId]: { ...conv, pinned },
-            },
           };
         }),
 

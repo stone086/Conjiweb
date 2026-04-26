@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
@@ -35,20 +35,84 @@ export default function LoginPage() {
     initXmppBridge(client);
     try {
       await client.connect();
-      const tokenRes = await authApi.getUserToken(jid, form.password).catch(() => null);
+      const tokenRes = await authApi.getUserToken(jid, form.password);
       if (tokenRes?.access_token) {
         setUserToken(id, tokenRes.access_token);
-        apiSocket.connect(id);
-      } else {
-        // Non-fatal: XMPP is connected, but backend token endpoint may be unavailable.
-        toast("Connected, but backend token service is unavailable right now.");
       }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
+      apiSocket.connect(id);
       navigate("/");
     } catch (err: any) {
       useAccountStore.getState().removeAccount(id);
       throw err;
+    }
+  };
+
+  const [ssoProviders, setSsoProviders] = useState<{ oidc: boolean; ldap: boolean; oidc_label: string; ldap_label: string } | null>(null);
+  const [ldapMode, setLdapMode] = useState(false);
+  const [ldapUser, setLdapUser] = useState("");
+  const [ldapPass, setLdapPass] = useState("");
+
+  // Discover available SSO providers on mount
+  useEffect(() => {
+    fetch("/sso/providers")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data && (data.oidc || data.ldap)) setSsoProviders(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Handle SSO redirect-back-with-token
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith("#sso-token=")) {
+      const params = new URLSearchParams(hash.slice(1));
+      const token = params.get("sso-token");
+      const jid = params.get("jid");
+      if (token && jid) {
+        // Build the account from SSO token, store it, and connect
+        const id = crypto.randomUUID();
+        useAccountStore.getState().addAccount({
+          id, jid,
+          domain: jid.split("@")[1] ?? "",
+          displayName: jid.split("@")[0],
+        });
+        setUserToken(id, token);
+        toast.success("SSO login successful");
+        // Clear hash and redirect
+        window.history.replaceState(null, "", "/");
+        navigate("/");
+      }
+    }
+  }, [navigate]);
+
+  const handleLdapLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ldapUser || !ldapPass) return;
+    setLoading(true);
+    try {
+      const r = await fetch("/sso/ldap/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: ldapUser, password: ldapPass }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "LDAP login failed");
+      const data = await r.json();
+      const id = crypto.randomUUID();
+      useAccountStore.getState().addAccount({
+        id, jid: data.jid,
+        domain: data.jid.split("@")[1] ?? "",
+        displayName: ldapUser,
+      });
+      setUserToken(id, data.access_token);
+      toast.success("LDAP login successful");
+      navigate("/");
+    } catch (err: any) {
+      toast.error(err?.message ?? "LDAP login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,6 +196,52 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
+          {ssoProviders && (
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <p className="text-xs text-surface-200/40 text-center mb-3">Or sign in with</p>
+              <div className="flex flex-col gap-2">
+                {ssoProviders.oidc && (
+                  <a
+                    href="/sso/oidc/login"
+                    className="btn-secondary text-sm text-center py-2 hover:bg-white/10"
+                  >
+                    {ssoProviders.oidc_label}
+                  </a>
+                )}
+                {ssoProviders.ldap && (
+                  <button
+                    type="button"
+                    onClick={() => setLdapMode(!ldapMode)}
+                    className="btn-secondary text-sm py-2 hover:bg-white/10"
+                  >
+                    {ssoProviders.ldap_label}
+                  </button>
+                )}
+              </div>
+              {ssoProviders.ldap && ldapMode && (
+                <form onSubmit={handleLdapLogin} className="flex flex-col gap-2 mt-3">
+                  <input
+                    type="text"
+                    placeholder="Username"
+                    value={ldapUser}
+                    onChange={(e) => setLdapUser(e.target.value)}
+                    className="input-field text-sm"
+                    autoFocus
+                  />
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={ldapPass}
+                    onChange={(e) => setLdapPass(e.target.value)}
+                    className="input-field text-sm"
+                  />
+                  <button type="submit" disabled={loading} className="btn-primary text-sm py-2">
+                    LDAP Sign In
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
         </div>
         <p className="text-center text-xs text-surface-200/20 mt-6">Conjiweb · Open Source · v{__APP_VERSION__}</p>
       </div>

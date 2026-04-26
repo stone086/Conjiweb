@@ -12,13 +12,14 @@ import { clsx } from "clsx";
 import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
 import { getStoredLanguage, Language, setLanguage, useLanguage } from "@/utils/i18n";
 import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDays, setStoredHistoryRetentionDays } from "@/services/historyRetention";
-import { getOmemoFingerprintForJid, getPeerOmemoFingerprints, OmemoDeviceFingerprint } from "@/services/omemoFingerprint";
+import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
 import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
-import { isPeerDeviceTrusted, setPeerDeviceTrust } from "@/services/omemoTrust";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { accountsApi, authApi, setUserToken } from "@/services/api";
 import { clearLocalAccountData } from "@/services/localDb";
+import Avatar from "@/components/Avatar";
 import { apiSocket } from "@/services/apiSocket";
+import { isPushSubscribed, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/services/push";
 
 const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
 const DENSITY_KEY = "conjiweb-message-density";
@@ -59,7 +60,6 @@ function AccountCard({ account }: { account: XmppAccount }) {
       accountsApi.create({ jid: account.jid, domain: account.jid.split("@")[1] ?? "localhost" }).catch(() => {});
       const tokenRes = await authApi.getUserToken(account.jid, runtimePassword).catch(() => null);
       if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
-      apiSocket.connect(account.id);
       toast.success(`${t("toast.connected")}: ${account.jid}`);
     } catch (e: any) {
       toast.error(e.message ?? t("toast.connectionFailed"));
@@ -70,13 +70,13 @@ function AccountCard({ account }: { account: XmppAccount }) {
 
   const disconnect = () => {
     destroyClient(account.id);
-    apiSocket.disconnect();
     setConnected(account.id, false);
     toast(t("toast.disconnected"));
   };
 
   const removeAccountWithData = async () => {
     disconnect();
+    apiSocket.disconnect();
     clearChatAccountData(account.id);
     clearRosterAccountData(account.id);
     await clearLocalAccountData(account.id).catch(() => {});
@@ -86,10 +86,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
   return (
     <div className="glass rounded-xl p-4 flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-surface-800 flex items-center justify-center
-                        text-surface-200 font-semibold uppercase">
-          {(account.displayName ?? account.jid)[0]}
-        </div>
+        <Avatar name={account.displayName ?? account.jid} size="md" presence={account.presence} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-surface-50 truncate">
             {account.displayName ?? account.jid.split("@")[0]}
@@ -181,6 +178,35 @@ export default function SettingsPage() {
   const addAccount = useAccountStore((s) => s.addAccount);
   const setConnected = useAccountStore((s) => s.setConnected);
   const soundEnabled = useNotificationStore((s) => s.soundEnabled);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    isPushSupported().then((supported) => {
+      if (cancelled) return;
+      setPushSupported(supported);
+      if (supported) {
+        isPushSubscribed().then((subscribed) => {
+          if (!cancelled) setPushEnabled(subscribed);
+        });
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleTogglePush = async (checked: boolean) => {
+    if (checked) {
+      const ok = await subscribeToPush();
+      setPushEnabled(ok);
+      if (!ok) toast.error(t("toast.pushFailed"));
+      else toast.success(t("toast.pushEnabled"));
+    } else {
+      const ok = await unsubscribeFromPush();
+      setPushEnabled(!ok);
+      if (ok) toast.success(t("toast.pushDisabled"));
+    }
+  };
   const browserEnabled = useNotificationStore((s) => s.browserEnabled);
   const setSoundEnabled = useNotificationStore((s) => s.setSoundEnabled);
   const setBrowserEnabled = useNotificationStore((s) => s.setBrowserEnabled);
@@ -198,9 +224,6 @@ export default function SettingsPage() {
   const [omemoFingerprints, setOmemoFingerprints] = useState<Record<string, string>>({});
   const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
   const [omemoEnabled, setOmemoEnabledState] = useState<boolean>(getOmemoEnabled());
-  const [peerJidInput, setPeerJidInput] = useState("");
-  const [peerDevices, setPeerDevices] = useState<OmemoDeviceFingerprint[]>([]);
-  const [peerLookupLoading, setPeerLookupLoading] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("add") === "1") {
@@ -319,27 +342,6 @@ export default function SettingsPage() {
     }
   };
 
-  const loadPeerFingerprints = async () => {
-    if (!activeAccountId || !peerJidInput.trim()) return;
-    setPeerLookupLoading(true);
-    try {
-      const values = await getPeerOmemoFingerprints(activeAccountId, peerJidInput.trim());
-      setPeerDevices(values);
-      if (values.length === 0) {
-        toast("No OMEMO devices found for this JID yet.");
-      }
-    } finally {
-      setPeerLookupLoading(false);
-    }
-  };
-
-  const toggleTrust = (item: OmemoDeviceFingerprint) => {
-    if (!activeAccountId || !peerJidInput.trim()) return;
-    const trusted = isPeerDeviceTrusted(activeAccountId, peerJidInput.trim(), item.deviceId, item.fingerprint);
-    setPeerDeviceTrust(activeAccountId, peerJidInput.trim(), item.deviceId, item.fingerprint, !trusted);
-    setPeerDevices((prev) => [...prev]);
-  };
-
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
@@ -442,6 +444,20 @@ export default function SettingsPage() {
             {t("settings.notifications")}
           </h2>
           <div className="glass rounded-xl p-4 flex flex-col gap-3">
+            {pushSupported && (
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex flex-col">
+                  <span className="text-sm text-surface-200">{t("settings.notifyPush")}</span>
+                  <span className="text-xs text-surface-200/40">{t("settings.notifyPushHint")}</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={pushEnabled}
+                  onChange={(e) => handleTogglePush(e.target.checked)}
+                  className="w-4 h-4 accent-[#7c6af7]"
+                />
+              </label>
+            )}
             {[
               { label: t("settings.notifyBrowser"), key: "browser" },
               { label: t("settings.notifySound"), key: "sound" },
@@ -534,44 +550,6 @@ export default function SettingsPage() {
                 );
               })
             )}
-            <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
-              <p className="text-xs text-surface-200/60">Peer device verification (OMEMO trust)</p>
-              <div className="flex gap-2">
-                <input
-                  className="input-field text-sm flex-1"
-                  placeholder="peer@example.com"
-                  value={peerJidInput}
-                  onChange={(e) => setPeerJidInput(e.target.value)}
-                />
-                <button
-                  onClick={loadPeerFingerprints}
-                  disabled={!activeAccountId || !peerJidInput.trim() || peerLookupLoading}
-                  className="btn-ghost text-xs px-3"
-                >
-                  {peerLookupLoading ? "Loading..." : "Load"}
-                </button>
-              </div>
-              {peerDevices.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  {peerDevices.map((item) => {
-                    const trusted = activeAccountId
-                      ? isPeerDeviceTrusted(activeAccountId, peerJidInput.trim(), item.deviceId, item.fingerprint)
-                      : false;
-                    return (
-                      <div key={item.deviceId} className="rounded-lg border border-white/10 bg-black/10 p-2.5">
-                        <div className="text-[11px] text-surface-200/60 mb-1">Device #{item.deviceId}</div>
-                        <div className="font-mono text-[11px] text-surface-50 break-all">{item.fingerprint}</div>
-                        <div className="mt-2 flex justify-end">
-                          <button onClick={() => toggleTrust(item)} className="btn-ghost text-xs py-1 px-2">
-                            {trusted ? "Unverify" : "Verify"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         </section>
 
@@ -580,4 +558,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

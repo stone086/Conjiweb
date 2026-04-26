@@ -16,6 +16,8 @@ export interface RosterContact {
   avatarUrl?: string;
   lastSeenAt?: number;
   isBlocked: boolean;
+  notes?: string;        // private per-user notes (e.g. "Coworker, IT dept, met 2024")
+  tags?: string[];       // user-defined tags for organization
 }
 
 interface RosterState {
@@ -27,6 +29,8 @@ interface RosterState {
   blockContact: (accountId: string, jid: string) => void;
   unblockContact: (accountId: string, jid: string) => void;
   markPendingIncoming: (accountId: string, jid: string) => void;
+  setContactNotes: (accountId: string, jid: string, notes: string) => void;
+  setContactTags: (accountId: string, jid: string, tags: string[]) => void;
   getContact: (accountId: string, jid: string) => RosterContact | undefined;
   listContacts: (accountId: string) => RosterContact[];
   clearAccountData: (accountId: string) => void;
@@ -133,6 +137,32 @@ export const useRosterStore = create<RosterState>()(
                 isBlocked: existing?.isBlocked ?? false,
                 pendingIncoming: true,
               },
+            },
+          };
+        }),
+
+      setContactNotes: (accountId, jid, notes) =>
+        set((s) => {
+          const key = contactKey(accountId, jid);
+          const existing = s.contacts[key];
+          if (!existing) return s;
+          return {
+            contacts: {
+              ...s.contacts,
+              [key]: { ...existing, notes },
+            },
+          };
+        }),
+
+      setContactTags: (accountId, jid, tags) =>
+        set((s) => {
+          const key = contactKey(accountId, jid);
+          const existing = s.contacts[key];
+          if (!existing) return s;
+          return {
+            contacts: {
+              ...s.contacts,
+              [key]: { ...existing, tags },
             },
           };
         }),

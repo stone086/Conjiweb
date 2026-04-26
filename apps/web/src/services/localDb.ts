@@ -45,6 +45,10 @@ class WGajimDB extends Dexie {
 
 export const db = new WGajimDB();
 
+export function openLocalDb() {
+  return db;
+}
+
 // Helper functions
 export async function cacheMessages(messages: ChatMessage[]) {
   const rows: CachedMessage[] = messages.map((m) => ({

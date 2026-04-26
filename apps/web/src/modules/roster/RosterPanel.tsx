@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
 import { useShallow } from "zustand/react/shallow";
+import Avatar from "@/components/Avatar";
 
 function PresenceDot({ presence }: { presence: RosterContact["presence"] }) {
   const colors: Record<string, string> = {
@@ -129,17 +130,7 @@ function ContactRow({
     <div className="relative flex items-center gap-3 px-3 py-2 hover:bg-white/4 group rounded-lg mx-1 cursor-pointer"
       onClick={() => onChat(contact.jid)}>
       {/* Avatar */}
-      <div className="relative flex-shrink-0">
-        <div className="w-8 h-8 rounded-full bg-surface-800 overflow-hidden flex items-center justify-center
-                        text-sm font-medium uppercase text-surface-200">
-          {contact.avatarUrl ? (
-            <img src={contact.avatarUrl} alt={contact.name ?? contact.jid} className="w-full h-full object-cover" />
-          ) : (
-            (contact.name ?? contact.jid)[0]
-          )}
-        </div>
-        <PresenceDot presence={contact.presence} />
-      </div>
+      <Avatar name={contact.name ?? contact.jid} src={contact.avatarUrl} size="sm" presence={contact.presence} />
 
       {/* Info */}
       <div className="flex-1 min-w-0">

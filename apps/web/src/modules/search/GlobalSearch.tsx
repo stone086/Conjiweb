@@ -6,6 +6,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useGroupStore } from "@/stores/groupStore";
 import { debounce } from "@/utils/helpers";
+import { searchLocal } from "@/services/searchIndex";
 import { Search, MessageSquare, User, Hash, X, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -71,26 +72,42 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
             }),
           );
 
+        // KILLER-07: search local IndexedDB index first (instant, offline-capable)
         try {
-          if (!activeAccountId) {
-            setResults(found);
-            return;
-          }
-          const msgs = await messagesApi.search(q, activeAccountId);
-          msgs.slice(0, 5).forEach((m: any) => {
-            const conv = conversations.find((c) => c.id === m.conversation_id);
+          const localHits = searchLocal(q, 5);
+          for (const m of localHits) {
+            const conv = conversations.find((c) => c.id === m.conversationId);
             found.push({
               type: "message",
               id: m.id,
-              title: m.body?.slice(0, 60) ?? "",
-              subtitle: conv?.title ?? m.sender_jid,
-              timestamp: m.created_at ? new Date(m.created_at).getTime() : undefined,
-              conversationId: m.conversation_id,
+              title: m.body.slice(0, 60),
+              subtitle: conv?.title ?? m.senderJid,
+              timestamp: m.timestamp,
+              conversationId: m.conversationId,
               messageId: m.id,
             });
-          });
-        } catch {
-          // Ignore backend search errors.
+          }
+        } catch {}
+
+        // Fallback to backend search if local index has no hits
+        if (found.filter((f) => f.type === "message").length === 0 && activeAccountId) {
+          try {
+            const msgs = await messagesApi.search(q, activeAccountId);
+            msgs.slice(0, 5).forEach((m: any) => {
+              const conv = conversations.find((c) => c.id === m.conversation_id);
+              found.push({
+                type: "message",
+                id: m.id,
+                title: m.body?.slice(0, 60) ?? "",
+                subtitle: conv?.title ?? m.sender_jid,
+                timestamp: m.created_at ? new Date(m.created_at).getTime() : undefined,
+                conversationId: m.conversation_id,
+                messageId: m.id,
+              });
+            });
+          } catch {
+            // Ignore backend search errors.
+          }
         }
 
         setResults(found);
