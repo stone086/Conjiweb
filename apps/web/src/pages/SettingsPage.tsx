@@ -24,6 +24,7 @@ import { isPushSubscribed, isPushSupported, subscribeToPush, unsubscribeFromPush
 
 const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
 const DENSITY_KEY = "conjiweb-message-density";
+const HISTORY_RETENTION_OPTIONS = [0, 1, 3, 7, 30];
 type MessageDensity = "comfortable" | "compact";
 
 function ShareQr({
@@ -313,7 +314,10 @@ export default function SettingsPage() {
   const [form, setForm] = useState({ jid: "", password: "", wsUrl: "" });
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
   const [language, setLanguageState] = useState<Language>(getStoredLanguage());
-  const [historyRetentionDays, setHistoryRetentionDays] = useState<number>(getStoredHistoryRetentionDays());
+  const [historyRetentionDays, setHistoryRetentionDays] = useState<number>(() => {
+    const saved = getStoredHistoryRetentionDays();
+    return HISTORY_RETENTION_OPTIONS.includes(saved) ? saved : 0;
+  });
   const [notifyMentionEnabled, setNotifyMentionEnabled] = useState<boolean>(() => localStorage.getItem(MENTION_NOTIFY_KEY) !== "0");
   const [messageDensity, setMessageDensity] = useState<MessageDensity>(() => {
     const raw = localStorage.getItem(DENSITY_KEY);
@@ -602,11 +606,10 @@ export default function SettingsPage() {
                 onChange={(e) => handleChangeHistoryRetention(Number(e.target.value))}
               >
                 <option value={0}>{t("settings.historyRetentionNever")}</option>
-                <option value={7}>7 {t("settings.days")}</option>
-                <option value={30}>30 {t("settings.days")}</option>
-                <option value={90}>90 {t("settings.days")}</option>
-                <option value={180}>180 {t("settings.days")}</option>
-                <option value={365}>365 {t("settings.days")}</option>
+                <option value={1}>{t("settings.historyRetention1Day")}</option>
+                <option value={3}>{t("settings.historyRetention3Days")}</option>
+                <option value={7}>{t("settings.historyRetention1Week")}</option>
+                <option value={30}>{t("settings.historyRetention1Month")}</option>
               </select>
             </div>
             <div className="flex items-center justify-between">
