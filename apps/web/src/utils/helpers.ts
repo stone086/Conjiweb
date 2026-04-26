@@ -14,6 +14,12 @@ export function normalizeBareJid(jid: string): string {
   return (jid ?? "").split("/")[0].trim().toLowerCase();
 }
 
+export function isValidBareJid(jid: string): boolean {
+  const normalized = normalizeBareJid(jid);
+  const [local, domain, ...rest] = normalized.split("@");
+  return Boolean(local && domain && rest.length === 0);
+}
+
 export function getInitials(name: string): string {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }

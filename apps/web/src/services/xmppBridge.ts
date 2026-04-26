@@ -28,7 +28,7 @@ import {
 } from "@/services/omemo";
 import { OmemoStore } from "@/services/omemo/store";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
-import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
+import { generateConversationId, isValidBareJid, normalizeBareJid } from "@/utils/helpers";
 import {
   decryptOmemoEnvelopeFromPeer,
   decryptBodyFromPeer,
@@ -137,6 +137,7 @@ export function initXmppBridge(client: XmppClient) {
     contacts.forEach((c) => {
       if (!c.jid) return;
       const normalizedJid = normalizeBareJid(c.jid);
+      if (!isValidBareJid(normalizedJid)) return;
       if (normalizedJid === ownBareJid) return;
       const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
       useRosterStore.getState().upsertContact({
@@ -190,6 +191,7 @@ export function initXmppBridge(client: XmppClient) {
     const jid = data.jid as string;
     if (!jid) return;
     const normalizedJid = normalizeBareJid(jid);
+    if (!isValidBareJid(normalizedJid)) return;
     if (normalizedJid === ownBareJid) return;
     const dedupeKey = `${accountId}::${normalizedJid}`;
     const now = Date.now();
@@ -214,7 +216,7 @@ export function initXmppBridge(client: XmppClient) {
 
   client.on("subscription.approved", (data: any) => {
     const normalizedJid = normalizeBareJid(data.jid as string);
-    if (!normalizedJid) return;
+    if (!isValidBareJid(normalizedJid)) return;
     if (normalizedJid === ownBareJid) return;
     const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     useRosterStore.getState().upsertContact({
@@ -239,7 +241,7 @@ export function initXmppBridge(client: XmppClient) {
 
   client.on("subscription.denied", (data: any) => {
     const normalizedJid = normalizeBareJid(data.jid as string);
-    if (!normalizedJid) return;
+    if (!isValidBareJid(normalizedJid)) return;
     if (normalizedJid === ownBareJid) return;
     const convId = generateConversationId(accountId, normalizedJid);
     const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
@@ -266,6 +268,7 @@ export function initXmppBridge(client: XmppClient) {
   client.on("presence.updated", (data: any) => {
     const { jid, show, status } = data;
     const normalizedJid = normalizeBareJid(jid);
+    if (!isValidBareJid(normalizedJid)) return;
     if (normalizedJid === ownBareJid) return;
     const roster = useRosterStore.getState();
     if (!roster.getContact(accountId, normalizedJid)) {
@@ -289,12 +292,13 @@ export function initXmppBridge(client: XmppClient) {
     const { message, isCarbonSent, isCarbonReceived } = data;
     const from = normalizeBareJid(message.from);
     const to = normalizeBareJid(message.to ?? "");
+    if (!isValidBareJid(from) && message.type !== "groupchat") return;
 
     // XEP-0280 Carbon: this is a copy of a message we sent from another device
     // Build outgoing message and add to the peer's conversation
     if (isCarbonSent) {
       const peerJid = to;
-      if (!peerJid || peerJid === ownBareJid) return;
+      if (!isValidBareJid(peerJid) || peerJid === ownBareJid) return;
       const convId = generateConversationId(accountId, peerJid);
       const existingConv = useChatStore.getState().conversations[convId];
       if (!existingConv) {
@@ -572,7 +576,7 @@ export function initXmppBridge(client: XmppClient) {
     const ownJid = normalizeBareJid(client.config.jid);
     const isOwn = from === ownJid;
     const peerJid = isOwn ? normalizeBareJid(message.to) : from;
-    if (!peerJid || peerJid === ownJid) return;
+    if (!isValidBareJid(peerJid) || peerJid === ownJid) return;
     const convId = generateConversationId(accountId, peerJid);
 
     let body = message.body;
@@ -620,7 +624,7 @@ export function initXmppBridge(client: XmppClient) {
   // Typing indicators
   client.on("typing.started", (data: any) => {
     const from = normalizeBareJid(String(data.from ?? ""));
-    if (!from || from === ownBareJid) return;
+    if (!isValidBareJid(from) || from === ownBareJid) return;
     const convId = generateConversationId(accountId, from);
     const store = useChatStore.getState();
     store.setTypingPeer(convId, from, true);
@@ -637,7 +641,7 @@ export function initXmppBridge(client: XmppClient) {
 
   client.on("typing.stopped", (data: any) => {
     const from = normalizeBareJid(String(data.from ?? ""));
-    if (!from || from === ownBareJid) return;
+    if (!isValidBareJid(from) || from === ownBareJid) return;
     const convId = generateConversationId(accountId, from);
     const prev = typingTimers.get(convId);
     if (prev) {

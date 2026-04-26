@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
-import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
+import { generateConversationId, isValidBareJid, normalizeBareJid } from "@/utils/helpers";
 import { useShallow } from "zustand/react/shallow";
 import Avatar from "@/components/Avatar";
 
@@ -288,6 +288,12 @@ export default function RosterPanel() {
   const addContact = (rawJid = newJid) => {
     if (!rawJid.trim() || !activeAccountId) return;
     const normalized = normalizeBareJid(rawJid.trim());
+    if (!isValidBareJid(normalized)) {
+      toast.error("Invalid XMPP address");
+      setNewJid(normalized);
+      setShowAdd(true);
+      return;
+    }
     if (normalized === activeAccountJid) {
       toast.error("You cannot add yourself as a contact");
       return;

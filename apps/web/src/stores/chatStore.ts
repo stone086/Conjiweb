@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { generateConversationId, normalizeBareJid } from "@/utils/helpers";
+import { generateConversationId, isValidBareJid, normalizeBareJid } from "@/utils/helpers";
 import type { OmemoEnvelope } from "@/services/xmppAdapter";
 
 export type MessageDirection = "in" | "out" | "system";
@@ -105,6 +105,7 @@ export const useChatStore = create<ChatState>()(
 
       upsertConversation: (conv) =>
         set((s) => {
+          if (conv.type === "private" && !isValidBareJid(conv.peerJid)) return s;
           const normalizedConv =
             conv.type === "private"
               ? {
@@ -218,6 +219,12 @@ export const useChatStore = create<ChatState>()(
             if (conv.type !== "private") return;
 
             const canonicalPeerJid = normalizeBareJid(conv.peerJid);
+            if (!isValidBareJid(canonicalPeerJid)) {
+              delete nextConversations[conv.id];
+              delete nextMessages[conv.id];
+              if (nextActiveId === conv.id) nextActiveId = null;
+              return;
+            }
             const canonicalId = generateConversationId(conv.accountId, canonicalPeerJid);
             const sourceId = conv.id;
 

@@ -9,7 +9,7 @@ import { clsx } from "clsx";
 import { MessageSquare, Trash2 } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 import { deleteLocalConversationData } from "@/services/localDb";
-import { normalizeBareJid } from "@/utils/helpers";
+import { isValidBareJid, normalizeBareJid } from "@/utils/helpers";
 import { useShallow } from "zustand/react/shallow";
 
 export default function ConversationList() {
@@ -27,6 +27,7 @@ export default function ConversationList() {
 
   const filtered = conversations
     .filter((c) => c.accountId === activeAccountId)
+    .filter((c) => c.type !== "private" || isValidBareJid(c.peerJid))
     .filter((c) => c.type !== "private" || normalizeBareJid(c.peerJid) !== activeAccountJid)
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
 
