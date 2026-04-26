@@ -1,12 +1,13 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import QRCode from "qrcode";
 import { getAccountPassword, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
 import { getClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
-import { Trash2, Plus, Wifi, WifiOff, Copy, Check } from "lucide-react";
+import { Trash2, Plus, Wifi, WifiOff, Copy, Check, QrCode } from "lucide-react";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import { applyTheme, getStoredTheme, ThemeMode } from "@/utils/theme";
@@ -25,8 +26,75 @@ const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
 const DENSITY_KEY = "conjiweb-message-density";
 type MessageDensity = "comfortable" | "compact";
 
+function ShareQr({
+  title,
+  description,
+  payload,
+  copyText,
+}: {
+  title: string;
+  description: string;
+  payload: string;
+  copyText: string;
+}) {
+  const [dataUrl, setDataUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(payload, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      scale: 5,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (!cancelled) setDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payload]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 p-3 flex gap-3">
+      <div className="w-24 h-24 shrink-0 rounded-md bg-white p-1.5 flex items-center justify-center">
+        {dataUrl ? (
+          <img src={dataUrl} alt={title} className="w-full h-full" />
+        ) : (
+          <QrCode size={28} className="text-surface-900" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1 flex flex-col gap-2">
+        <div>
+          <div className="text-xs font-semibold text-surface-50">{title}</div>
+          <div className="text-[11px] text-surface-200/45 leading-relaxed">{description}</div>
+        </div>
+        <div className="font-mono text-[11px] text-surface-200/60 break-all">{copyText}</div>
+        <button onClick={copy} className="btn-ghost text-xs py-1.5 px-2.5 flex items-center gap-1.5 self-start">
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AccountCard({ account }: { account: XmppAccount }) {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const removeAccount = useAccountStore((s) => s.removeAccount);
   const clearChatAccountData = useChatStore((s) => s.clearAccountData);
   const clearRosterAccountData = useRosterStore((s) => s.clearAccountData);
@@ -34,6 +102,21 @@ function AccountCard({ account }: { account: XmppAccount }) {
   const setConnected = useAccountStore((s) => s.setConnected);
   const [connecting, setConnecting] = useState(false);
   const [statusText, setStatusText] = useState("");
+  const bareJid = account.jid.split("/")[0].trim().toLowerCase();
+  const accountDomain = bareJid.split("@")[1] ?? account.domain;
+  const inviteUrl = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = new URL("/login", origin || "https://conjiweb.local");
+    url.searchParams.set("invite_domain", accountDomain);
+    return url.toString();
+  }, [accountDomain]);
+  const contactUrl = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = new URL("/", origin || "https://conjiweb.local");
+    url.searchParams.set("add_contact", bareJid);
+    return url.toString();
+  }, [bareJid]);
+  const label = (zh: string, en: string) => (lang === "zh-CN" ? zh : en);
   const PRESENCES: { value: PresenceType; label: string; color: string }[] = [
     { value: "available", label: t("presence.available"), color: "bg-success" },
     { value: "away", label: t("presence.away"), color: "bg-warn" },
@@ -144,6 +227,21 @@ function AccountCard({ account }: { account: XmppAccount }) {
         >
           Apply
         </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <ShareQr
+          title={label("添加我为联系人", "Add me as a contact")}
+          description={label("联系人扫描后会打开 Conjiweb 并添加你的 XMPP 地址。", "Scan to open Conjiweb and add this XMPP address.")}
+          payload={contactUrl}
+          copyText={bareJid}
+        />
+        <ShareQr
+          title={label("邀请加入此服务器", "Invite to this server")}
+          description={label("新用户扫描后打开登录页，并自动使用当前服务器域名。", "Scan to open login with this server domain.")}
+          payload={inviteUrl}
+          copyText={inviteUrl}
+        />
       </div>
 
       <div className="flex gap-2">

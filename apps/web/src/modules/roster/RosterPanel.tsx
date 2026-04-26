@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useRosterStore, RosterContact } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -237,6 +237,7 @@ export default function RosterPanel() {
   const accounts = useAccountStore(useShallow((s) => s.accounts));
   const upsertConversation = useChatStore((s) => s.upsertConversation);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const activeAccountJid = normalizeBareJid(accounts.find((a) => a.id === activeAccountId)?.jid ?? "");
   const contacts = useMemo(
     () => Object.values(contactMap).filter((c) => c.accountId === activeAccountId),
@@ -284,15 +285,21 @@ export default function RosterPanel() {
     navigate(`/chat/${convId}`);
   };
 
-  const addContact = () => {
-    if (!newJid.trim() || !activeAccountId) return;
-    const normalized = normalizeBareJid(newJid.trim());
+  const addContact = (rawJid = newJid) => {
+    if (!rawJid.trim() || !activeAccountId) return;
+    const normalized = normalizeBareJid(rawJid.trim());
     if (normalized === activeAccountJid) {
       toast.error("You cannot add yourself as a contact");
       return;
     }
     const client = getClient(activeAccountId);
-    client?.addContact(normalized);
+    if (!client?.connected) {
+      toast.error(t("chat.notConnected"));
+      setNewJid(normalized);
+      setShowAdd(true);
+      return;
+    }
+    client.addContact(normalized);
     upsertContact({
       accountId: activeAccountId,
       jid: normalized,
@@ -305,6 +312,15 @@ export default function RosterPanel() {
     setNewJid("");
     setShowAdd(false);
   };
+
+  useEffect(() => {
+    const jid = searchParams.get("add_contact");
+    if (!jid || !activeAccountId) return;
+    addContact(jid);
+    const next = new URLSearchParams(searchParams);
+    next.delete("add_contact");
+    setSearchParams(next, { replace: true });
+  }, [activeAccountId, searchParams, setSearchParams]);
 
   return (
     <div className="flex flex-col h-full">
@@ -324,7 +340,7 @@ export default function RosterPanel() {
             onKeyDown={(e) => e.key === "Enter" && addContact()}
             placeholder="user@example.com"
             className="input-field text-xs flex-1 py-1.5" />
-          <button onClick={addContact} className="btn-primary text-xs py-1.5 px-3">{t("roster.add")}</button>
+          <button onClick={() => addContact()} className="btn-primary text-xs py-1.5 px-3">{t("roster.add")}</button>
         </div>
       )}
 

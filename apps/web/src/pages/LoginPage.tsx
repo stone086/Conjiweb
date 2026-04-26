@@ -20,12 +20,22 @@ export default function LoginPage() {
     jid: "",
     password: "",
   });
+  const [inviteDomain] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("invite_domain") ?? "").trim().toLowerCase();
+  });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [registering, setRegistering] = useState(false);
 
+  const expandJid = (value: string) => {
+    const trimmed = value.trim();
+    if (inviteDomain && trimmed && !trimmed.includes("@")) return `${trimmed}@${inviteDomain}`;
+    return trimmed;
+  };
+
   const connectWithCurrentForm = async (jidOverride?: string) => {
-    const jid = jidOverride ?? form.jid;
+    const jid = jidOverride ?? expandJid(form.jid);
     const id = crypto.randomUUID();
     const domain = jid.split("@")[1] ?? "localhost";
     addAccount({ id, jid, domain, password: form.password, displayName: jid.split("@")[0] });
@@ -136,8 +146,9 @@ export default function LoginPage() {
     }
     setRegistering(true);
     try {
-      const reg = await authApi.register({ jid: form.jid, password: form.password });
-      const effectiveJid = reg?.jid ?? form.jid;
+      const requestedJid = expandJid(form.jid);
+      const reg = await authApi.register({ jid: requestedJid, password: form.password });
+      const effectiveJid = reg?.jid ?? requestedJid;
       setForm((prev) => ({ ...prev, jid: effectiveJid }));
       toast.success(t("login.registerSuccess"));
       await connectWithCurrentForm(effectiveJid);
@@ -159,13 +170,18 @@ export default function LoginPage() {
         </div>
         <div className="glass rounded-2xl p-8 shadow-2xl">
           <h2 className="text-lg font-semibold text-surface-50 mb-6">{t("login.connectAccount")}</h2>
+          {inviteDomain && (
+            <div className="mb-4 rounded-xl border border-accent/20 bg-accent/10 px-3 py-2 text-xs text-surface-100">
+              Invited to {inviteDomain}. You can enter only a username, and Conjiweb will complete the JID.
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.jid")}</label>
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type="text" value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })}
-                  placeholder="user@example.com" className="input-field pl-9" required autoFocus />
+                  placeholder={inviteDomain ? `username or user@${inviteDomain}` : "user@example.com"} className="input-field pl-9" required autoFocus />
               </div>
             </div>
             <div className="flex flex-col gap-1.5">

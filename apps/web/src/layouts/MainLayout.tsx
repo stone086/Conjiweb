@@ -1,5 +1,5 @@
-import { Outlet, useLocation, useParams } from "react-router-dom";
-import { useState } from "react";
+import { Outlet, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import Sidebar from "@/components/Sidebar";
 import ConversationList from "@/modules/chat/ConversationList";
@@ -17,9 +17,14 @@ export default function MainLayout() {
   const [showRight, setShowRight] = useState(false);
   const { conversationId } = useParams();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const hasActiveConversation = !!conversationId;
   const isChatSurfaceRoute = location.pathname === "/" || location.pathname.startsWith("/chat");
   const shouldHideLeftPanelOnMobile = hasActiveConversation || !isChatSurfaceRoute;
+
+  useEffect(() => {
+    if (searchParams.get("add_contact")) setLeftTab("contacts");
+  }, [searchParams]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface-950">
