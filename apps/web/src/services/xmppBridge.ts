@@ -28,7 +28,7 @@ import {
 } from "@/services/omemo";
 import { OmemoStore } from "@/services/omemo/store";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
-import { generateConversationId, isValidBareJid, normalizeBareJid } from "@/utils/helpers";
+import { generateConversationId, isValidBareJid, normalizeBareJid, normalizeValidBareJid } from "@/utils/helpers";
 import {
   decryptOmemoEnvelopeFromPeer,
   decryptBodyFromPeer,
@@ -190,8 +190,8 @@ export function initXmppBridge(client: XmppClient) {
   client.on("subscription.request", (data: any) => {
     const jid = data.jid as string;
     if (!jid) return;
-    const normalizedJid = normalizeBareJid(jid);
-    if (!isValidBareJid(normalizedJid)) return;
+    const normalizedJid = normalizeValidBareJid(jid);
+    if (!normalizedJid) return;
     if (normalizedJid === ownBareJid) return;
     const dedupeKey = `${accountId}::${normalizedJid}`;
     const now = Date.now();
@@ -215,8 +215,8 @@ export function initXmppBridge(client: XmppClient) {
   });
 
   client.on("subscription.approved", (data: any) => {
-    const normalizedJid = normalizeBareJid(data.jid as string);
-    if (!isValidBareJid(normalizedJid)) return;
+    const normalizedJid = normalizeValidBareJid(data.jid as string);
+    if (!normalizedJid) return;
     if (normalizedJid === ownBareJid) return;
     const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
     useRosterStore.getState().upsertContact({
@@ -240,8 +240,8 @@ export function initXmppBridge(client: XmppClient) {
   });
 
   client.on("subscription.denied", (data: any) => {
-    const normalizedJid = normalizeBareJid(data.jid as string);
-    if (!isValidBareJid(normalizedJid)) return;
+    const normalizedJid = normalizeValidBareJid(data.jid as string);
+    if (!normalizedJid) return;
     if (normalizedJid === ownBareJid) return;
     const convId = generateConversationId(accountId, normalizedJid);
     const existing = useRosterStore.getState().getContact(accountId, normalizedJid);
@@ -267,8 +267,8 @@ export function initXmppBridge(client: XmppClient) {
   // Presence updates -> RosterStore
   client.on("presence.updated", (data: any) => {
     const { jid, show, status } = data;
-    const normalizedJid = normalizeBareJid(jid);
-    if (!isValidBareJid(normalizedJid)) return;
+    const normalizedJid = normalizeValidBareJid(jid);
+    if (!normalizedJid) return;
     if (normalizedJid === ownBareJid) return;
     const roster = useRosterStore.getState();
     if (!roster.getContact(accountId, normalizedJid)) {

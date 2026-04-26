@@ -20,6 +20,11 @@ export function isValidBareJid(jid: string): boolean {
   return Boolean(local && domain && rest.length === 0);
 }
 
+export function normalizeValidBareJid(jid: string): string | null {
+  const normalized = normalizeBareJid(jid);
+  return isValidBareJid(normalized) ? normalized : null;
+}
+
 export function getInitials(name: string): string {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }

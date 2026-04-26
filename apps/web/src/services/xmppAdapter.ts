@@ -2,6 +2,7 @@
  * Full XMPP client wrapper for Conjiweb.
  * Wraps Strophe.js with a clean event-driven API.
  */
+import { normalizeValidBareJid } from "@/utils/helpers";
 
 export interface XmppClientConfig {
   jid: string;
@@ -389,6 +390,7 @@ export class XmppClient {
     // Presence
     conn.addHandler((stanza: Element) => {
       const from = stanza.getAttribute("from") ?? "";
+      const validFromBare = normalizeValidBareJid(from);
       const type = stanza.getAttribute("type") ?? "available";
       const fromParts = from.split("/");
       const roomJid = fromParts[0] ?? "";
@@ -405,23 +407,33 @@ export class XmppClient {
           affiliation: (item?.getAttribute("affiliation") ?? "none") as "owner" | "admin" | "member" | "none",
           presence: type === "unavailable" ? "unavailable" : "available",
         });
+        return true;
       }
       if (type === "subscribe") {
-        this.emit("subscription.request", { accountId: this.config.accountId, jid: from.split("/")[0] });
+        if (validFromBare) {
+          this.emit("subscription.request", { accountId: this.config.accountId, jid: validFromBare });
+        }
         return true;
       }
       if (type === "subscribed") {
-        this.emit("subscription.approved", { accountId: this.config.accountId, jid: from.split("/")[0] });
+        if (validFromBare) {
+          this.emit("subscription.approved", { accountId: this.config.accountId, jid: validFromBare });
+        }
         return true;
       }
       if (type === "unsubscribed") {
-        this.emit("subscription.denied", { accountId: this.config.accountId, jid: from.split("/")[0] });
+        if (validFromBare) {
+          this.emit("subscription.denied", { accountId: this.config.accountId, jid: validFromBare });
+        }
+        return true;
+      }
+      if (!validFromBare || (type !== "available" && type !== "unavailable")) {
         return true;
       }
       const show = stanza.querySelector("show")?.textContent
         ?? (type === "unavailable" ? "unavailable" : "available");
       const status = stanza.querySelector("status")?.textContent ?? undefined;
-      this.emit("presence.updated", { accountId: this.config.accountId, jid: from, show, status });
+      this.emit("presence.updated", { accountId: this.config.accountId, jid: validFromBare, show, status });
       return true;
     }, null, "presence");
 
