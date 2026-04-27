@@ -38,6 +38,7 @@ function ShareQr({
   payload: string;
   copyText: string;
 }) {
+  const { t } = useLanguage();
   const [dataUrl, setDataUrl] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -66,7 +67,7 @@ function ShareQr({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
-      toast.error("Copy failed");
+      toast.error(t("settings.copyFailed"));
     }
   };
 

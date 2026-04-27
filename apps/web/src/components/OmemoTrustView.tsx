@@ -11,7 +11,8 @@
  * a new device after first contact, the new device shows up as
  * "untrusted" until manually approved.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { Shield, ShieldCheck, ShieldAlert, ShieldOff, QrCode, X } from "lucide-react";
 import { getIdentityFingerprint } from "@/services/omemo";
 import { useAccountStore } from "@/stores/accountStore";
@@ -41,9 +42,16 @@ export function setDeviceTrust(accountId: string, peerJid: string, deviceId: num
 export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; onClose: () => void }) {
   const { t } = useLanguage();
   const accountId = useAccountStore((s) => s.activeAccountId);
+  const account = useAccountStore((s) => s.accounts.find((a) => a.id === s.activeAccountId));
   const [devices, setDevices] = useState<DeviceTrust[]>([]);
   const [ownFingerprint, setOwnFingerprint] = useState("");
   const [showQr, setShowQr] = useState(false);
+  const qrPayload = useMemo(() => JSON.stringify({
+    type: "conjiweb.omemo-fingerprint",
+    version: 1,
+    jid: account?.jid ?? "",
+    fingerprint: ownFingerprint.replace(/\s+/g, ""),
+  }), [account?.jid, ownFingerprint]);
 
   useEffect(() => {
     if (!accountId) return;
@@ -120,7 +128,7 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
           </p>
           {showQr && (
             <div className="mt-3 flex flex-col items-center">
-              <QrPlaceholder data={ownFingerprint} />
+              <FingerprintQr data={qrPayload} />
               <p className="text-[10px] text-surface-200/40 mt-2">
                 {t("omemo.qrInstructions")}
               </p>
@@ -181,27 +189,35 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
   );
 }
 
-/**
- * Minimal QR code placeholder using SVG. For production use a real QR
- * library (qrcode-svg or qrcode.react) to encode the fingerprint as a
- * scannable QR. This stub renders a fingerprint-derived pattern so the
- * UI is functional without the dependency.
- */
-function QrPlaceholder({ data }: { data: string }) {
-  // Render a simple data-derived block pattern (12x12 grid)
-  const blocks: boolean[][] = Array.from({ length: 12 }, () => Array(12).fill(false));
-  for (let i = 0; i < data.length; i++) {
-    const row = i % 12;
-    const col = Math.floor(i / 12) % 12;
-    blocks[row][col] = (data.charCodeAt(i) & 1) === 1;
-  }
+function FingerprintQr({ data }: { data: string }) {
+  const [dataUrl, setDataUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(data, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      scale: 6,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (!cancelled) setDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
+
   return (
-    <svg viewBox="0 0 120 120" className="w-32 h-32 bg-white p-2 rounded">
-      {blocks.map((row, r) =>
-        row.map((on, c) => on ? (
-          <rect key={`${r}-${c}`} x={c * 10} y={r * 10} width={10} height={10} fill="black" />
-        ) : null)
+    <div className="w-36 h-36 bg-white p-2 rounded flex items-center justify-center">
+      {dataUrl ? (
+        <img src={dataUrl} alt="OMEMO fingerprint QR" className="w-full h-full" />
+      ) : (
+        <QrCode size={28} className="text-surface-900" />
       )}
-    </svg>
+    </div>
   );
 }

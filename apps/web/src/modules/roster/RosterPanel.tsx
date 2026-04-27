@@ -294,7 +294,7 @@ export default function RosterPanel() {
     if (!rawJid.trim() || !activeAccountId) return;
     const normalized = normalizeBareJid(rawJid.trim());
     if (!isValidBareJid(normalized)) {
-      toast.error("Invalid XMPP address");
+      toast.error(t("roster.invalidJid"));
       setNewJid(normalized);
       setShowAdd(true);
       return;
