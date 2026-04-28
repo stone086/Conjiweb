@@ -132,7 +132,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
     try {
       const runtimePassword = getAccountPassword(account.id);
       if (!runtimePassword) {
-        toast.error("Password not available in this session. Please log in again.");
+        toast.error("Password not available in this session. Please sign in again.");
         navigate(`/login?jid=${encodeURIComponent(account.jid)}`);
         return;
       }
