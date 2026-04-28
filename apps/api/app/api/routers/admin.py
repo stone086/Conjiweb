@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.models import AuditLog, Account, Message, Attachment
 from app.core.config import settings
 from app.core.version import get_app_version
+from app.api.routers.metrics import web_vitals_summary as get_web_vitals_summary
 from minio import Minio
 import redis.asyncio as redis
 
@@ -234,3 +235,8 @@ async def dashboard_user_stats(db: AsyncSession = Depends(get_db)):
         "active_7d": await _active(24 * 7),
         "active_30d": await _active(24 * 30),
     }
+
+
+@router.get("/web-vitals/summary")
+async def web_vitals_summary():
+    return get_web_vitals_summary()

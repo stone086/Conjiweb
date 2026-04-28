@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint src --ext ts,tsx"
+    "lint": "eslint src --ext ts,tsx",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@converse/headless": "^10.1.6",
@@ -42,6 +44,8 @@
     "tailwindcss": "^3.4.4",
     "typescript": "^5.4.5",
     "vite": "^5.2.13",
-    "vite-plugin-pwa": "^0.20.0"
+    "vite-plugin-pwa": "^0.20.0",
+    "vitest": "^2.1.0",
+    "jsdom": "^25.0.0"
   }
 }

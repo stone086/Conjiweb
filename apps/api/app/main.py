@@ -12,9 +12,11 @@ from app.api.routers import (
     attachments,
     auth,
     contacts,
+    config,
     discovery,
     conversations,
     messages,
+    metrics,
     plugins,
     preview,
     push,
@@ -83,6 +85,8 @@ app.include_router(webhooks.router, tags=["webhooks"])
 app.include_router(preview.router, tags=["preview"])
 app.include_router(sso.router, tags=["sso"])
 app.include_router(discovery.router, tags=["discovery"])
+app.include_router(config.router, tags=["config"])
+app.include_router(metrics.router, tags=["metrics"])
 
 
 @app.get(

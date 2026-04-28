@@ -9,6 +9,7 @@ import { FileUploadZone, UploadedFile, ImagePreview, FileCard } from "@/modules/
 import Avatar from "@/components/Avatar";
 import LinkPreviewCard, { extractFirstUrl } from "@/components/LinkPreviewCard";
 import VoiceRecorder from "@/components/VoiceRecorder";
+import VirtualMessageList from "@/modules/chat/VirtualMessageList";
 import { cacheMessages, getDraft, getLocalMessages, saveDraft } from "@/services/localDb";
 import { getChatToolbarActions } from "@/plugins/host";
 import type { ChatToolbarAction } from "@/plugins/sdk";
@@ -852,6 +853,32 @@ export default function MessageView({ conversationId }: { conversationId: string
     }
   };
 
+  const useVirtualMessages = messages.length > 300;
+  const highlightedMessageId = searchParams.get("mid");
+  const renderMessageContent = (msg: ChatMessage) => {
+    const isOwn = msg.direction === "out";
+    return msg.direction === "system" ? (
+      <div className="msg-bubble-system">{msg.body}</div>
+    ) : (
+      <MessageBubble
+        msg={msg}
+        replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
+        replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
+        isOwn={isOwn}
+        onReply={setReplyTo}
+        onOpenImage={(src, alt) => setLightbox({ src, alt })}
+        onRetry={retryFailedMessage}
+        onEdit={handleEditMessage}
+        onForward={handleForwardMessage}
+        onDelete={handleDeleteMessage}
+        onToggleStar={handleToggleStar}
+        onReact={handleReact}
+        sentLabel={t("chat.sentSent")}
+        readLabel={t("chat.sentRead")}
+      />
+    );
+  };
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Chat header with peer info + call buttons */}
@@ -875,9 +902,16 @@ export default function MessageView({ conversationId }: { conversationId: string
           </button>
         </div>
       )}
-      <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
+      <div
+        ref={containerRef}
+        onScroll={useVirtualMessages ? undefined : handleScroll}
+        className={clsx(
+          "flex-1 min-h-0",
+          useVirtualMessages ? "flex" : "overflow-y-auto px-4 py-4 flex flex-col gap-2"
+        )}
+      >
         {hasMore && (
-          <div className="flex justify-center py-2">
+          <div className={clsx("flex justify-center py-2", useVirtualMessages && "hidden")}>
             <button
               onClick={fetchHistory}
               disabled={mamLoading}
@@ -893,7 +927,22 @@ export default function MessageView({ conversationId }: { conversationId: string
             <p className="text-sm">{t("chat.noMessages")}</p>
           </div>
         )}
-        {messages.map((msg, i) => {
+        {useVirtualMessages ? (
+          <VirtualMessageList
+            messages={messages}
+            conversation={conversation}
+            highlightId={highlightedMessageId}
+            hasMore={hasMore}
+            loadingOlder={mamLoading}
+            onLoadOlder={fetchHistory}
+            renderMessage={renderMessageContent}
+            todayLabel={t("chat.today")}
+            yesterdayLabel={t("chat.yesterday")}
+            unreadLabel={t("chat.unread")}
+            loadingLabel={t("chat.loading")}
+            loadOlderLabel={t("chat.loadOlder")}
+          />
+        ) : messages.map((msg, i) => {
           const isOwn = msg.direction === "out";
           const prev = messages[i - 1];
           const showDate = !prev || !isSameDay(msg.timestamp, prev.timestamp);
@@ -914,26 +963,7 @@ export default function MessageView({ conversationId }: { conversationId: string
                   <div className="flex-1 h-px bg-accent/40" />
                 </div>
               )}
-              {msg.direction === "system" ? (
-                <div className="msg-bubble-system">{msg.body}</div>
-              ) : (
-                <MessageBubble
-                  msg={msg}
-                  replyPreview={msg.replyToId ? messageMap.get(msg.replyToId)?.body : undefined}
-                  replySender={msg.replyToId ? messageMap.get(msg.replyToId)?.senderJid.split("@")[0] : undefined}
-                  isOwn={isOwn}
-                  onReply={setReplyTo}
-                  onOpenImage={(src, alt) => setLightbox({ src, alt })}
-                  onRetry={retryFailedMessage}
-                  onEdit={handleEditMessage}
-                  onForward={handleForwardMessage}
-                  onDelete={handleDeleteMessage}
-                  onToggleStar={handleToggleStar}
-                  onReact={handleReact}
-                  sentLabel={t("chat.sentSent")}
-                  readLabel={t("chat.sentRead")}
-                />
-              )}
+              {renderMessageContent(msg)}
             </div>
           );
         })}

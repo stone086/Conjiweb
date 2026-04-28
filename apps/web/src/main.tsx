@@ -8,6 +8,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/globals.css";
 import { applyTheme, getStoredTheme } from "./utils/theme";
 import { applyConfiguredHistoryRetention } from "./services/historyRetention";
+import { initWebVitals } from "./services/webVitals";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 60 * 5, retry: 1 } },
@@ -38,6 +39,7 @@ applyTheme(getStoredTheme());
 document.documentElement.classList.toggle("density-compact", localStorage.getItem("conjiweb-message-density") === "compact");
 applyConfiguredHistoryRetention().catch(() => {});
 clearLegacyPwaCachesOnce().catch(() => {});
+initWebVitals();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
