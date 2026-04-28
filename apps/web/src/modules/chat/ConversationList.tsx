@@ -99,7 +99,7 @@ export default function ConversationList() {
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-xs text-surface-200/50 truncate">
                     {composerDrafts[conv.id]
-                      ? `[Draft] ${composerDrafts[conv.id]}`
+                      ? `${t("conv.draft")} ${composerDrafts[conv.id]}`
                       : (conv.lastMessage ?? t("conv.noMessages"))}
                   </span>
                   {conv.unreadCount > 0 && (
@@ -115,7 +115,7 @@ export default function ConversationList() {
                   handleDelete(conv.id);
                 }}
                 className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
-                title="Delete conversation"
+                title={t("conv.deleteConversation")}
               >
                 <Trash2 size={13} />
               </div>

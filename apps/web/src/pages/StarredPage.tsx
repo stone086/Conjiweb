@@ -58,7 +58,7 @@ export default function StarredPage() {
                     {msg.body || (msg.attachments?.length ? `[${msg.attachments[0].fileName}]` : "")}
                   </p>
                   {msg.editedAt && (
-                    <span className="text-[10px] text-surface-200/30 mt-1 block">edited</span>
+                    <span className="text-[10px] text-surface-200/30 mt-1 block">{t("chat.edited")}</span>
                   )}
                 </Link>
               );

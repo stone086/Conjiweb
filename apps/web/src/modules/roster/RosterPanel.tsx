@@ -300,7 +300,7 @@ export default function RosterPanel() {
       return;
     }
     if (normalized === activeAccountJid) {
-      toast.error("You cannot add yourself as a contact");
+      toast.error(t("roster.cannotAddSelf"));
       return;
     }
     const client = getClient(activeAccountId);
@@ -349,7 +349,7 @@ export default function RosterPanel() {
         <div className="px-3 py-2 border-b border-white/5 flex gap-2">
           <input value={newJid} onChange={(e) => setNewJid(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addContact()}
-            placeholder="user@example.com"
+            placeholder={t("roster.addJidPlaceholder")}
             className="input-field text-xs flex-1 py-1.5" />
           <button onClick={() => addContact()} className="btn-primary text-xs py-1.5 px-3">{t("roster.add")}</button>
         </div>
@@ -394,14 +394,14 @@ export default function RosterPanel() {
               </div>
             </div>
             <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="text-surface-200/60">Presence</span><span className="text-surface-100">{profileContact.presence}</span></div>
-              <div className="flex justify-between"><span className="text-surface-200/60">Subscription</span><span className="text-surface-100">{profileContact.subscription}</span></div>
-              <div className="flex justify-between"><span className="text-surface-200/60">Blocked</span><span className="text-surface-100">{profileContact.isBlocked ? "Yes" : "No"}</span></div>
-              <div className="flex justify-between"><span className="text-surface-200/60">Groups</span><span className="text-surface-100">{profileContact.groups.join(", ") || "-"}</span></div>
-              <div className="flex justify-between"><span className="text-surface-200/60">Status</span><span className="text-surface-100">{profileContact.statusText || "-"}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">{t("roster.profilePresence")}</span><span className="text-surface-100">{profileContact.presence}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">{t("roster.profileSubscription")}</span><span className="text-surface-100">{profileContact.subscription}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">{t("roster.profileBlocked")}</span><span className="text-surface-100">{profileContact.isBlocked ? t("common.yes") : t("common.no")}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">{t("roster.profileGroups")}</span><span className="text-surface-100">{profileContact.groups.join(", ") || "-"}</span></div>
+              <div className="flex justify-between"><span className="text-surface-200/60">{t("roster.profileStatus")}</span><span className="text-surface-100">{profileContact.statusText || "-"}</span></div>
             </div>
             <div className="mt-4 flex justify-end">
-              <button className="btn-ghost text-xs" onClick={() => setProfileContact(null)}>Close</button>
+              <button className="btn-ghost text-xs" onClick={() => setProfileContact(null)}>{t("common.close")}</button>
             </div>
           </div>
         </div>

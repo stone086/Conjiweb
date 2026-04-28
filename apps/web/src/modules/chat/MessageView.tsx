@@ -73,6 +73,7 @@ function MessageBubble({
   sentLabel: string;
   readLabel: string;
 }) {
+  const { t } = useLanguage();
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -119,9 +120,9 @@ function MessageBubble({
         >
           {msg.replyToId && (
             <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-white/30 bg-black/15">
-              <p className="text-[10px] text-surface-200/60">{replySender ?? "Reply"}</p>
+              <p className="text-[10px] text-surface-200/60">{replySender ?? t("chat.reply")}</p>
               <p className="text-xs text-surface-200/70 line-clamp-2 break-words">
-                {replyPreview ?? "Original message not available"}
+                {replyPreview ?? t("chat.originalUnavailable")}
               </p>
             </div>
           )}
@@ -130,7 +131,7 @@ function MessageBubble({
             const url = extractFirstUrl(msg.body);
             return url ? <LinkPreviewCard url={url} /> : null;
           })()}
-          {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1 cursor-default" title={`Edited at ${formatMsgTimeFull(msg.editedAt)}`}>edited</p>}
+          {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1 cursor-default" title={`${t("chat.editedAt")} ${formatMsgTimeFull(msg.editedAt)}`}>{t("chat.edited")}</p>}
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
               {att.mimeType.startsWith("image/") ? (
@@ -157,7 +158,7 @@ function MessageBubble({
         <div className="flex items-center gap-2 px-1">
           {msg.starred && <span className="text-[10px] text-warn">★</span>}
           {msg.encrypted && <Lock size={10} className="text-success" />}
-          {msg.decryptFailed && <span className="text-[10px] text-danger">decrypt-failed</span>}
+          {msg.decryptFailed && <span className="text-[10px] text-danger">{t("chat.decryptFailed")}</span>}
           <span className="text-[10px] text-surface-200/25" title={formatMsgTimeFull(msg.timestamp)}>
             {formatMsgTime(msg.timestamp)}
           </span>
@@ -167,7 +168,7 @@ function MessageBubble({
               onClick={() => onRetry(msg)}
               className="text-[10px] text-danger hover:text-danger/80 underline"
             >
-              Retry
+              {t("chat.retry")}
             </button>
           )}
         </div>
@@ -261,6 +262,7 @@ function ForwardModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const filtered = candidates.filter((c) =>
     (c.title ?? c.peerJid).toLowerCase().includes(search.toLowerCase())
@@ -268,18 +270,18 @@ function ForwardModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
-        <h3 className="text-sm font-semibold text-surface-50">转发消息</h3>
+        <h3 className="text-sm font-semibold text-surface-50">{t("chat.forwardMessage")}</h3>
         <p className="text-xs text-surface-200/50 line-clamp-2">{message.body}</p>
         <input
           autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="搜索会话..."
+          placeholder={t("chat.searchConversations")}
           className="input-field text-sm"
         />
         <div className="max-h-52 overflow-y-auto flex flex-col gap-1 pr-1">
           {filtered.length === 0 && (
-            <p className="text-xs text-surface-200/30 text-center py-4">没有匹配的会话</p>
+            <p className="text-xs text-surface-200/30 text-center py-4">{t("chat.noMatchingConversations")}</p>
           )}
           {filtered.map((c) => (
             <button
@@ -293,18 +295,20 @@ function ForwardModal({
               )}
             >
               {c.title ?? c.peerJid}
-              <span className="text-xs text-surface-200/30 ml-1.5">({c.type === "group" ? "群组" : "私聊"})</span>
+              <span className="text-xs text-surface-200/30 ml-1.5">
+                ({c.type === "group" ? t("chat.groupConversation") : t("chat.privateConversation")})
+              </span>
             </button>
           ))}
         </div>
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onCancel} className="btn-ghost text-sm">取消</button>
+          <button onClick={onCancel} className="btn-ghost text-sm">{t("common.cancel")}</button>
           <button
             onClick={onConfirm}
             disabled={!targetId}
             className="btn-primary text-sm"
           >
-            转发
+            {t("chat.forward")}
           </button>
         </div>
       </div>
@@ -321,6 +325,8 @@ function ImageLightbox({
   alt: string;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -343,7 +349,7 @@ function ImageLightbox({
       <button
         onClick={onClose}
         className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 border border-white/20 text-white hover:bg-black/70"
-        title="Close"
+        title={t("common.close")}
       >
         <X size={16} className="mx-auto" />
       </button>
@@ -904,7 +910,7 @@ export default function MessageView({ conversationId }: { conversationId: string
               {showUnreadDivider && (
                 <div className="flex items-center gap-3 py-2">
                   <div className="flex-1 h-px bg-accent/40" />
-                  <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">Unread</span>
+                  <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">{t("chat.unread")}</span>
                   <div className="flex-1 h-px bg-accent/40" />
                 </div>
               )}
@@ -971,7 +977,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       {editingMessageId && (
         <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
           <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
-          <div className="flex-1 min-w-0 text-xs text-surface-200/70">Editing message</div>
+          <div className="flex-1 min-w-0 text-xs text-surface-200/70">{t("chat.editingMessage")}</div>
           <button
             onClick={() => {
               setEditingMessageId(null);

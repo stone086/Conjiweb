@@ -143,7 +143,7 @@ export default function AdminPage() {
               </div>
             ))}
             {!health?.services?.length && (
-              <div className="glass rounded-xl px-4 py-3 text-sm text-surface-200/40">No service health data</div>
+              <div className="glass rounded-xl px-4 py-3 text-sm text-surface-200/40">{t("admin.noServiceHealth")}</div>
             )}
           </div>
         </section>

@@ -29,7 +29,7 @@ function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom)
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
     if (!client) {
-      toast.error("Connect this account first");
+      toast.error(t("account.connectFirst"));
       return;
     }
     client?.joinRoom(room.jid, room.nickname);
@@ -124,12 +124,12 @@ export default function GroupPanel() {
 
   const joinRoomNow = (roomJid: string, roomName: string, nickname: string) => {
     if (!activeAccountId) {
-      toast.error("No active account");
+      toast.error(t("account.noActive"));
       return false;
     }
     const client = getClient(activeAccountId);
     if (!client) {
-      toast.error("Connect this account first");
+      toast.error(t("account.connectFirst"));
       return false;
     }
 
@@ -218,7 +218,7 @@ export default function GroupPanel() {
         <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
           <p className="text-xs text-surface-200/50 font-medium">{t("group.joinRoomTitle")}</p>
           <input value={joinForm.jid} onChange={(e) => setJoinForm({ ...joinForm, jid: e.target.value })}
-            placeholder="room@conference.example.com"
+            placeholder={t("group.roomJidPlaceholder")}
             className="input-field text-xs py-1.5" />
           <input value={joinForm.nickname} onChange={(e) => setJoinForm({ ...joinForm, nickname: e.target.value })}
             placeholder={`${t("group.nicknameDefault")} ${defaultNickname}`}
@@ -234,7 +234,7 @@ export default function GroupPanel() {
         <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
           <p className="text-xs text-surface-200/50 font-medium">{t("group.createRoomTitle")}</p>
           <input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-            placeholder="Room name"
+            placeholder={t("group.roomNamePlaceholder")}
             className="input-field text-xs py-1.5" />
           <input value={createForm.server} onChange={(e) => setCreateForm({ ...createForm, server: e.target.value })}
             placeholder={defaultServer}
@@ -252,7 +252,7 @@ export default function GroupPanel() {
           <input
             value={inviteForm.jid}
             onChange={(e) => setInviteForm((prev) => ({ ...prev, jid: e.target.value }))}
-            placeholder="user@example.com"
+            placeholder={t("group.inviteJidPlaceholder")}
             className="input-field text-xs py-1.5"
           />
           <input
