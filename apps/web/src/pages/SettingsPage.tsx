@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { getAccountPassword, normalizeAccountJid, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -97,6 +97,7 @@ function ShareQr({
 
 function AccountCard({ account }: { account: XmppAccount }) {
   const { lang, t } = useLanguage();
+  const navigate = useNavigate();
   const removeAccount = useAccountStore((s) => s.removeAccount);
   const clearChatAccountData = useChatStore((s) => s.clearAccountData);
   const clearRosterAccountData = useRosterStore((s) => s.clearAccountData);
@@ -131,7 +132,9 @@ function AccountCard({ account }: { account: XmppAccount }) {
     try {
       const runtimePassword = getAccountPassword(account.id);
       if (!runtimePassword) {
-        throw new Error("Password not available in this session. Reconnect from login.");
+        toast.error("Password not available in this session. Please log in again.");
+        navigate(`/login?jid=${encodeURIComponent(account.jid)}`);
+        return;
       }
       const client = createClient({
         jid: account.jid,

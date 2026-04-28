@@ -28,7 +28,7 @@ export default function LoginPage() {
   const envXmppDomain = ((import.meta.env.VITE_XMPP_DOMAIN as string | undefined) ?? "").trim().toLowerCase();
 
   const [form, setForm] = useState({
-    jid: "",
+    jid: new URLSearchParams(window.location.search).get("jid") ?? "",
     password: "",
   });
   const [inviteDomain] = useState(() => {
