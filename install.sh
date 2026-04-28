@@ -785,6 +785,7 @@ deploy_frontend() {
   cat > .env.production << EOF
 VITE_API_URL=https://${DOMAIN}/api
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
+VITE_XMPP_DOMAIN=${XMPP_DOMAIN}
 EOF
 
   if [[ -f package-lock.json ]]; then

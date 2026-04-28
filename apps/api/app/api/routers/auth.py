@@ -4,12 +4,14 @@ from app.utils.security import create_access_token
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.database import get_db
-from app.models import Account
+from app.models import Account, AccountPreference
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import re
 import subprocess
+import uuid
 
 router = APIRouter()
 
@@ -32,6 +34,19 @@ class UserTokenRequest(BaseModel):
     password: str
 
 
+@router.get(
+    "/config",
+    summary="Public auth configuration",
+    description="Return public login configuration needed by the web client.",
+)
+async def auth_config():
+    return {
+        "xmpp_domain": settings.XMPP_DOMAIN,
+        "public_domain": settings.PUBLIC_DOMAIN,
+        "registration_enabled": settings.XMPP_REGISTRATION_ENABLED,
+    }
+
+
 @router.post(
     "/admin/login",
     summary="Admin login",
@@ -47,7 +62,13 @@ async def admin_login(request: Request, data: AdminLogin):
     return {"access_token": token, "token_type": "bearer"}
 
 
-def parse_jid(jid: str):
+def _request_host(request: Request | None) -> str:
+    if not request:
+        return ""
+    return (request.headers.get("host") or request.url.hostname or "").split(":", 1)[0].strip().lower()
+
+
+def parse_jid(jid: str, request: Request | None = None):
     value = (jid or "").strip()
     if not value:
         raise HTTPException(status_code=400, detail="JID is required")
@@ -57,11 +78,22 @@ def parse_jid(jid: str):
         username, domain = value, settings.XMPP_DOMAIN
 
     username = username.strip()
-    domain = domain.strip()
+    domain = domain.strip().lower()
     if not username or not domain:
         raise HTTPException(status_code=400, detail="Invalid JID")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", username):
         raise HTTPException(status_code=400, detail="Username contains invalid characters")
+    xmpp_domain = settings.XMPP_DOMAIN.strip().lower()
+    public_aliases = {
+        settings.PUBLIC_DOMAIN.strip().lower(),
+        _request_host(request),
+    }
+    public_aliases.discard("")
+    public_aliases.discard(xmpp_domain)
+    if domain in public_aliases:
+        domain = xmpp_domain
+    if domain != xmpp_domain:
+        raise HTTPException(status_code=400, detail=f"Use {xmpp_domain} as the XMPP domain")
     return username, domain
 
 
@@ -77,8 +109,8 @@ async def register_xmpp_account(request: Request, data: RegisterRequest):
     if len(data.password or "") < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
-    username, domain = parse_jid(data.jid)
-    cmd = ["prosodyctl", "register", username, domain, data.password]
+    username, domain = parse_jid(data.jid, request)
+    cmd = ["/usr/bin/sudo", "-n", "/usr/bin/prosodyctl", "register", username, domain, data.password]
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=False)
@@ -107,15 +139,15 @@ async def issue_user_token(
     data: UserTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    username, domain = parse_jid(data.jid)
+    username, domain = parse_jid(data.jid, request)
     full_jid = f"{username}@{domain}"
     password = (data.password or "").strip()
     if not password:
         raise HTTPException(status_code=400, detail="Password is required")
 
     verify_cmds = [
-        ["prosodyctl", "check", "password", full_jid, password],
-        ["prosodyctl", "check", "password", username, domain, password],
+        ["/usr/bin/sudo", "-n", "/usr/bin/prosodyctl", "check", "password", full_jid, password],
+        ["/usr/bin/sudo", "-n", "/usr/bin/prosodyctl", "check", "password", username, domain, password],
     ]
     verified = False
     check_password_unsupported = False
@@ -149,7 +181,24 @@ async def issue_user_token(
     result = await db.execute(select(Account).where(Account.jid == full_jid))
     account = result.scalar_one_or_none()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found. Register or login first.")
+        account = Account(
+            id=str(uuid.uuid4()),
+            jid=full_jid,
+            domain=domain,
+            display_name=username,
+        )
+        db.add(account)
+        db.add(AccountPreference(account_id=account.id))
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            result = await db.execute(select(Account).where(Account.jid == full_jid))
+            account = result.scalar_one_or_none()
+            if not account:
+                raise
+        else:
+            await db.refresh(account)
     if not account.is_enabled:
         raise HTTPException(status_code=403, detail="Account is disabled")
 

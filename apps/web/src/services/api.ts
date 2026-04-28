@@ -164,6 +164,12 @@ export const adminApi = {
 
 // Auth
 export const authApi = {
+  config: () =>
+    api.get("/auth/config").then((r) => r.data as {
+      xmpp_domain: string;
+      public_domain: string;
+      registration_enabled: boolean;
+    }),
   register: (data: { jid: string; password: string }) =>
     api.post("/auth/register", data).then((r) => r.data),
   getUserToken: (jid: string, password: string) =>

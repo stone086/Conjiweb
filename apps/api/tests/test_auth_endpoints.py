@@ -8,6 +8,22 @@ from app.core.database import get_db
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def xmpp_domain_settings():
+    original_registration = settings.XMPP_REGISTRATION_ENABLED
+    original_xmpp_domain = settings.XMPP_DOMAIN
+    original_public_domain = settings.PUBLIC_DOMAIN
+    settings.XMPP_REGISTRATION_ENABLED = True
+    settings.XMPP_DOMAIN = "example.com"
+    settings.PUBLIC_DOMAIN = "public.example.com"
+    try:
+        yield
+    finally:
+        settings.XMPP_REGISTRATION_ENABLED = original_registration
+        settings.XMPP_DOMAIN = original_xmpp_domain
+        settings.PUBLIC_DOMAIN = original_public_domain
+
+
 @pytest.mark.anyio
 async def test_admin_login_success_returns_token(monkeypatch):
     monkeypatch.setattr(auth_router, "ADMIN_USERNAME", "admin")
@@ -35,6 +51,17 @@ async def test_admin_login_rejects_invalid_credentials(monkeypatch):
             json={"username": "admin", "password": "wrong"},
         )
     assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_auth_config_returns_public_login_settings():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/auth/config")
+    assert resp.status_code == 200
+    assert resp.json()["xmpp_domain"] == "example.com"
+    assert resp.json()["public_domain"] == "public.example.com"
+    assert resp.json()["registration_enabled"] is True
 
 
 @pytest.mark.anyio
@@ -104,6 +131,44 @@ async def test_register_returns_conflict_when_account_exists(monkeypatch):
             json={"jid": "alice@example.com", "password": "password123"},
         )
     assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_register_maps_public_domain_alias_to_xmpp_domain(monkeypatch):
+    calls = []
+
+    class _OkResult:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _run(cmd, *args, **kwargs):
+        calls.append(cmd)
+        return _OkResult()
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://public.example.com") as client:
+        resp = await client.post(
+            "/auth/register",
+            json={"jid": "alice@public.example.com", "password": "password123"},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["jid"] == "alice@example.com"
+    assert calls[0] == ["prosodyctl", "register", "alice", "example.com", "password123"]
+
+
+@pytest.mark.anyio
+async def test_register_rejects_unknown_xmpp_domain(monkeypatch):
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://public.example.com") as client:
+        resp = await client.post(
+            "/auth/register",
+            json={"jid": "alice@other.example.com", "password": "password123"},
+        )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Use example.com as the XMPP domain"
 
 
 @pytest.mark.anyio

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
-import { getAccountPassword, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
+import { getAccountPassword, normalizeAccountJid, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { createClient, destroyClient } from "@/services/xmppAdapter";
@@ -88,7 +88,7 @@ function ShareQr({
         <div className="font-mono text-[11px] text-surface-200/60 break-all">{copyText}</div>
         <button onClick={copy} className="btn-ghost text-xs py-1.5 px-2.5 flex items-center gap-1.5 self-start">
           {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("settings.copied") : t("common.copy")}
         </button>
       </div>
     </div>
@@ -216,18 +216,18 @@ function AccountCard({ account }: { account: XmppAccount }) {
           value={statusText}
           onChange={(e) => setStatusText(e.target.value)}
           className="input-field text-xs py-1.5 flex-1"
-          placeholder="Custom status (optional)"
+          placeholder={t("account.statusPlaceholder")}
         />
         <button
           onClick={() => {
             const client = getClient(account.id);
             if (!client?.connected) return;
             client.setPresence(account.presence, statusText.trim() || undefined);
-            toast.success("Status updated");
+            toast.success(t("account.statusUpdated"));
           }}
           className="btn-ghost text-xs py-1.5 px-2.5"
         >
-          Apply
+          {t("common.apply")}
         </button>
       </div>
 
@@ -388,18 +388,20 @@ export default function SettingsPage() {
 
   const handleAdd = async () => {
     if (!form.jid || !form.password) { toast.error(t("toast.jidRequired")); return; }
-    const id = crypto.randomUUID();
+    const jid = normalizeAccountJid(form.jid);
+    const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
+    const id = existing?.id ?? crypto.randomUUID();
     addAccount({
       id,
-      jid: form.jid,
-      domain: form.jid.split("@")[1] ?? "localhost",
+      jid,
+      domain: jid.split("@")[1] ?? "localhost",
       password: form.password,
-      displayName: form.jid.split("@")[0],
+      displayName: jid.split("@")[0],
     });
     setAccountPassword(id, form.password);
     try {
       const client = createClient({
-        jid: form.jid,
+        jid,
         password: form.password,
         wsUrl: form.wsUrl || import.meta.env.VITE_XMPP_WS_URL || "ws://localhost:5280/xmpp-websocket",
         accountId: id,
@@ -407,8 +409,8 @@ export default function SettingsPage() {
       initXmppBridge(client);
       client.on("connection.changed", (d: any) => setConnected(id, d.status === "connected"));
       await client.connect();
-      accountsApi.create({ jid: form.jid, domain: form.jid.split("@")[1] ?? "localhost" }).catch(() => {});
-      const tokenRes = await authApi.getUserToken(form.jid, form.password).catch(() => null);
+      accountsApi.create({ jid, domain: jid.split("@")[1] ?? "localhost" }).catch(() => {});
+      const tokenRes = await authApi.getUserToken(jid, form.password).catch(() => null);
       if (tokenRes?.access_token) setUserToken(id, tokenRes.access_token);
       apiSocket.connect(id);
     } catch (error: any) {

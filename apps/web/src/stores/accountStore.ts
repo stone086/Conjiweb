@@ -25,6 +25,29 @@ interface AccountState {
   setConnected: (id: string, connected: boolean) => void;
 }
 
+export function normalizeAccountJid(jid: string): string {
+  return jid.split("/")[0].trim().toLowerCase();
+}
+
+function dedupeAccounts(accounts: XmppAccount[]): XmppAccount[] {
+  const byJid = new Map<string, XmppAccount>();
+  for (const account of accounts) {
+    const key = normalizeAccountJid(account.jid);
+    if (!key) continue;
+    const existing = byJid.get(key);
+    byJid.set(key, {
+      ...existing,
+      ...account,
+      jid: key,
+      domain: key.split("@")[1] ?? account.domain,
+      presence: account.presence ?? existing?.presence ?? "available",
+      connected: account.connected ?? existing?.connected ?? false,
+      is_enabled: account.is_enabled ?? existing?.is_enabled ?? true,
+    });
+  }
+  return Array.from(byJid.values());
+}
+
 export const useAccountStore = create<AccountState>()(
   persist(
     (set) => ({
@@ -32,22 +55,28 @@ export const useAccountStore = create<AccountState>()(
       activeAccountId: null,
 
       addAccount: (account) =>
-        set((s) => ({
-          accounts: [
-            ...s.accounts,
-            {
-              id: account.id,
-              jid: account.jid,
-              domain: account.domain,
-              displayName: account.displayName,
-              avatarUrl: account.avatarUrl,
-              is_enabled: account.is_enabled ?? true,
-              presence: "available",
-              connected: false,
-            },
-          ],
-          activeAccountId: s.activeAccountId ?? account.id,
-        })),
+        set((s) => {
+          const jid = normalizeAccountJid(account.jid);
+          const existing = s.accounts.find((a) => normalizeAccountJid(a.jid) === jid);
+          const nextAccount: XmppAccount = {
+            id: existing?.id ?? account.id,
+            jid,
+            domain: jid.split("@")[1] ?? account.domain,
+            displayName: account.displayName ?? existing?.displayName,
+            avatarUrl: account.avatarUrl ?? existing?.avatarUrl,
+            is_enabled: account.is_enabled ?? existing?.is_enabled ?? true,
+            presence: existing?.presence ?? "available",
+            connected: existing?.connected ?? false,
+          };
+          const accounts = dedupeAccounts([
+            ...s.accounts.filter((a) => normalizeAccountJid(a.jid) !== jid),
+            nextAccount,
+          ]);
+          return {
+            accounts,
+            activeAccountId: existing?.id ?? s.activeAccountId ?? nextAccount.id,
+          };
+        }),
 
       removeAccount: (id) =>
         set((s) => {
@@ -76,6 +105,17 @@ export const useAccountStore = create<AccountState>()(
     }),
     {
       name: "conjiweb-accounts",
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<AccountState> | undefined;
+        const accounts = dedupeAccounts(persisted?.accounts ?? []);
+        const hasActive = accounts.some((a) => a.id === persisted?.activeAccountId);
+        return {
+          ...currentState,
+          ...persisted,
+          accounts,
+          activeAccountId: hasActive ? persisted?.activeAccountId ?? null : accounts[0]?.id ?? null,
+        };
+      },
       partialize: (state) => ({
         accounts: state.accounts.map(({ password, ...rest }) => rest),
         activeAccountId: state.activeAccountId,

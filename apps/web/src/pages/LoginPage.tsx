@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { setAccountPassword, useAccountStore } from "@/stores/accountStore";
+import { normalizeAccountJid, setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
 import { accountsApi, authApi, setUserToken } from "@/services/api";
@@ -14,7 +14,18 @@ export default function LoginPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const addAccount = useAccountStore((s) => s.addAccount);
-  const wsUrl = (import.meta.env.VITE_XMPP_WS_URL as string) ?? "ws://localhost:5280/xmpp-websocket";
+  const currentHost = window.location.hostname.trim().toLowerCase();
+  const configuredWsUrl = (import.meta.env.VITE_XMPP_WS_URL as string | undefined) ?? "";
+  const wsUrl = (() => {
+    const sameOrigin = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/xmpp-websocket`;
+    if (!configuredWsUrl) return sameOrigin;
+    try {
+      return new URL(configuredWsUrl).host === window.location.host ? configuredWsUrl : sameOrigin;
+    } catch {
+      return sameOrigin;
+    }
+  })();
+  const envXmppDomain = ((import.meta.env.VITE_XMPP_DOMAIN as string | undefined) ?? "").trim().toLowerCase();
 
   const [form, setForm] = useState({
     jid: "",
@@ -27,24 +38,47 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [xmppDomain, setXmppDomain] = useState(envXmppDomain);
+  const [publicDomain, setPublicDomain] = useState(currentHost);
 
   const expandJid = (value: string) => {
     const trimmed = value.trim();
-    if (inviteDomain && trimmed && !trimmed.includes("@")) return `${trimmed}@${inviteDomain}`;
+    const defaultDomain = xmppDomain || inviteDomain;
+    if (defaultDomain && trimmed && !trimmed.includes("@")) return `${trimmed}@${defaultDomain}`;
+    if (!xmppDomain || !trimmed.includes("@")) return trimmed;
+
+    const [username, ...domainParts] = trimmed.split("@");
+    const domain = domainParts.join("@").toLowerCase();
+    const aliases = new Set([inviteDomain, publicDomain, currentHost].filter(Boolean));
+    if (username && aliases.has(domain) && domain !== xmppDomain) {
+      return `${username}@${xmppDomain}`;
+    }
     return trimmed;
   };
 
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+
   const connectWithCurrentForm = async (jidOverride?: string) => {
-    const jid = jidOverride ?? expandJid(form.jid);
-    const id = crypto.randomUUID();
+    const jid = normalizeAccountJid(jidOverride ?? expandJid(form.jid));
     const domain = jid.split("@")[1] ?? "localhost";
+    const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
+    const id = existing?.id ?? crypto.randomUUID();
+    const createdAccount = !existing;
     addAccount({ id, jid, domain, password: form.password, displayName: jid.split("@")[0] });
     setAccountPassword(id, form.password);
     accountsApi.create({ jid, domain }).catch(() => {});
     const client = createClient({ jid, password: form.password, wsUrl, accountId: id });
     initXmppBridge(client);
     try {
-      await client.connect();
+      await withTimeout(client.connect(), 20000, t("login.connectionFailed"));
       const tokenRes = await authApi.getUserToken(jid, form.password);
       if (tokenRes?.access_token) {
         setUserToken(id, tokenRes.access_token);
@@ -54,7 +88,12 @@ export default function LoginPage() {
       apiSocket.connect(id);
       navigate("/");
     } catch (err: any) {
-      useAccountStore.getState().removeAccount(id);
+      client.disconnect();
+      if (createdAccount) {
+        useAccountStore.getState().removeAccount(id);
+      } else {
+        useAccountStore.getState().setConnected(id, false);
+      }
       throw err;
     }
   };
@@ -66,6 +105,12 @@ export default function LoginPage() {
 
   // Discover available SSO providers on mount
   useEffect(() => {
+    authApi.config()
+      .then((config) => {
+        if (config?.xmpp_domain) setXmppDomain(String(config.xmpp_domain).trim().toLowerCase());
+        if (config?.public_domain) setPublicDomain(String(config.public_domain).trim().toLowerCase());
+      })
+      .catch(() => {});
     fetch("/sso/providers")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
@@ -80,10 +125,12 @@ export default function LoginPage() {
     if (hash.startsWith("#sso-token=")) {
       const params = new URLSearchParams(hash.slice(1));
       const token = params.get("sso-token");
-      const jid = params.get("jid");
-      if (token && jid) {
+      const rawJid = params.get("jid");
+      if (token && rawJid) {
+        const jid = normalizeAccountJid(rawJid);
+        const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
         // Build the account from SSO token, store it, and connect
-        const id = crypto.randomUUID();
+        const id = existing?.id ?? crypto.randomUUID();
         useAccountStore.getState().addAccount({
           id, jid,
           domain: jid.split("@")[1] ?? "",
@@ -110,10 +157,12 @@ export default function LoginPage() {
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? "LDAP login failed");
       const data = await r.json();
-      const id = crypto.randomUUID();
+      const jid = normalizeAccountJid(data.jid);
+      const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
+      const id = existing?.id ?? crypto.randomUUID();
       useAccountStore.getState().addAccount({
-        id, jid: data.jid,
-        domain: data.jid.split("@")[1] ?? "",
+        id, jid,
+        domain: jid.split("@")[1] ?? "",
         displayName: ldapUser,
       });
       setUserToken(id, data.access_token);
@@ -172,7 +221,7 @@ export default function LoginPage() {
           <h2 className="text-lg font-semibold text-surface-50 mb-6">{t("login.connectAccount")}</h2>
           {inviteDomain && (
             <div className="mb-4 rounded-xl border border-accent/20 bg-accent/10 px-3 py-2 text-xs text-surface-100">
-              Invited to {inviteDomain}. You can enter only a username, and Conjiweb will complete the JID.
+              {t("login.inviteHint").replace("{domain}", inviteDomain)}
             </div>
           )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -181,7 +230,7 @@ export default function LoginPage() {
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type="text" value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })}
-                  placeholder={inviteDomain ? `username or user@${inviteDomain}` : "user@example.com"} className="input-field pl-9" required autoFocus />
+                  placeholder={inviteDomain ? t("login.jidInvitePlaceholder").replace("{domain}", inviteDomain) : "user@example.com"} className="input-field pl-9" required autoFocus />
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -214,7 +263,7 @@ export default function LoginPage() {
           </form>
           {ssoProviders && (
             <div className="mt-4 pt-4 border-t border-white/5">
-              <p className="text-xs text-surface-200/40 text-center mb-3">Or sign in with</p>
+              <p className="text-xs text-surface-200/40 text-center mb-3">{t("login.ssoDivider")}</p>
               <div className="flex flex-col gap-2">
                 {ssoProviders.oidc && (
                   <a
@@ -238,7 +287,7 @@ export default function LoginPage() {
                 <form onSubmit={handleLdapLogin} className="flex flex-col gap-2 mt-3">
                   <input
                     type="text"
-                    placeholder="Username"
+                    placeholder={t("login.username")}
                     value={ldapUser}
                     onChange={(e) => setLdapUser(e.target.value)}
                     className="input-field text-sm"
@@ -246,13 +295,13 @@ export default function LoginPage() {
                   />
                   <input
                     type="password"
-                    placeholder="Password"
+                    placeholder={t("login.password")}
                     value={ldapPass}
                     onChange={(e) => setLdapPass(e.target.value)}
                     className="input-field text-sm"
                   />
                   <button type="submit" disabled={loading} className="btn-primary text-sm py-2">
-                    LDAP Sign In
+                    {t("login.ldapSignIn")}
                   </button>
                 </form>
               )}
