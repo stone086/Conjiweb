@@ -78,11 +78,11 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             const next = !omemoEnabled;
             setOmemoEnabled(next);
             if (next) {
-              toast("OMEMO mode enabled (experimental, Conjiweb-to-Conjiweb).", { duration: 4000 });
+              toast(t("omemo.enabledNotice"), { duration: 5000 });
             }
           }}
           className="btn-ghost p-2"
-          title={omemoEnabled ? "OMEMO enabled" : "OMEMO disabled"}
+          title={omemoEnabled ? t("omemo.enabled") : t("omemo.disabled")}
         >
           {omemoEnabled ? <Lock size={16} /> : <Unlock size={16} />}
         </button>
