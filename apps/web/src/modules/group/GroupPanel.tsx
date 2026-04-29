@@ -100,7 +100,11 @@ export default function GroupPanel() {
   const [showDiscover, setShowDiscover] = useState(false);
   const [inviteRoom, setInviteRoom] = useState<MucRoom | null>(null);
   const [joinForm, setJoinForm] = useState({ jid: "", nickname: "" });
-  const [createForm, setCreateForm] = useState({ name: "", server: "conference.localhost" });
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    server: "conference.localhost",
+    visibility: "public" as "public" | "private",
+  });
   const [inviteForm, setInviteForm] = useState({ jid: "", reason: "" });
   const [discoverServer, setDiscoverServer] = useState("conference.localhost");
   const [discovering, setDiscovering] = useState(false);
@@ -176,7 +180,15 @@ export default function GroupPanel() {
     const roomJid = `${slug}@${createForm.server}`;
     const roomName = createForm.name.trim();
     if (!joinRoomNow(roomJid, roomName, defaultNickname)) return;
-    setCreateForm({ name: "", server: defaultServer });
+    const client = activeAccountId ? getClient(activeAccountId) : undefined;
+    const isPrivate = createForm.visibility === "private";
+    client?.configureRoom(roomJid, {
+      isPublic: !isPrivate,
+      membersOnly: isPrivate,
+    }).catch(() => {
+      toast.error("Room created, but applying visibility config failed");
+    });
+    setCreateForm({ name: "", server: defaultServer, visibility: "public" });
     setShowCreate(false);
     toast.success(t("group.joined"));
   };
@@ -313,6 +325,14 @@ export default function GroupPanel() {
           <input value={createForm.server} onChange={(e) => setCreateForm({ ...createForm, server: e.target.value })}
             placeholder={defaultServer}
             className="input-field text-xs py-1.5" />
+          <select
+            value={createForm.visibility}
+            onChange={(e) => setCreateForm({ ...createForm, visibility: e.target.value as "public" | "private" })}
+            className="input-field text-xs py-1.5"
+          >
+            <option value="public">公开群</option>
+            <option value="private">私密群（仅邀请）</option>
+          </select>
           <div className="flex gap-2">
             <button onClick={handleCreate} className="btn-primary text-xs py-1.5 flex-1">{t("group.create")}</button>
             <button onClick={() => setShowCreate(false)} className="btn-ghost text-xs py-1.5">{t("group.cancel")}</button>

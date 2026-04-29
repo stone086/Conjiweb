@@ -96,6 +96,12 @@ export interface MucDiscoveryItem {
   name?: string;
 }
 
+export interface MucRoomConfig {
+  isPublic: boolean;
+  membersOnly?: boolean;
+  password?: string;
+}
+
 type EventHandler = (data: unknown) => void;
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -790,6 +796,33 @@ export class XmppClient {
         },
         () => reject(new Error("Room discovery failed"))
       );
+    });
+  }
+
+  configureRoom(roomJid: string, config: MucRoomConfig): Promise<void> {
+    if (!this._connection || !this._connected) return Promise.reject(new Error("Not connected"));
+    const iq = this._$iq({ type: "set", to: roomJid })
+      .c("query", { xmlns: "http://jabber.org/protocol/muc#owner" })
+      .c("x", { xmlns: "jabber:x:data", type: "submit" })
+      .c("field", { var: "FORM_TYPE", type: "hidden" })
+      .c("value").t("http://jabber.org/protocol/muc#roomconfig").up().up()
+      .c("field", { var: "muc#roomconfig_publicroom" })
+      .c("value").t(config.isPublic ? "1" : "0").up().up()
+      .c("field", { var: "muc#roomconfig_membersonly" })
+      .c("value").t(config.membersOnly ? "1" : "0").up().up();
+
+    if (config.password?.trim()) {
+      iq.c("field", { var: "muc#roomconfig_passwordprotectedroom" })
+        .c("value").t("1").up().up()
+        .c("field", { var: "muc#roomconfig_roomsecret" })
+        .c("value").t(config.password.trim()).up().up();
+    } else {
+      iq.c("field", { var: "muc#roomconfig_passwordprotectedroom" })
+        .c("value").t("0").up().up();
+    }
+
+    return new Promise((resolve, reject) => {
+      this._connection.sendIQ(iq.tree(), () => resolve(), () => reject(new Error("Room config failed")));
     });
   }
 
