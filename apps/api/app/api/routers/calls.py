@@ -1,6 +1,6 @@
 """Call history endpoints."""
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -16,9 +16,9 @@ router = APIRouter()
 
 class CallLogRecord(BaseModel):
     peer_jid: str
-    direction: str
-    media_types: str
-    status: str
+    direction: Literal["incoming", "outgoing"]
+    media_types: Literal["audio", "video", "audio,video"]
+    status: Literal["answered", "missed", "declined", "failed"]
     duration_seconds: Optional[int] = None
     started_at: datetime
     ended_at: Optional[datetime] = None

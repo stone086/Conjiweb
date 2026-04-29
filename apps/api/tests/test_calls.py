@@ -69,6 +69,24 @@ async def test_log_call_records_current_account():
 
 
 @pytest.mark.anyio
+async def test_log_call_rejects_invalid_status():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/calls/log",
+            headers=_user_headers(),
+            json={
+                "peer_jid": "bob@example.com",
+                "direction": "sideways",
+                "media_types": "audio",
+                "status": "mystery",
+                "started_at": "2026-04-29T10:00:00Z",
+            },
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
 async def test_call_history_is_scoped_to_current_account():
     call = CallLog(
         id="call-1",
@@ -108,3 +126,55 @@ async def test_call_history_is_scoped_to_current_account():
 
     assert resp.status_code == 200
     assert resp.json()[0]["id"] == "call-1"
+
+
+@pytest.mark.anyio
+async def test_delete_call_log_removes_only_current_account_record():
+    call = CallLog(
+        id="call-1",
+        account_id="acc-1",
+        peer_jid="bob@example.com",
+        direction="incoming",
+        media_types="audio",
+        status="missed",
+        duration_seconds=0,
+        started_at=datetime(2026, 4, 29, 10, 0, tzinfo=UTC),
+        ended_at=None,
+    )
+
+    class _Result:
+        @staticmethod
+        def scalar_one_or_none():
+            return call
+
+    class _FakeDB:
+        def __init__(self):
+            self.deleted = None
+            self.committed = False
+
+        async def execute(self, *args, **kwargs):
+            return _Result()
+
+        async def delete(self, obj):
+            self.deleted = obj
+
+        async def commit(self):
+            self.committed = True
+
+    fake_db = _FakeDB()
+
+    async def _fake_get_db():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _fake_get_db
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.delete("/calls/log/call-1", headers=_user_headers())
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+    assert fake_db.deleted is call
+    assert fake_db.committed is True

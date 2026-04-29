@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
-import { Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react";
+import { Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Trash2, Video } from "lucide-react";
+import toast from "react-hot-toast";
 import Avatar from "@/components/Avatar";
 import { api } from "@/services/api";
 import { callManager } from "@/services/jingle";
@@ -38,6 +39,17 @@ export default function CallHistoryPage() {
       await callManager.startCall(log.peer_jid, mediaTypes);
     } catch {
       // The call UI surfaces connection failures.
+    }
+  };
+
+  const handleDelete = async (logId: string) => {
+    const previous = logs;
+    setLogs((items) => items.filter((item) => item.id !== logId));
+    try {
+      await api.delete(`/calls/log/${logId}`);
+    } catch {
+      setLogs(previous);
+      toast.error(t("call.deleteFailed"));
     }
   };
 
@@ -80,25 +92,37 @@ export default function CallHistoryPage() {
             const duration = formatDuration(log.duration_seconds);
 
             return (
-              <button
+              <div
                 key={log.id}
-                onClick={() => void handleRedial(log)}
                 className="w-full px-5 py-3.5 hover:bg-white/5 transition-colors flex items-center gap-3 border-b border-white/5"
               >
-                <Avatar name={log.peer_jid} size="md" />
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm font-medium text-surface-50 truncate">
-                    {log.peer_jid.split("@")[0]}
-                  </p>
-                  <div className="flex items-center gap-1.5 text-xs text-surface-200/50 mt-0.5">
-                    <Icon size={12} className={isMissed ? "text-warn" : ""} />
-                    {isVideo && <Video size={11} />}
-                    <span>{formatTime(log.started_at)}</span>
-                    {duration && <span className="text-surface-200/30">· {duration}</span>}
+                <button
+                  onClick={() => void handleRedial(log)}
+                  className="min-w-0 flex-1 flex items-center gap-3 text-left"
+                >
+                  <Avatar name={log.peer_jid} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-surface-50 truncate">
+                      {log.peer_jid.split("@")[0]}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-surface-200/50 mt-0.5">
+                      <Icon size={12} className={isMissed ? "text-warn" : ""} />
+                      {isVideo && <Video size={11} />}
+                      <span>{formatTime(log.started_at)}</span>
+                      {duration && <span className="text-surface-200/30">· {duration}</span>}
+                    </div>
                   </div>
-                </div>
-                <Phone size={14} className="text-accent-soft" />
-              </button>
+                  <Phone size={14} className="text-accent-soft" />
+                </button>
+                <button
+                  onClick={() => void handleDelete(log.id)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-surface-200/35 hover:text-danger hover:bg-danger/10"
+                  title={t("call.delete")}
+                  aria-label={t("call.delete")}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             );
           })}
         </div>
