@@ -66,7 +66,6 @@ function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom)
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-surface-50 truncate">{room.name}</p>
-          {room.joined && <span className="text-[10px] text-accent-soft flex-shrink-0">{t("group.joined")}</span>}
         </div>
         <p className="text-xs text-surface-200/40 truncate">{room.jid}</p>
         {room.subject && <p className="text-xs text-surface-200/50 mt-1 truncate">{room.subject}</p>}
