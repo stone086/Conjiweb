@@ -402,8 +402,14 @@ export default function MessageView({ conversationId }: { conversationId: string
   const forwardCandidates = allConversations
     .filter((c) => c.accountId === activeAccountId && c.id !== conversationId)
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+  const peerDomain = (conversation?.peerJid.split("@")[1] ?? "").toLowerCase();
+  const isMucPeer =
+    conversation?.type === "group"
+    || peerDomain.startsWith("conference.")
+    || peerDomain.includes(".conference.");
   const needsContactApproval = Boolean(
     conversation?.type === "private"
+      && !isMucPeer
       && peerContact?.pendingIncoming
       && !peerContact.isBlocked
   );

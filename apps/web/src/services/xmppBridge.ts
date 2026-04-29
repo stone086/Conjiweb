@@ -292,6 +292,9 @@ export function initXmppBridge(client: XmppClient) {
     const { message, isCarbonSent, isCarbonReceived } = data;
     const from = normalizeBareJid(message.from);
     const to = normalizeBareJid(message.to ?? "");
+    const fromDomain = (from.split("@")[1] ?? "").toLowerCase();
+    const isConferenceJid = fromDomain.startsWith("conference.") || fromDomain.includes(".conference.");
+    const isGroupContext = message.type === "groupchat" || isConferenceJid;
     if (!isValidBareJid(from) && message.type !== "groupchat") return;
 
     // XEP-0280 Carbon: this is a copy of a message we sent from another device
@@ -340,7 +343,7 @@ export function initXmppBridge(client: XmppClient) {
     const existingContact = useRosterStore.getState().getContact(accountId, from);
     if (existingContact?.isBlocked) return;
 
-    if (!existingContact) {
+    if (!existingContact && !isGroupContext) {
       useRosterStore.getState().upsertContact({
         accountId,
         jid: from,
@@ -361,7 +364,7 @@ export function initXmppBridge(client: XmppClient) {
       useChatStore.getState().upsertConversation({
         id: convId,
         accountId,
-        type: message.type === "groupchat" ? "group" : "private",
+        type: isGroupContext ? "group" : "private",
         peerJid: from,
         title: contact?.name ?? from.split("@")[0],
         unreadCount: 0,
