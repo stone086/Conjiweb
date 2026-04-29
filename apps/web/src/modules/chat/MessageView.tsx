@@ -581,7 +581,8 @@ export default function MessageView({ conversationId }: { conversationId: string
       toast.error(t("chat.notConnected"));
       return;
     }
-    let id: string;
+    let id = "";
+    let sentEncrypted = false;
     try {
       let outboundBody = body;
       if (body && conversation?.type === "private" && getOmemoEnabled()) {
@@ -592,19 +593,32 @@ export default function MessageView({ conversationId }: { conversationId: string
         if (!envelope) {
           const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, peerJid, body);
           if (!encrypted.usedPeerKey || !encrypted.envelope) {
-            toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
-            return;
+            const sendPlain = window.confirm(t("omemo.sendPlaintextConfirm"));
+            if (!sendPlain) return;
+            id = client.sendMessage(
+              peerJid,
+              outboundBody,
+              "chat",
+              editingMessageId
+                ? { replaceId: editingMessageId }
+                : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
+            );
+            toast(t("omemo.sentPlaintext"));
+          } else {
+            envelope = encrypted.envelope;
           }
-          envelope = encrypted.envelope;
         }
-        id = client.sendOmemoMessage(
-          peerJid,
-          envelope,
-          "chat",
-          editingMessageId
-            ? { replaceId: editingMessageId }
-            : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
-        );
+        if (envelope) {
+          id = client.sendOmemoMessage(
+            peerJid,
+            envelope,
+            "chat",
+            editingMessageId
+              ? { replaceId: editingMessageId }
+              : (replyTo ? { replyToId: replyTo.id, replyToJid: replyTo.senderJid } : undefined)
+          );
+          sentEncrypted = true;
+        }
       } else {
         id = body ? client.sendMessage(
           conversation?.peerJid ?? conversationId,
@@ -650,7 +664,7 @@ export default function MessageView({ conversationId }: { conversationId: string
       status: "sent",
       timestamp: Date.now(),
       replyToId: replyTo?.id,
-      encrypted: Boolean(body && conversation?.type === "private" && getOmemoEnabled()),
+      encrypted: sentEncrypted,
       attachments: pendingFiles.map((f) => ({
         id: f.id,
         fileName: f.name,
@@ -770,7 +784,7 @@ export default function MessageView({ conversationId }: { conversationId: string
             && getOmemoEnabled()
             && message.body
         );
-        let newId: string;
+        let newId = "";
         if (isPrivateOmemo) {
           const peerJid = conversation?.peerJid ?? conversationId;
           // libsignal-first OMEMO encryption with legacy fallback
@@ -778,16 +792,21 @@ export default function MessageView({ conversationId }: { conversationId: string
           if (!envelope) {
             const encrypted = await encryptOmemoEnvelopeForPeer(activeAccountId, peerJid, message.body);
             if (!encrypted.usedPeerKey || !encrypted.envelope) {
-              toast.error("Peer OMEMO keys are unavailable. Ask them to come online with OMEMO enabled.");
-              return;
+              const sendPlain = window.confirm(t("omemo.sendPlaintextConfirm"));
+              if (!sendPlain) return;
+              newId = client.sendMessage(peerJid, message.body, "chat");
+              toast(t("omemo.sentPlaintext"));
+            } else {
+              envelope = encrypted.envelope;
             }
-            envelope = encrypted.envelope;
           }
-          newId = client.sendOmemoMessage(
-            peerJid,
-            envelope,
-            "chat"
-          );
+          if (envelope) {
+            newId = client.sendOmemoMessage(
+              peerJid,
+              envelope,
+              "chat"
+            );
+          }
         } else {
           newId = client.sendMessage(
             conversation?.peerJid ?? conversationId,
