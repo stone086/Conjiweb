@@ -11,6 +11,41 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+run_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+ensure_rsync() {
+  if command -v rsync >/dev/null 2>&1; then
+    return 0
+  fi
+  echo -e "${YELLOW}rsync not found, installing...${NC}"
+  run_root apt-get update -qq
+  run_root apt-get install -y rsync
+}
+
+git_fetch_with_retry() {
+  local attempts=3
+  local delay=3
+  local n=1
+  while (( n <= attempts )); do
+    if git fetch --all --prune; then
+      return 0
+    fi
+    if (( n == attempts )); then
+      echo -e "${RED}git fetch failed after ${attempts} attempts${NC}"
+      return 1
+    fi
+    echo -e "${YELLOW}git fetch failed (attempt ${n}/${attempts}), retrying in ${delay}s...${NC}"
+    sleep "${delay}"
+    n=$((n + 1))
+  done
+}
+
 usage() {
   echo -e "${CYAN}Conjiweb manage${NC}"
   echo ""
@@ -121,8 +156,13 @@ cmd_change_pass() {
 
 cmd_update_front() {
   load_env
+  ensure_rsync
   mkdir -p "${INSTALL_DIR}/web"
-  cp -r "${SRC_DIR}/apps/web/." "${INSTALL_DIR}/web/"
+  run_root rsync -a --delete \
+    --exclude "node_modules" \
+    --exclude "dist" \
+    --exclude ".env.production" \
+    "${SRC_DIR}/apps/web/" "${INSTALL_DIR}/web/"
   cd "${INSTALL_DIR}/web"
 
   if [[ -n "${DOMAIN:-}" ]]; then
@@ -139,15 +179,19 @@ EOF
     npm install --silent --no-audit --no-fund
   fi
   npm run build
-  chmod -R a+rX "${INSTALL_DIR}/web/dist" || true
-  systemctl reload nginx
+  run_root chmod -R a+rX "${INSTALL_DIR}/web/dist" || true
+  run_root systemctl reload nginx
   echo -e "${GREEN}Frontend updated${NC}"
 }
 
 cmd_update_api() {
+  ensure_rsync
   mkdir -p "${INSTALL_DIR}/api"
-  cp -r "${SRC_DIR}/apps/api/." "${INSTALL_DIR}/api/"
-  [[ -f "${SRC_DIR}/VERSION" ]] && cp "${SRC_DIR}/VERSION" "${INSTALL_DIR}/api/VERSION"
+  run_root rsync -a --delete \
+    --exclude ".venv" \
+    --exclude ".env" \
+    "${SRC_DIR}/apps/api/" "${INSTALL_DIR}/api/"
+  [[ -f "${SRC_DIR}/VERSION" ]] && run_root cp "${SRC_DIR}/VERSION" "${INSTALL_DIR}/api/VERSION"
   cd "${INSTALL_DIR}/api"
 
   if [[ ! -d .venv ]]; then
@@ -168,7 +212,7 @@ cmd_update_api() {
     fi
   fi
   .venv/bin/alembic upgrade head
-  systemctl restart conjiweb-api
+  run_root systemctl restart conjiweb-api
   echo -e "${GREEN}API updated${NC}"
 }
 
@@ -178,7 +222,7 @@ cmd_update_all() {
   current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
   current_remote="$(git remote | head -n1)"
   [[ -n "${current_remote}" ]] || current_remote="origin"
-  git fetch --all --prune
+  git_fetch_with_retry
   git reset --hard "${current_remote}/${current_branch}"
 
   echo -e "${CYAN}[2/4] Update API${NC}"
