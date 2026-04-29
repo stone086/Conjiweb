@@ -38,8 +38,10 @@ export const useGroupStore = create<GroupState>()(
       removeRoom: (jid) =>
         set((s) => {
           const nextRooms = { ...s.rooms };
+          const nextMembers = { ...s.members };
           delete nextRooms[jid];
-          return { rooms: nextRooms };
+          delete nextMembers[jid];
+          return { rooms: nextRooms, members: nextMembers };
         }),
       setMembers: (roomJid, members) => set((s) => ({ members: { ...s.members, [roomJid]: members } })),
       updateRoomSubject: (roomJid, subject) =>

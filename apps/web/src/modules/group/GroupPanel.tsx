@@ -5,7 +5,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { MucMember, MucRoom, useGroupStore } from "@/stores/groupStore";
 import { getClient, MucDiscoveryItem } from "@/services/xmppAdapter";
 import { clsx } from "clsx";
-import { Users, Plus, Hash, LogOut, Settings, Crown, Shield, UserPlus, Compass, RefreshCw } from "lucide-react";
+import { Users, Plus, Hash, LogOut, Settings, Crown, Shield, UserPlus, Compass, RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { generateConversationId } from "@/utils/helpers";
@@ -22,6 +22,7 @@ function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom)
   const navigate = useNavigate();
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const upsertConversation = useChatStore((s) => s.upsertConversation);
+  const deleteConversation = useChatStore((s) => s.deleteConversation);
   const removeRoom = useGroupStore((s) => s.removeRoom);
   const upsertRoom = useGroupStore((s) => s.upsertRoom);
 
@@ -51,8 +52,16 @@ function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom)
     if (!activeAccountId) return;
     const client = getClient(activeAccountId);
     client?.leaveRoom(room.jid, room.nickname);
-    upsertRoom({ ...room, joined: false });
+    removeRoom(room.jid);
+    deleteConversation(generateConversationId(activeAccountId, room.jid));
     toast(t("group.leftRoom"));
+  };
+
+  const removeLocalRoom = () => {
+    if (!activeAccountId) return;
+    removeRoom(room.jid);
+    deleteConversation(generateConversationId(activeAccountId, room.jid));
+    toast(t("common.removed"));
   };
 
   return (
@@ -86,6 +95,13 @@ function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom)
             className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger"
             title={t("group.leave")}>
             <LogOut size={13} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); removeLocalRoom(); }}
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger"
+            title={t("common.remove")}
+          >
+            <Trash2 size={13} />
           </button>
         </div>
       )}
