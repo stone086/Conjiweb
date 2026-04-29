@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useChatStore, ChatMessage } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useRosterStore } from "@/stores/rosterStore";
+import { useGroupStore } from "@/stores/groupStore";
 import { getClient } from "@/services/xmppAdapter";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMAM } from "@/hooks/useMAM";
@@ -382,6 +383,7 @@ export default function MessageView({ conversationId }: { conversationId: string
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const conversation = useChatStore((s) => s.conversations[conversationId]);
+  const upsertRoom = useGroupStore((s) => s.upsertRoom);
   const peerContact = useRosterStore((s) =>
     activeAccountId && conversation?.peerJid ? s.getContact(activeAccountId, conversation.peerJid) : undefined
   );
@@ -435,6 +437,25 @@ export default function MessageView({ conversationId }: { conversationId: string
       cancelled = true;
     };
   }, [conversationId, conversation, messages.length, addMessage, fetchHistory]);
+
+  useEffect(() => {
+    if (!activeAccountId || !conversation || conversation.type !== "group") return;
+    const client = getClient(activeAccountId);
+    if (!client?.connected) return;
+    const roomJid = conversation.peerJid;
+    const nickname = client.config.jid.split("@")[0] || "user";
+    try {
+      client.joinRoom(roomJid, nickname);
+      upsertRoom({
+        jid: roomJid,
+        name: conversation.title || roomJid.split("@")[0],
+        nickname,
+        joined: true,
+      });
+    } catch {
+      // ignore transient join errors; reconnect flow may retry
+    }
+  }, [activeAccountId, conversation, upsertRoom]);
 
   useEffect(() => {
     let cancelled = false;
