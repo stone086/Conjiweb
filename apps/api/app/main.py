@@ -80,7 +80,7 @@ app.include_router(contacts.router, prefix="/contacts", tags=["contacts"], depen
 app.include_router(attachments.router, prefix="/attachments", tags=["attachments"])
 app.include_router(calls.router, tags=["calls"])
 app.include_router(messages.router, prefix="/messages", tags=["messages"])
-app.include_router(plugins.router, prefix="/plugins", tags=["plugins"], dependencies=admin_dep)
+app.include_router(plugins.router, prefix="/plugins", tags=["plugins"])
 app.include_router(ai.router, prefix="/ai", tags=["ai"], dependencies=admin_dep)
 app.include_router(admin.router, prefix="/admin", tags=["admin"], dependencies=admin_dep)
 app.include_router(push.router, tags=["push"])

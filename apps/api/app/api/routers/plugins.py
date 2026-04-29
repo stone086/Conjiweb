@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
 from app.core.database import get_db
 from app.models import Plugin, PluginSetting
+from app.utils.security import bearer_scheme, decode_token
 import uuid
 
 router = APIRouter()
@@ -16,6 +18,20 @@ BUILTIN_PLUGINS = [
     {"id": "reminder",     "name": "Reminder",       "version": "1.0.0", "permissions": ["messages.read"]},
     {"id": "markdown-plus","name": "Markdown Plus",  "version": "1.0.0", "permissions": ["messages.read"]},
 ]
+
+
+def get_plugin_actor(
+    credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
+) -> dict[str, str | None]:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    role = payload.get("role")
+    if role == "admin":
+        return {"role": "admin", "sub": payload["sub"], "account_id": payload.get("account_id")}
+    if role == "user" and payload.get("account_id"):
+        return {"role": "user", "sub": payload["sub"], "account_id": payload["account_id"]}
+    raise HTTPException(status_code=403, detail="Plugin access denied")
 
 
 async def ensure_plugins(db: AsyncSession):
@@ -32,7 +48,10 @@ async def ensure_plugins(db: AsyncSession):
     summary="List plugins",
     description="Return installed built-in plugins and current enabled state.",
 )
-async def list_plugins(db: AsyncSession = Depends(get_db)):
+async def list_plugins(
+    actor: dict[str, str | None] = Depends(get_plugin_actor),
+    db: AsyncSession = Depends(get_db),
+):
     await ensure_plugins(db)
     result = await db.execute(select(Plugin))
     return [{"id": p.id, "name": p.name, "version": p.version,
@@ -45,7 +64,11 @@ async def list_plugins(db: AsyncSession = Depends(get_db)):
     summary="Enable plugin",
     description="Enable one plugin by id.",
 )
-async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
+async def enable_plugin(
+    plugin_id: str,
+    actor: dict[str, str | None] = Depends(get_plugin_actor),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(Plugin).where(Plugin.id == plugin_id))
     plugin = result.scalar_one_or_none()
     if not plugin:
@@ -60,7 +83,11 @@ async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
     summary="Disable plugin",
     description="Disable one plugin by id.",
 )
-async def disable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
+async def disable_plugin(
+    plugin_id: str,
+    actor: dict[str, str | None] = Depends(get_plugin_actor),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(Plugin).where(Plugin.id == plugin_id))
     plugin = result.scalar_one_or_none()
     if not plugin:
@@ -75,7 +102,12 @@ async def disable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db)):
     summary="Get plugin settings",
     description="Return plugin configuration for optional account scope.",
 )
-async def get_plugin_settings(plugin_id: str, account_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def get_plugin_settings(
+    plugin_id: str,
+    account_id: Optional[str] = None,
+    actor: dict[str, str | None] = Depends(get_plugin_actor),
+    db: AsyncSession = Depends(get_db),
+):
     stmt = select(PluginSetting).where(PluginSetting.plugin_id == plugin_id)
     if account_id:
         stmt = stmt.where(PluginSetting.account_id == account_id)
@@ -89,7 +121,13 @@ async def get_plugin_settings(plugin_id: str, account_id: Optional[str] = None, 
     summary="Update plugin settings",
     description="Write plugin configuration for optional account scope.",
 )
-async def update_plugin_settings(plugin_id: str, config: dict, account_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def update_plugin_settings(
+    plugin_id: str,
+    config: dict,
+    account_id: Optional[str] = None,
+    actor: dict[str, str | None] = Depends(get_plugin_actor),
+    db: AsyncSession = Depends(get_db),
+):
     stmt = select(PluginSetting).where(PluginSetting.plugin_id == plugin_id)
     if account_id:
         stmt = stmt.where(PluginSetting.account_id == account_id)
