@@ -40,18 +40,29 @@ export default function LoginPage() {
   const [registering, setRegistering] = useState(false);
   const [xmppDomain, setXmppDomain] = useState(envXmppDomain);
   const [publicDomain, setPublicDomain] = useState(currentHost);
-  const loginDomain = xmppDomain || inviteDomain || envXmppDomain || currentHost;
+  const isLocalDomain = (value: string) => {
+    const v = (value || "").trim().toLowerCase();
+    return v === "localhost" || v === "127.0.0.1" || v === "::1";
+  };
+  const effectiveXmppDomain =
+    !isLocalDomain(xmppDomain) ? xmppDomain :
+    !isLocalDomain(inviteDomain) ? inviteDomain :
+    !isLocalDomain(currentHost) ? currentHost :
+    xmppDomain;
+  const loginDomain = effectiveXmppDomain || inviteDomain || envXmppDomain || currentHost;
 
   const expandJid = (value: string) => {
     const trimmed = value.trim();
     if (loginDomain && trimmed && !trimmed.includes("@")) return `${trimmed}@${loginDomain}`;
-    if (!xmppDomain || !trimmed.includes("@")) return trimmed;
+    if (!effectiveXmppDomain || !trimmed.includes("@")) return trimmed;
 
     const [username, ...domainParts] = trimmed.split("@");
     const domain = domainParts.join("@").toLowerCase();
     const aliases = new Set([inviteDomain, publicDomain, currentHost].filter(Boolean));
-    if (username && aliases.has(domain) && domain !== xmppDomain) {
-      return `${username}@${xmppDomain}`;
+    // Never rewrite a public-domain JID to localhost/loopback.
+    if (isLocalDomain(effectiveXmppDomain)) return trimmed;
+    if (username && aliases.has(domain) && domain !== effectiveXmppDomain) {
+      return `${username}@${effectiveXmppDomain}`;
     }
     return trimmed;
   };
