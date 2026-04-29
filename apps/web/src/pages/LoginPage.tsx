@@ -40,11 +40,11 @@ export default function LoginPage() {
   const [registering, setRegistering] = useState(false);
   const [xmppDomain, setXmppDomain] = useState(envXmppDomain);
   const [publicDomain, setPublicDomain] = useState(currentHost);
+  const loginDomain = xmppDomain || inviteDomain || envXmppDomain || currentHost;
 
   const expandJid = (value: string) => {
     const trimmed = value.trim();
-    const defaultDomain = xmppDomain || inviteDomain;
-    if (defaultDomain && trimmed && !trimmed.includes("@")) return `${trimmed}@${defaultDomain}`;
+    if (loginDomain && trimmed && !trimmed.includes("@")) return `${trimmed}@${loginDomain}`;
     if (!xmppDomain || !trimmed.includes("@")) return trimmed;
 
     const [username, ...domainParts] = trimmed.split("@");
@@ -54,6 +54,10 @@ export default function LoginPage() {
       return `${username}@${xmppDomain}`;
     }
     return trimmed;
+  };
+
+  const completeJidInForm = () => {
+    setForm((prev) => ({ ...prev, jid: expandJid(prev.jid) }));
   };
 
   const withTimeout = <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
@@ -229,9 +233,22 @@ export default function LoginPage() {
               <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.jid")}</label>
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
-                <input type="text" value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })}
-                  placeholder={inviteDomain ? t("login.jidInvitePlaceholder").replace("{domain}", inviteDomain) : "user@example.com"} className="input-field pl-9" required autoFocus />
+                <input
+                  type="text"
+                  value={form.jid}
+                  onChange={(e) => setForm({ ...form, jid: e.target.value })}
+                  onBlur={completeJidInForm}
+                  placeholder={loginDomain ? t("login.jidInvitePlaceholder").replace("{domain}", loginDomain) : "user@example.com"}
+                  className="input-field pl-9"
+                  required
+                  autoFocus
+                />
               </div>
+              {loginDomain && (
+                <p className="text-xs text-surface-200/45">
+                  {t("login.jidAutoCompleteHint").replace("{domain}", loginDomain)}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-surface-200/70 uppercase tracking-wide">{t("login.password")}</label>
