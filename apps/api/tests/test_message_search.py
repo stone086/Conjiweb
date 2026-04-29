@@ -1,10 +1,8 @@
-"""
-Tests for message search endpoint.
-Covers: account_id required, results scoped per account.
-"""
+"""Tests for message search endpoint."""
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.core.database import get_db
 from app.main import app
 from app.utils.security import create_access_token
 
@@ -15,7 +13,6 @@ def make_admin_token() -> str:
 
 @pytest.mark.anyio
 async def test_search_requires_account_id():
-    """Search without account_id → 400."""
     token = make_admin_token()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -30,7 +27,6 @@ async def test_search_requires_account_id():
 
 @pytest.mark.anyio
 async def test_search_requires_auth():
-    """Search without token → 401."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
@@ -42,14 +38,35 @@ async def test_search_requires_auth():
 
 @pytest.mark.anyio
 async def test_search_with_valid_params_returns_list():
-    """Search with valid params → 200 + list (may be empty)."""
+    class _Scalars:
+        @staticmethod
+        def all():
+            return []
+
+    class _Result:
+        @staticmethod
+        def scalars():
+            return _Scalars()
+
+    class _FakeDB:
+        async def execute(self, *args, **kwargs):
+            return _Result()
+
+    async def _fake_get_db():
+        yield _FakeDB()
+
     token = make_admin_token()
+    app.dependency_overrides[get_db] = _fake_get_db
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get(
-            "/messages/search",
-            params={"q": "test_query_xyz_no_results", "account_id": "nonexistent-account"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/messages/search",
+                params={"q": "test_query_xyz_no_results", "account_id": "nonexistent-account"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)

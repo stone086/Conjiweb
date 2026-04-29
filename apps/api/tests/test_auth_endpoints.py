@@ -155,7 +155,7 @@ async def test_register_maps_public_domain_alias_to_xmpp_domain(monkeypatch):
         )
     assert resp.status_code == 200
     assert resp.json()["jid"] == "alice@example.com"
-    assert calls[0] == ["prosodyctl", "register", "alice", "example.com", "password123"]
+    assert calls[0] == ["/usr/bin/sudo", "-n", "/usr/bin/prosodyctl", "register", "alice", "example.com", "password123"]
 
 
 @pytest.mark.anyio
@@ -244,7 +244,7 @@ async def test_user_token_issues_token_when_credentials_valid(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_user_token_rejects_nonexistent_account(monkeypatch):
+async def test_user_token_creates_missing_local_account(monkeypatch):
     class _OkResult:
         returncode = 0
         stdout = "ok"
@@ -256,11 +256,28 @@ async def test_user_token_rejects_nonexistent_account(monkeypatch):
             return None
 
     class _FakeDB:
+        def __init__(self):
+            self.added = []
+
         async def execute(self, *args, **kwargs):
             return _FakeExecuteResult()
 
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def commit(self):
+            return None
+
+        async def rollback(self):
+            return None
+
+        async def refresh(self, obj):
+            return None
+
+    fake_db = _FakeDB()
+
     async def _fake_get_db():
-        yield _FakeDB()
+        yield fake_db
 
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _OkResult())
     app.dependency_overrides[get_db] = _fake_get_db
@@ -273,7 +290,9 @@ async def test_user_token_rejects_nonexistent_account(monkeypatch):
             )
     finally:
         app.dependency_overrides.pop(get_db, None)
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json()["jid"] == "missing@example.com"
+    assert len(fake_db.added) == 2
 
 
 @pytest.mark.anyio

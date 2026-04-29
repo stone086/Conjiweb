@@ -186,6 +186,7 @@ async def issue_user_token(
             jid=full_jid,
             domain=domain,
             display_name=username,
+            is_enabled=True,
         )
         db.add(account)
         db.add(AccountPreference(account_id=account.id))

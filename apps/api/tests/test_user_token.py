@@ -1,14 +1,26 @@
-"""
-Tests for the /auth/user-token endpoint.
-Covers: password required, wrong password, unknown account, disabled account.
-"""
+"""Tests for the /auth/user-token endpoint."""
+from unittest.mock import MagicMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import patch, MagicMock
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.database import get_db
 from app.main import app
 from app.models import Account
+
+
+@pytest.fixture(autouse=True)
+def xmpp_domain_settings():
+    original_xmpp_domain = settings.XMPP_DOMAIN
+    original_public_domain = settings.PUBLIC_DOMAIN
+    settings.XMPP_DOMAIN = "test.com"
+    settings.PUBLIC_DOMAIN = "test.com"
+    try:
+        yield
+    finally:
+        settings.XMPP_DOMAIN = original_xmpp_domain
+        settings.PUBLIC_DOMAIN = original_public_domain
 
 
 def _mock_account(enabled: bool = True):
@@ -21,7 +33,6 @@ def _mock_account(enabled: bool = True):
 
 @pytest.mark.anyio
 async def test_user_token_requires_password():
-    """Empty password → 400."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
@@ -33,7 +44,6 @@ async def test_user_token_requires_password():
 
 @pytest.mark.anyio
 async def test_user_token_rejects_wrong_password():
-    """prosodyctl returns non-zero → 401."""
     bad_result = MagicMock()
     bad_result.returncode = 1
     bad_result.stdout = ""
@@ -50,50 +60,86 @@ async def test_user_token_rejects_wrong_password():
 
 
 @pytest.mark.anyio
-async def test_user_token_rejects_unknown_account():
-    """Correct password but account not in DB → 404."""
+async def test_user_token_creates_unknown_local_account():
     good_result = MagicMock()
     good_result.returncode = 0
     good_result.stdout = "ok"
     good_result.stderr = ""
 
+    class _MissingResult:
+        @staticmethod
+        def scalar_one_or_none():
+            return None
+
+    class _FakeDB:
+        def __init__(self):
+            self.added = []
+
+        async def execute(self, *args, **kwargs):
+            return _MissingResult()
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def commit(self):
+            return None
+
+        async def rollback(self):
+            return None
+
+        async def refresh(self, obj):
+            return None
+
+    fake_db = _FakeDB()
+
+    async def _fake_get_db():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _fake_get_db
     transport = ASGITransport(app=app)
-    with (
-        patch("app.api.routers.auth.subprocess.run", return_value=good_result),
-        patch("app.api.routers.auth.AsyncSession") as _,
-    ):
-        # DB returns None (account not found)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/auth/user-token",
-                json={"jid": "nobody@test.com", "password": "password123"},
-            )
-    # Either 401 (prosodyctl fails for unknown user) or 404 (DB miss)
-    assert resp.status_code in (401, 404)
+    try:
+        with patch("app.api.routers.auth.subprocess.run", return_value=good_result):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/auth/user-token",
+                    json={"jid": "nobody@test.com", "password": "password123"},
+                )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert resp.status_code == 200
+    assert resp.json()["jid"] == "nobody@test.com"
+    assert len(fake_db.added) == 2
 
 
 @pytest.mark.anyio
 async def test_user_token_rejects_disabled_account():
-    """Correct password but account is disabled → 403."""
     good_result = MagicMock()
     good_result.returncode = 0
     good_result.stdout = "ok"
     good_result.stderr = ""
-
     disabled_account = _mock_account(enabled=False)
 
+    class _DisabledResult:
+        @staticmethod
+        def scalar_one_or_none():
+            return disabled_account
+
+    class _FakeDB:
+        async def execute(self, *args, **kwargs):
+            return _DisabledResult()
+
+    async def _fake_get_db():
+        yield _FakeDB()
+
+    app.dependency_overrides[get_db] = _fake_get_db
     transport = ASGITransport(app=app)
-    with (
-        patch("app.api.routers.auth.subprocess.run", return_value=good_result),
-        patch(
-            "app.api.routers.auth.AsyncSession.execute",
-            return_value=MagicMock(scalar_one_or_none=lambda: disabled_account),
-        ),
-    ):
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/auth/user-token",
-                json={"jid": "alice@test.com", "password": "correctpass"},
-            )
-    # Either 401 (prosodyctl fails) or 403 (account disabled)
-    assert resp.status_code in (401, 403)
+    try:
+        with patch("app.api.routers.auth.subprocess.run", return_value=good_result):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/auth/user-token",
+                    json={"jid": "alice@test.com", "password": "correctpass"},
+                )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert resp.status_code == 403
