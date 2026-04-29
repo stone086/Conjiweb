@@ -117,6 +117,9 @@ const enUS = {
     "chat.retry": "Retry",
     "chat.unread": "Unread",
     "chat.editingMessage": "Editing message",
+    "chat.pendingContactTitle": "Add this contact before replying",
+    "chat.pendingContactBody": "{jid} sent you a message. Add them as a contact to continue chatting.",
+    "chat.addContactBeforeReply": "Add this contact before replying.",
 
     "conv.title": "Conversations",
     "conv.empty": "No conversations yet",
@@ -481,6 +484,9 @@ const zhCN: Record<MessageKey, string> = {
     "chat.retry": "重试",
     "chat.unread": "未读",
     "chat.editingMessage": "正在编辑消息",
+    "chat.pendingContactTitle": "先加为好友，再继续聊天",
+    "chat.pendingContactBody": "{jid} 给你发来了消息。加为联系人后就可以继续回复。",
+    "chat.addContactBeforeReply": "请先加对方为好友，再继续回复。",
 
     "conv.title": "会话",
     "conv.empty": "暂无会话",

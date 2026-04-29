@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useChatStore, ChatMessage } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
+import { useRosterStore } from "@/stores/rosterStore";
 import { getClient } from "@/services/xmppAdapter";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMAM } from "@/hooks/useMAM";
@@ -16,7 +17,7 @@ import type { ChatToolbarAction } from "@/plugins/sdk";
 import { format, isSameDay } from "date-fns";
 import { formatMsgTime, formatMsgTimeFull } from "@/utils/helpers";
 import { clsx } from "clsx";
-import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock, Phone, Video } from "lucide-react";
+import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock, Phone, Video, UserPlus, Mic } from "lucide-react";
 import { callManager } from "@/services/jingle";
 import { processSlashCommand } from "@/services/slashCommands";
 import EmojiPicker from "emoji-picker-react";
@@ -381,6 +382,10 @@ export default function MessageView({ conversationId }: { conversationId: string
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const conversation = useChatStore((s) => s.conversations[conversationId]);
+  const peerContact = useRosterStore((s) =>
+    activeAccountId && conversation?.peerJid ? s.getContact(activeAccountId, conversation.peerJid) : undefined
+  );
+  const upsertContact = useRosterStore((s) => s.upsertContact);
   const allConversations = useChatStore((s) => Object.values(s.conversations));
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
   const messagesRef = useRef(messages);
@@ -397,6 +402,11 @@ export default function MessageView({ conversationId }: { conversationId: string
   const forwardCandidates = allConversations
     .filter((c) => c.accountId === activeAccountId && c.id !== conversationId)
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+  const needsContactApproval = Boolean(
+    conversation?.type === "private"
+      && peerContact?.pendingIncoming
+      && !peerContact.isBlocked
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -541,6 +551,10 @@ export default function MessageView({ conversationId }: { conversationId: string
     let body = input.trim();
     if (!body && !pendingFiles.length) return;
     if (!activeAccountId) return;
+    if (needsContactApproval) {
+      toast.error(t("chat.addContactBeforeReply"));
+      return;
+    }
 
     // Slash command interception
     if (body.startsWith("/")) {
@@ -691,7 +705,31 @@ export default function MessageView({ conversationId }: { conversationId: string
     setShowUpload(false);
     setShowEmojiPicker(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [input, pendingFiles, activeAccountId, conversationId, conversation, addMessage, updateMessage, replyTo, editingMessageId, t, clearComposerDraft]);
+  }, [input, pendingFiles, activeAccountId, needsContactApproval, conversationId, conversation, addMessage, updateMessage, replyTo, editingMessageId, t, clearComposerDraft]);
+
+  const handleAcceptContact = useCallback(() => {
+    if (!activeAccountId || !conversation?.peerJid) return;
+    const client = getClient(activeAccountId);
+    if (!client?.connected) {
+      toast.error(t("chat.notConnected"));
+      return;
+    }
+    client.approveSubscription(conversation.peerJid);
+    client.addContact(conversation.peerJid, peerContact?.name);
+    upsertContact({
+      accountId: activeAccountId,
+      jid: conversation.peerJid,
+      name: peerContact?.name,
+      groups: peerContact?.groups ?? [],
+      subscription: "both",
+      pendingIncoming: false,
+      presence: peerContact?.presence ?? "unavailable",
+      statusText: peerContact?.statusText,
+      avatarUrl: peerContact?.avatarUrl,
+      isBlocked: false,
+    });
+    toast.success(t("roster.accepted"));
+  }, [activeAccountId, conversation?.peerJid, peerContact, t, upsertContact]);
 
   const handleEditMessage = useCallback((message: ChatMessage) => {
     if (message.direction !== "out") return;
@@ -1078,11 +1116,22 @@ export default function MessageView({ conversationId }: { conversationId: string
         <div className="flex items-end gap-2">
           <button
             onClick={() => setShowUpload(!showUpload)}
+            disabled={needsContactApproval}
             className={clsx("btn-ghost p-2 flex-shrink-0", showUpload && "text-accent")}
             title={t("chat.attachFile")}
           >
             <Paperclip size={16} />
           </button>
+          {needsContactApproval ? (
+            <button
+              type="button"
+              disabled
+              className="btn-ghost p-2 flex-shrink-0 opacity-60 cursor-not-allowed"
+              title={t("chat.addContactBeforeReply")}
+            >
+              <Mic size={16} />
+            </button>
+          ) : (
             <VoiceRecorder
               onSend={async (file) => {
                 // Upload as attachment, then send as message
@@ -1114,6 +1163,7 @@ export default function MessageView({ conversationId }: { conversationId: string
                 }
               }}
             />
+          )}
           <button
             onClick={() => setShowEmojiPicker((v) => !v)}
             className={clsx("btn-ghost p-2 flex-shrink-0", showEmojiPicker && "text-accent")}
@@ -1136,14 +1186,33 @@ export default function MessageView({ conversationId }: { conversationId: string
             onKeyDown={handleKeyDown}
             onPaste={handleComposerPaste}
             onBlur={onBlur}
-            placeholder={`${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
+            placeholder={needsContactApproval ? t("chat.addContactBeforeReply") : `${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
+            disabled={needsContactApproval}
             rows={1}
-            className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px]"
+            className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px] disabled:opacity-60 disabled:cursor-not-allowed"
           />
-          <button onClick={() => void sendMessage()} disabled={!input.trim() && !pendingFiles.length} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
+          <button onClick={() => void sendMessage()} disabled={needsContactApproval || (!input.trim() && !pendingFiles.length)} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
             <Send size={16} />
           </button>
         </div>
+        {needsContactApproval && (
+          <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/10 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-surface-50">{t("chat.pendingContactTitle")}</p>
+              <p className="text-xs text-surface-200/60 truncate">
+                {t("chat.pendingContactBody").replace("{jid}", conversation.peerJid)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAcceptContact}
+              className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs flex-shrink-0"
+            >
+              <UserPlus size={14} />
+              {t("roster.accept")}
+            </button>
+          </div>
+        )}
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-14 z-20">
             <EmojiPicker
