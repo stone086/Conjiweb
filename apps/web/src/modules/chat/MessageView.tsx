@@ -450,6 +450,7 @@ export default function MessageView({ conversationId }: { conversationId: string
         jid: roomJid,
         name: conversation.title || roomJid.split("@")[0],
         nickname,
+        isPublic: true,
         joined: true,
       });
     } catch {
