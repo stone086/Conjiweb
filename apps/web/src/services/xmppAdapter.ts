@@ -91,6 +91,11 @@ export interface RosterContact {
   subscription: string;
 }
 
+export interface MucDiscoveryItem {
+  jid: string;
+  name?: string;
+}
+
 type EventHandler = (data: unknown) => void;
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -763,6 +768,29 @@ export class XmppClient {
           ...(cleanReason ? { reason: cleanReason } : {}),
         })
     );
+  }
+
+  discoverRooms(serviceJid: string): Promise<MucDiscoveryItem[]> {
+    if (!this._connection || !this._connected) return Promise.reject(new Error("Not connected"));
+    const service = serviceJid.trim();
+    if (!service) return Promise.reject(new Error("Conference service is required"));
+    const iq = this._$iq({ type: "get", to: service })
+      .c("query", { xmlns: "http://jabber.org/protocol/disco#items" });
+    return new Promise((resolve, reject) => {
+      this._connection.sendIQ(
+        iq.tree(),
+        (result: Element) => {
+          const rooms = Array.from(result.querySelectorAll("item"))
+            .map((item) => ({
+              jid: item.getAttribute("jid")?.trim() ?? "",
+              name: item.getAttribute("name")?.trim() || undefined,
+            }))
+            .filter((room) => room.jid.includes("@"));
+          resolve(rooms);
+        },
+        () => reject(new Error("Room discovery failed"))
+      );
+    });
   }
 
   fetchVCardAvatar(jid: string): Promise<string | null> {
