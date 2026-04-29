@@ -155,10 +155,6 @@ function ContactRow({
               className="px-2 py-1 rounded bg-white/10 text-surface-100 text-[10px] font-semibold hover:bg-white/20">
               {t("roster.reject")}
             </button>
-            <button onClick={handleBlock}
-              className="px-2 py-1 rounded bg-danger/20 text-danger text-[10px] font-semibold hover:bg-danger/30">
-              {t("roster.block")}
-            </button>
           </>
         )}
         <button onClick={() => onChat(contact.jid)}
