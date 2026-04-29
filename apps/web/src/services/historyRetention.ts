@@ -1,7 +1,7 @@
 import { clearLocalMessageHistory, pruneLocalMessagesBefore } from "@/services/localDb";
 import { useChatStore } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
-import { messagesApi } from "@/services/api";
+import { getUserToken, messagesApi } from "@/services/api";
 
 const HISTORY_RETENTION_DAYS_KEY = "conjiweb-history-retention-days";
 const DEFAULT_RETENTION_DAYS = 30;
@@ -21,11 +21,21 @@ export function setStoredHistoryRetentionDays(days: number) {
 
 export async function clearAllHistoryNow() {
   const accounts = useAccountStore.getState().accounts;
+  const hasAdminToken = !!localStorage.getItem("admin_token");
   if (accounts.length > 0) {
-    const results = await Promise.allSettled(accounts.map((account) => messagesApi.clearHistory(account.id)));
-    const failed = results.some((result) => result.status === "rejected");
-    if (failed) {
-      throw new Error("Failed to clear server message history");
+    const clearableAccounts = accounts.filter((account) => hasAdminToken || !!getUserToken(account.id));
+    if (clearableAccounts.length > 0) {
+      const results = await Promise.allSettled(
+        clearableAccounts.map((account) => messagesApi.clearHistory(account.id))
+      );
+      const failures = results.filter((result) => result.status === "rejected");
+      if (failures.length > 0) {
+        // Keep local cleanup usable even if one server-side account call fails.
+        console.warn("Some server history clear requests failed", {
+          failed: failures.length,
+          total: clearableAccounts.length,
+        });
+      }
     }
   }
   await clearLocalMessageHistory();
