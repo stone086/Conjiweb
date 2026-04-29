@@ -12,6 +12,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import AdminPage from "@/pages/AdminPage";
 import PluginsPage from "@/pages/PluginsPage";
 import StarredPage from "@/pages/StarredPage";
+import CallHistoryPage from "@/pages/CallHistoryPage";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const accounts = useAccountStore((s) => s.accounts);
@@ -65,6 +66,7 @@ function AppInner() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="plugins" element={<PluginsPage />} />
           <Route path="starred" element={<StarredPage />} />
+          <Route path="calls" element={<CallHistoryPage />} />
           <Route path="admin" element={<AdminPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

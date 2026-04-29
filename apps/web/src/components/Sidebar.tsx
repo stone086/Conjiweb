@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
-  MessageSquare, Settings, Puzzle, Plus, Wifi, WifiOff, Star,
+  MessageSquare, Settings, Puzzle, Plus, Wifi, WifiOff, Star, Phone,
 } from "lucide-react";
 import { useAccountStore } from "@/stores/accountStore";
 import { clsx } from "clsx";
@@ -11,6 +11,7 @@ import { useShallow } from "zustand/react/shallow";
 const navItems = [
   { to: "/", icon: MessageSquare, key: "nav.chats", end: true },
   { to: "/starred", icon: Star, key: "nav.starred" },
+  { to: "/calls", icon: Phone, key: "nav.calls" },
   { to: "/settings", icon: Settings, key: "nav.settings" },
   { to: "/plugins", icon: Puzzle, key: "nav.plugins" },
 ];

@@ -129,6 +129,7 @@ cmd_update_front() {
     cat > .env.production <<EOF
 VITE_API_URL=https://${DOMAIN}/api
 VITE_XMPP_WS_URL=wss://${DOMAIN}/xmpp-websocket
+VITE_XMPP_DOMAIN=${XMPP_DOMAIN:-${DOMAIN}}
 EOF
   fi
 
@@ -138,6 +139,7 @@ EOF
     npm install --silent --no-audit --no-fund
   fi
   npm run build
+  chmod -R a+rX "${INSTALL_DIR}/web/dist" || true
   systemctl reload nginx
   echo -e "${GREEN}Frontend updated${NC}"
 }

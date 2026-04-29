@@ -797,6 +797,7 @@ EOF
   npm run build
 
   FRONTEND_DIST="${INSTALL_DIR}/web/dist"
+  chmod -R a+rX "${FRONTEND_DIST}" || true
   cd "${SRC_DIR}"
   success "Frontend build completed, output: ${FRONTEND_DIST}"
 }

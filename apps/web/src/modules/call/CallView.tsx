@@ -14,6 +14,7 @@ import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Phone, ScreenShare
 import { JingleSession } from "@/services/jingle";
 import Avatar from "@/components/Avatar";
 import { useLanguage } from "@/utils/i18n";
+import { api } from "@/services/api";
 
 interface CallViewProps {
   session: JingleSession;
@@ -90,7 +91,28 @@ export default function CallView({ session, onClose }: CallViewProps) {
         remoteVideoRef.current.srcObject = stream;
       }
     });
-    session.on("ended", () => setTimeout(onClose, 1000));
+    session.on("ended", () => {
+      const endedAt = info.endedAt ?? Date.now();
+      const durationMs = Math.max(0, endedAt - info.startedAt);
+      const status =
+        durationMs > 5000
+          ? "answered"
+          : info.direction === "incoming"
+            ? "missed"
+            : "failed";
+
+      api.post("/calls/log", {
+        peer_jid: info.peerJid,
+        direction: info.direction,
+        media_types: info.mediaTypes.join(","),
+        status,
+        duration_seconds: Math.round(durationMs / 1000),
+        started_at: new Date(info.startedAt).toISOString(),
+        ended_at: new Date(endedAt).toISOString(),
+      }).catch(() => {});
+
+      setTimeout(onClose, 1000);
+    });
   }, [session, onClose]);
 
   // Start/stop ringtone for incoming ringing state

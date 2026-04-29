@@ -163,3 +163,18 @@ class Webhook(Base):
     conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
     token = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CallLog(Base):
+    """Per-account record of audio/video calls."""
+    __tablename__ = "call_logs"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    account_id = Column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    peer_jid = Column(String, nullable=False)
+    direction = Column(String, nullable=False)
+    media_types = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    duration_seconds = Column(Integer, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
