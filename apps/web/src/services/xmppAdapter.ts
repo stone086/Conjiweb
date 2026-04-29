@@ -34,6 +34,7 @@ export type XmppEvent =
   | "reaction.received"
   | "room.subject"
   | "room.member"
+  | "room.invite"
   | "jingle"
   | "sm.failed"
   | "error";
@@ -293,6 +294,37 @@ export class XmppClient {
       const subject = realStanza.querySelector("subject")?.textContent ?? "";
       if (type === "groupchat" && subject) {
         this.emit("room.subject", { accountId: this.config.accountId, roomJid: from.split("/")[0], subject });
+        return true;
+      }
+
+      const mucInvite = realStanza.querySelector('x[xmlns="http://jabber.org/protocol/muc#user"] invite');
+      if (mucInvite) {
+        const roomJid = from.split("/")[0];
+        const reason = mucInvite.querySelector("reason")?.textContent?.trim() ?? "";
+        if (roomJid) {
+          this.emit("room.invite", {
+            accountId: this.config.accountId,
+            roomJid,
+            inviterJid: mucInvite.getAttribute("from") ?? from,
+            reason,
+          });
+        }
+        return true;
+      }
+
+      const directInvite = realStanza.querySelector('x[xmlns="jabber:x:conference"]');
+      if (directInvite) {
+        const roomJid = directInvite.getAttribute("jid") ?? "";
+        const reason = directInvite.getAttribute("reason") ?? directInvite.textContent?.trim() ?? "";
+        if (roomJid) {
+          this.emit("room.invite", {
+            accountId: this.config.accountId,
+            roomJid,
+            inviterJid: from,
+            reason,
+            password: directInvite.getAttribute("password") ?? undefined,
+          });
+        }
         return true;
       }
 
@@ -717,11 +749,20 @@ export class XmppClient {
     if (!this._connection || !this._connected) throw new Error("Not connected");
     const cleanInvitee = inviteeJid.trim();
     if (!cleanInvitee) throw new Error("Invitee JID is required");
+    const cleanReason = reason?.trim() ? sanitizeXmlText(reason.trim()) : "";
     const msg = this._$msg({ to: roomJid, type: "normal" })
       .c("x", { xmlns: "http://jabber.org/protocol/muc#user" })
       .c("invite", { to: cleanInvitee });
-    if (reason?.trim()) msg.c("reason").t(sanitizeXmlText(reason.trim()));
+    if (cleanReason) msg.c("reason").t(cleanReason);
     this._connection.send(msg);
+    this._connection.send(
+      this._$msg({ to: cleanInvitee, type: "normal" })
+        .c("x", {
+          xmlns: "jabber:x:conference",
+          jid: roomJid,
+          ...(cleanReason ? { reason: cleanReason } : {}),
+        })
+    );
   }
 
   fetchVCardAvatar(jid: string): Promise<string | null> {

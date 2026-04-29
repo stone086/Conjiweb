@@ -756,6 +756,32 @@ export function initXmppBridge(client: XmppClient) {
     useGroupStore.getState().updateRoomSubject(roomJid, String(data.subject ?? ""));
   });
 
+  client.on("room.invite", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    const existing = useGroupStore.getState().rooms[roomJid];
+    const roomName = existing?.name ?? roomJid.split("@")[0];
+    const nickname = client.config.jid.split("@")[0];
+    useGroupStore.getState().upsertRoom({
+      jid: roomJid,
+      name: roomName,
+      nickname: existing?.nickname ?? nickname,
+      description: existing?.description,
+      memberCount: existing?.memberCount,
+      isPublic: existing?.isPublic ?? false,
+      joined: existing?.joined ?? false,
+      subject: existing?.subject,
+    });
+    const inviterJid = normalizeBareJid((data.inviterJid as string) || "");
+    const reason = String(data.reason ?? "").trim();
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Group invitation",
+      body: `${inviterJid || "Someone"} invited you to ${roomJid}${reason ? `: ${reason}` : ""}`,
+      accountId,
+    });
+  });
+
   // KILLER-04: Push local mutations to PEP cross-device sync (debounced)
   let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let lastStarredHash = "";
