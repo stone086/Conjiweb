@@ -154,14 +154,24 @@ function bundleNodeFor(namespace: string, deviceId: number): string {
 }
 
 function parseOmemoEnvelope(stanza: Element): OmemoEnvelope | null {
-  const encrypted = OMEMO_NAMESPACES
-    .map((namespace) => stanza.querySelector(`encrypted[xmlns="${namespace}"]`))
-    .find((node): node is Element => Boolean(node));
+  const all = Array.from(stanza.getElementsByTagName("*"));
+  const encrypted = all.find((node) => {
+    const local = (node.localName || node.tagName || "").toLowerCase();
+    if (local !== "encrypted") return false;
+    const ns = node.namespaceURI || node.getAttribute("xmlns") || "";
+    return OMEMO_NAMESPACES.includes(ns as (typeof OMEMO_NAMESPACES)[number]);
+  }) as Element | undefined;
   if (!encrypted) return null;
-  const namespace = encrypted.getAttribute("xmlns") ?? OMEMO_NAMESPACE_LEGACY;
-  const header = encrypted.querySelector("header");
-  const payload = encrypted.querySelector("payload")?.textContent?.trim();
-  const iv = header?.querySelector("iv")?.textContent?.trim();
+  const namespace = (encrypted.namespaceURI || encrypted.getAttribute("xmlns") || OMEMO_NAMESPACE_LEGACY) as string;
+  const children = Array.from(encrypted.getElementsByTagName("*"));
+  const header = children.find((n) => (n.localName || n.tagName || "").toLowerCase() === "header") as Element | undefined;
+  const payload = (children.find((n) => (n.localName || n.tagName || "").toLowerCase() === "payload") as Element | undefined)
+    ?.textContent?.trim();
+  const iv = header
+    ? (Array.from(header.getElementsByTagName("*"))
+      .find((n) => (n.localName || n.tagName || "").toLowerCase() === "iv") as Element | undefined)
+      ?.textContent?.trim()
+    : undefined;
   const sidRaw = header?.getAttribute("sid");
   if (!header || !payload || !iv || !sidRaw) return null;
   const sid = Number.parseInt(sidRaw, 10);
