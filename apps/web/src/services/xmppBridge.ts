@@ -58,6 +58,7 @@ export function initXmppBridge(client: XmppClient) {
 
   // Connection changes
   client.on("connection.changed", (data: any) => {
+	console.log("[XMPP] connection.changed:", data);
     useAccountStore.getState().setConnected(accountId, data.status === "connected");
     if (data.status !== "connected") {
       const store = useChatStore.getState();
@@ -65,7 +66,7 @@ export function initXmppBridge(client: XmppClient) {
         .filter((c) => c.accountId === accountId)
         .forEach((c) => store.setTypingPeer(c.id, null, false));
     }
-    if (data.status === "connected") {
+    if (data.status === "connected" || data.status === "online" || data.status === "authenticated") {
       const publishLocalOmemo = async () => {
         try {
           console.log("[OMEMO] init/publish start", { accountId });

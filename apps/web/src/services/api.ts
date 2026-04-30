@@ -55,15 +55,35 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const accountHeader = config.headers?.["X-Conjiweb-Account-Id"];
-  const accountId =
-    (typeof accountHeader === "string" ? accountHeader : undefined) ??
-    useAccountStore.getState().activeAccountId;
-  const token = getUserToken(accountId) ?? localStorage.getItem("admin_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const store = useAccountStore.getState();
+
+  let accountId =
+    (typeof config.headers?.["X-Conjiweb-Account-Id"] === "string"
+      ? config.headers["X-Conjiweb-Account-Id"]
+      : undefined) ??
+    store.activeAccountId;
+
+  // 🔥 兜底：没有 activeAccountId 时用第一个账号
+  if (!accountId && store.accounts?.length > 0) {
+    accountId = store.accounts[0].id;
+  }
+
+  console.log("[API] using accountId:", accountId);
+
+  const token =
+    getUserToken(accountId) ?? localStorage.getItem("admin_token");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+    console.log("[API] token attached ✔");
+  } else {
+    console.warn("[API] NO TOKEN ❌", accountId);
+  }
+
   if (config.headers && "X-Conjiweb-Account-Id" in config.headers) {
     delete config.headers["X-Conjiweb-Account-Id"];
   }
+
   return config;
 });
 
