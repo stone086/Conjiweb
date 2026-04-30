@@ -210,6 +210,7 @@ export class XmppClient {
   private handlers: Map<XmppEvent, EventHandler[]> = new Map();
   private _connection: any = null;
   private _connected = false;
+  private _keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private _Strophe: any = null;
   private _$msg: any = null;
   private _$iq: any = null;
@@ -259,10 +260,12 @@ export class XmppClient {
             this._setupCsiHandling();       // XEP-0352 active/inactive
             this._sendPresence();           // includes XEP-0115 caps
             this._requestRoster();
+            this._startKeepalive();
             resolve();
             break;
           case Strophe.Status.DISCONNECTED:
             this._connected = false;
+            this._stopKeepalive();
             this.emit("connection.changed", { status: "disconnected", accountId: this.config.accountId });
             break;
           case Strophe.Status.AUTHFAIL:
@@ -1459,6 +1462,30 @@ export class XmppClient {
     }, "http://jabber.org/protocol/disco#info", "iq", "get");
   }
 
+  private _startKeepalive() {
+    if (this._keepaliveTimer) return;
+    // Keep websocket/NAT path alive; some links recycle idle WS within minutes.
+    this._keepaliveTimer = setInterval(() => {
+      if (!this._connection || !this._connected) return;
+      try {
+        const domain = this.config.jid.split("@")[1]?.split("/")[0] ?? "";
+        if (!domain) return;
+        const id = `cw-ping-${Date.now()}`;
+        const iq = this._$iq({ type: "get", to: domain, id })
+          .c("ping", { xmlns: "urn:xmpp:ping" });
+        this._connection.sendIQ(iq, () => {}, () => {}, 15000);
+      } catch {
+        // Keepalive is best-effort.
+      }
+    }, 45000);
+  }
+
+  private _stopKeepalive() {
+    if (!this._keepaliveTimer) return;
+    clearInterval(this._keepaliveTimer);
+    this._keepaliveTimer = null;
+  }
+
   disconnect() {
     // Clean up CSI visibility listener
     if (this._csiVisibilityHandler && typeof document !== "undefined") {
@@ -1467,6 +1494,7 @@ export class XmppClient {
     }
     // Stop SM request timer (keep queue intact for resume on reconnect)
     this._stopSmRequestTimer();
+    this._stopKeepalive();
     if (this._connection) {
       this._connection.disconnect();
       this._connected = false;
