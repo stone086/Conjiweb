@@ -380,6 +380,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const isNearBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const isComposingRef = useRef(false);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const conversation = useChatStore((s) => s.conversations[conversationId]);
@@ -477,7 +478,8 @@ export default function MessageView({ conversationId }: { conversationId: string
   }, [conversationId, composerDraft, setComposerDraft]);
 
   useEffect(() => {
-    setInput(composerDraft);
+    if (isComposingRef.current) return;
+    setInput((prev) => (prev === composerDraft ? prev : composerDraft));
   }, [composerDraft]);
 
   useEffect(() => {
@@ -920,7 +922,10 @@ export default function MessageView({ conversationId }: { conversationId: string
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME composing phase (e.g. Chinese pinyin): do not intercept Enter/Backspace flow.
+    const nativeComposing = (e.nativeEvent as KeyboardEvent).isComposing;
+    if (nativeComposing || isComposingRef.current || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void sendMessage();
@@ -1210,6 +1215,15 @@ export default function MessageView({ conversationId }: { conversationId: string
               const next = e.target;
               next.style.height = "auto";
               next.style.height = Math.min(next.scrollHeight, 120) + "px";
+            }}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={(e) => {
+              isComposingRef.current = false;
+              const nextValue = e.currentTarget.value;
+              setInput(nextValue);
+              setComposerDraft(conversationId, nextValue);
             }}
             onKeyDown={handleKeyDown}
             onPaste={handleComposerPaste}
