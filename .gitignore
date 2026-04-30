@@ -31,3 +31,4 @@ postgres_data/
 redis_data/
 minio_data/
 prosody_data/
+update-conjiweb-all.ps1
