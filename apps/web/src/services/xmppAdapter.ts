@@ -300,7 +300,8 @@ export class XmppClient {
       const from = realStanza.getAttribute("from") ?? "";
       const type = realStanza.getAttribute("type") ?? "chat";
       const body = realStanza.querySelector("body")?.textContent ?? "";
-      const omemo = parseOmemoEnvelope(stanza);
+      // Parse OMEMO from the effective stanza (after carbon unwrapping).
+      const omemo = parseOmemoEnvelope(realStanza);
       const id = realStanza.getAttribute("id") ?? crypto.randomUUID();
       const subject = realStanza.querySelector("subject")?.textContent ?? "";
       if (type === "groupchat" && subject) {
