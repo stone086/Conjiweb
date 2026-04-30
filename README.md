@@ -1,129 +1,31 @@
-# Conjiweb (Native)
+# Conjiweb 2.0 (OMEMO-first)
 
-Conjiweb is a self-hosted Web XMPP platform for VPS deployment without Docker.
+这个目录以 **1.5 的可部署工程** 为底座，目标是把前端加密链路升级为 **2.0 OMEMO 架构**。
 
-## Features
-- One-command native install on apt-based Linux distributions
-- Web chat client (React + Vite + TypeScript)
-- FastAPI backend with admin token auth and health endpoints
-- Prosody XMPP server with WebSocket bridge
-- PostgreSQL + Redis + MinIO integration
-- HTTPS by default (Let's Encrypt + Nginx)
-- Security baseline (UFW, fail2ban, API rate limiting)
-- Built-in backup, watchdog, and operational commands
+## 当前架构（唯一主线）
 
-## Tech Stack
-- Frontend: React, Vite, TypeScript
-- Backend: FastAPI, SQLAlchemy, Python 3
-- Realtime: Prosody (XMPP)
-- Data: PostgreSQL 16, Redis 7
-- Storage: MinIO
-- Reverse Proxy: Nginx + Certbot
-
-## Requirements
-- Debian 12, Ubuntu 22.04/24.04, Zorin OS, or another apt-based system with systemd
-- Debian 12 VPS remains the primary recommended production target
-- Root shell access
-- Domain pointed to your VPS public IP
-- Open inbound ports: `80`, `443` (plus XMPP ports as required)
-
-## Quick Install
-```bash
-curl -fsSL https://raw.githubusercontent.com/stone086/Conjiweb/main/install.sh | \
-bash -s -- --repo https://github.com/stone086/Conjiweb.git --domain chat.example.com --email you@example.com
+```text
+apps/api/                  后端 API
+apps/web/                  前端主工程（生产可部署）
+apps/web/src/omemo2/       2.0 OMEMO Core（新架构）
+apps/web/src/services/omemo/ 1.5 兼容层（待逐步下线）
+scripts/check-buttons.mjs  按钮联通检查脚本
 ```
 
-Alternative local bootstrap:
+> 已移除根目录并行样板（旧的 `src/`、`public/`、`tests/`），避免双架构并存导致误用。
+
+## 常用命令（在仓库根目录运行）
+
 ```bash
-git clone https://github.com/stone086/Conjiweb.git /opt/conjiweb-src
-cd /opt/conjiweb-src
-cp .env.example .env
-bash install.sh
+npm run install:web
+npm run dev
+npm run check:buttons
+npm run build
 ```
 
-By default the installer preserves your distribution package sources and skips a full system upgrade. Add `--upgrade-system` if you want it to run `apt-get upgrade` before installing dependencies.
+## 目标
 
-## Architecture
-- Internet -> Nginx (`443`)
-- Nginx -> FastAPI (`127.0.0.1:8000`) for `/api/*`
-- Nginx -> Prosody (`127.0.0.1:5280`) for `/xmpp-websocket`
-- Nginx -> MinIO (`127.0.0.1:9000`) for `/files/*`
-- FastAPI -> PostgreSQL + Redis
+1. 发送链路切到 `omemo2/OmemoCore.encryptMessage()`
+2. 接收解密切到 `omemo2/OmemoCore.decryptMessage()`
+3. 保持 UI 与部署脚本兼容，逐步下线旧 `services/omemo/*`
 
-See detailed topology: [`docs/architecture.md`](docs/architecture.md)
-
-## Security Baseline
-- UFW allow-list with SSH port auto-detection
-- Optional SSH port hardening and SSH key setup during install
-- fail2ban for SSH and API login endpoints
-- Non-root runtime users for API and MinIO
-- API auth rate-limit in FastAPI and Nginx
-- Secrets file written once to `/root/conjiweb-secrets.txt` (`0600`)
-- `.env` permission hardening (`0600`) and backup folder (`0700`)
-
-## Daily Operations
-```bash
-cd /opt/conjiweb-src
-bash manage.sh status
-bash manage.sh update
-bash manage.sh check
-bash manage.sh logs-api
-```
-
-### Manage Command Reference
-- Service: `status`, `start`, `stop`, `restart`, `restart-api`, `restart-nginx`
-- Logs: `logs-api`, `logs-xmpp`, `logs-nginx`, `logs-nginx-err`
-- XMPP: `add-user`, `del-user`, `list-users`, `change-pass`
-- Ops: `backup`, `update`, `update-front`, `update-api`, `ssl-renew`, `db-shell`
-- Migrations: `db-history`, `db-rollback`
-- Inspect: `check`, `api-health`, `cert-info`, `disk-usage`, `ports`, `backup-verify`, `env-check`, `top-requests`, `mem-usage`, `watchdog`
-
-## Health, API Docs, and Validation
-- API health: `https://<domain>/api/health`
-- API docs (Swagger): `https://<domain>/api/docs`
-- Redoc: `https://<domain>/api/redoc` (if enabled)
-- Quick service check: `bash manage.sh check`
-
-## Backups
-- Local daily cron backup: `/usr/local/bin/conjiweb-backup.sh`
-- Local target: `/root/backups`
-- DB backup integrity verification built-in (`gzip -t`)
-- Optional offsite sync via `BACKUP_REMOTE` (`rclone copy`)
-
-## Upgrade Strategy
-- Source-of-truth update:
-```bash
-cd /opt/conjiweb-src
-bash manage.sh update
-```
-- Frontend only:
-```bash
-bash manage.sh update-front
-```
-- API only:
-```bash
-bash manage.sh update-api
-```
-
-## Documentation Index
-- Architecture: [`docs/architecture.md`](docs/architecture.md)
-- Registration flow: [`docs/registration-flow.md`](docs/registration-flow.md)
-- XMPP config: [`docs/xmpp-config.md`](docs/xmpp-config.md)
-- Operations runbook: [`docs/operations.md`](docs/operations.md)
-- Troubleshooting: [`docs/troubleshooting.md`](docs/troubleshooting.md)
-
-## Versioning
-- Current version: [`VERSION`](VERSION)
-- Release notes: [`CHANGELOG.md`](CHANGELOG.md)
-
-## Contributing
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening PRs.
-
-## Uninstall
-```bash
-cd /opt/conjiweb-src
-bash uninstall.sh
-```
-
-## License
-MIT, see [`LICENSE`](LICENSE).

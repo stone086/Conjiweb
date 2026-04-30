@@ -1,0 +1,13 @@
+{
+  "name": "conjiweb-2.0",
+  "version": "2.0.0-alpha.1",
+  "private": true,
+  "scripts": {
+    "install:web": "npm --prefix apps/web install",
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "test": "npm --prefix apps/web run test",
+    "check:buttons": "node scripts/check-buttons.mjs apps/web/src",
+    "check": "npm run check:buttons && npm run build"
+  }
+}

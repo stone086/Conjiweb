@@ -1,0 +1,21 @@
+Conjiweb 1.5 -> 2.0 迁移说明（更新）
+
+本目录已统一为“单主线”：
+- 保留可部署工程：apps/api + apps/web
+- 2.0 OMEMO 主模块：apps/web/src/omemo2/
+- 删除了根目录并行样板（src/public/tests），避免误用旧骨架
+
+脚本入口已联通：
+1) start-dev.cmd
+   -> npm run install:web
+   -> npm run dev (apps/web)
+
+2) check-buttons.cmd
+   -> npm run check:buttons
+   -> 实际扫描 apps/web/src
+
+下一步技术目标（2.0 真接管）：
+1) xmppBridge/xmppAdapter 发送入口改调 OmemoCore.encryptMessage()
+2) 接收入口改调 OmemoCore.decryptMessage()
+3) 旧 services/omemo/* 保留兼容一段时间后逐步下线
+

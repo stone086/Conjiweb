@@ -21,6 +21,7 @@ import {
 } from "@/services/jingle/sdpToJingle";
 import {
   initOmemo,
+  initializeOmemoKeys,
   decryptEnvelope,
   encryptForDevices,
   buildOwnBundle,
@@ -71,22 +72,34 @@ export function initXmppBridge(client: XmppClient) {
         try {
           console.log("[OMEMO] init/publish start", { accountId });
 
-          const localDeviceId = getOrCreateLocalDeviceId(accountId);
-          console.log("[OMEMO] local device id:", localDeviceId);
+          const { deviceId: localDeviceId } = await initializeOmemoKeys(accountId);
+          console.log("[OMEMO] libsignal local device id:", localDeviceId);
 
-          const localBundle = await getOrCreateLocalOmemoBundle(accountId);
-          console.log("[OMEMO] local bundle ready:", {
+          const ownBundle = await buildOwnBundle(accountId);
+          const localBundle = {
+            deviceId: ownBundle.deviceId,
+            signedPreKeyId: ownBundle.signedPreKeyId,
+            signedPreKeyPublic: arrayBufferToBase64(ownBundle.signedPreKey),
+            signedPreKeySignature: arrayBufferToBase64(ownBundle.signedPreKeySignature),
+            identityKey: arrayBufferToBase64(ownBundle.identityKey),
+            preKeys: ownBundle.preKeys.map((key) => ({
+              preKeyId: key.keyId,
+              value: arrayBufferToBase64(key.publicKey),
+            })),
+          };
+
+          console.log("[OMEMO] libsignal bundle ready:", {
             deviceId: localBundle.deviceId,
             preKeys: localBundle.preKeys?.length ?? 0,
           });
 
-          console.log("[OMEMO] publishing device list...");
+          console.log("[OMEMO] publishing standard device list...");
           await client.publishOmemoDeviceList([localDeviceId]);
-          console.log("[OMEMO] device list published");
+          console.log("[OMEMO] standard device list published");
 
-          console.log("[OMEMO] publishing bundle...");
+          console.log("[OMEMO] publishing standard bundle...");
           await client.publishOmemoBundle(localBundle);
-          console.log("[OMEMO] bundle published");
+          console.log("[OMEMO] standard bundle published");
 
           console.log("[OMEMO] init/publish success");
         } catch (e) {
