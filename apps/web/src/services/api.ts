@@ -139,12 +139,20 @@ export const attachmentsApi = {
     const form = new FormData();
     form.append("file", file);
     if (messageId) form.append("message_id", messageId);
-    return api.post("/attachments/upload", form, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-        ...(accountId ? { "X-Conjiweb-Account-Id": accountId } : {}),
-      },
-    }).then((r) => r.data);
+
+    // CRITICAL: do NOT set Content-Type manually for FormData uploads.
+    // The browser must set it automatically as
+    //   "multipart/form-data; boundary=----WebKitFormBoundary..."
+    // Setting it manually omits the boundary, the server fails to parse the
+    // body (returning 400 or in some configs 401 from the auth middleware
+    // running before body parse), and the upload appears to fail.
+    //
+    // The axios request interceptor will still add Authorization: Bearer <token>
+    // because we are not setting that header here.
+    const headers: Record<string, string> = {};
+    if (accountId) headers["X-Conjiweb-Account-Id"] = accountId;
+
+    return api.post("/attachments/upload", form, { headers }).then((r) => r.data);
   },
 };
 

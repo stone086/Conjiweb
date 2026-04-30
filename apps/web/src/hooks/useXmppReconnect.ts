@@ -42,7 +42,21 @@ export function useXmppReconnect() {
             setReconnecting(account.id, false);
             return;
           }
-          const wsUrl = import.meta.env.VITE_XMPP_WS_URL ?? "ws://localhost:5280/xmpp-websocket";
+          // CRITICAL: derive wsUrl from current page origin (matches LoginPage logic).
+          // Fallback to env var only when same-origin construction is not possible
+          // (e.g. dev server). This avoids reconnecting to ws://localhost:5280
+          // when the user originally connected via wss://their-domain.com/xmpp-websocket.
+          const sameOrigin = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/xmpp-websocket`;
+          const configured = (import.meta.env.VITE_XMPP_WS_URL as string | undefined) ?? "";
+          let wsUrl = sameOrigin;
+          if (configured) {
+            try {
+              const u = new URL(configured);
+              if (u.host === window.location.host) wsUrl = configured;
+            } catch {
+              // configured value is not a valid URL — ignore and use same-origin
+            }
+          }
           const newClient = createClient({
             jid: account.jid,
             password: runtimePassword,

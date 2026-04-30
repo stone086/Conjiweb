@@ -22,6 +22,24 @@ import Avatar from "@/components/Avatar";
 import { apiSocket } from "@/services/apiSocket";
 import { isPushSubscribed, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/services/push";
 
+/**
+ * Same-origin wsUrl helper - matches LoginPage.tsx logic.
+ * Avoids hardcoding ws://localhost:5280 which would break reconnects on
+ * production deployments where users access via wss://their-domain/.
+ */
+function deriveSameOriginWsUrl(configured?: string): string {
+  if (typeof window === "undefined") return configured || "ws://localhost:5280/xmpp-websocket";
+  const sameOrigin = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/xmpp-websocket`;
+  if (!configured) return sameOrigin;
+  try {
+    const u = new URL(configured);
+    return u.host === window.location.host ? configured : sameOrigin;
+  } catch {
+    return sameOrigin;
+  }
+}
+
+
 const MENTION_NOTIFY_KEY = "conjiweb-notify-mention";
 const DENSITY_KEY = "conjiweb-message-density";
 const HISTORY_RETENTION_OPTIONS = [0, 1, 3, 7, 30];
@@ -139,7 +157,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
       const client = createClient({
         jid: account.jid,
         password: runtimePassword,
-        wsUrl: import.meta.env.VITE_XMPP_WS_URL ?? "ws://localhost:5280/xmpp-websocket",
+        wsUrl: deriveSameOriginWsUrl(import.meta.env.VITE_XMPP_WS_URL as string | undefined),
         accountId: account.id,
       });
       initXmppBridge(client);
@@ -406,7 +424,7 @@ export default function SettingsPage() {
       const client = createClient({
         jid,
         password: form.password,
-        wsUrl: form.wsUrl || import.meta.env.VITE_XMPP_WS_URL || "ws://localhost:5280/xmpp-websocket",
+        wsUrl: form.wsUrl || deriveSameOriginWsUrl(import.meta.env.VITE_XMPP_WS_URL as string | undefined),
         accountId: id,
       });
       initXmppBridge(client);
