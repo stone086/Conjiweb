@@ -105,9 +105,6 @@ export default function LoginPage() {
         localStorage.setItem("token", tokenRes.access_token);
         console.log("🔥 TOKEN STORED:", id, tokenRes.access_token);
       }
-      accountsApi.create({ jid, domain }).catch((e) => {
-        console.warn("[API] account create failed after token:", e);
-      });
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       apiSocket.connect(id);
