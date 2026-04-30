@@ -95,9 +95,16 @@ export default function LoginPage() {
     try {
       await withTimeout(client.connect(), 20000, t("login.connectionFailed"));
       const tokenRes = await authApi.getUserToken(jid, form.password);
-      if (tokenRes?.access_token) {
-        setUserToken(id, tokenRes.access_token);
-      }
+    if (tokenRes?.access_token) {
+      setUserToken(id, tokenRes.access_token);
+
+      sessionStorage.setItem(
+        `conjiweb-user-token:${id}`,
+        tokenRes.access_token
+      );
+
+     localStorage.setItem("token", tokenRes.access_token);
+    }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       apiSocket.connect(id);
@@ -181,6 +188,13 @@ export default function LoginPage() {
         displayName: ldapUser,
       });
       setUserToken(id, data.access_token);
+
+      localStorage.setItem("token", data.access_token);
+
+      sessionStorage.setItem(
+        `conjiweb-user-token:${id}`,
+        data.access_token
+      );
       toast.success("LDAP login successful");
       navigate("/");
     } catch (err: any) {
