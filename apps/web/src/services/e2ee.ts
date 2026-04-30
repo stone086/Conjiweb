@@ -840,7 +840,7 @@ export async function decryptOmemoEnvelopeFromPeer(
 }
 
 export function isEncryptedPayload(body: string): boolean {
-  return body.startsWith(CIPHER_PREFIX);
+  return body.trimStart().startsWith(CIPHER_PREFIX);
 }
 
 export async function decryptBodyFromPeer(

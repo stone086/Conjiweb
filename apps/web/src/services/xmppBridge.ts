@@ -31,6 +31,8 @@ import { OmemoStore } from "@/services/omemo/store";
 import { cacheMessages, deleteLocalConversationData } from "./localDb";
 import { generateConversationId, isValidBareJid, normalizeBareJid, normalizeValidBareJid } from "@/utils/helpers";
 import {
+  parseKeyExchangePayload,
+  storePeerPublicKey,
   decryptOmemoEnvelopeFromPeer,
   decryptBodyFromPeer,
   getOrCreateLocalDeviceId,
@@ -404,6 +406,14 @@ export function initXmppBridge(client: XmppClient) {
 
     let incomingBody = message.body;
     const incomingOmemo = message.omemo;
+    if (typeof incomingBody === "string") {
+      const keyExchange = parseKeyExchangePayload(incomingBody.trim());
+      if (keyExchange) {
+        await storePeerPublicKey(accountId, from, keyExchange);
+        // Handshake control stanza: store key material, don't render as chat content.
+        return;
+      }
+    }
     const incomingEncrypted = Boolean(incomingOmemo) || (typeof incomingBody === "string" && isEncryptedPayload(incomingBody));
     let decryptFailed = false;
     if (incomingOmemo) {
@@ -614,6 +624,13 @@ export function initXmppBridge(client: XmppClient) {
 
     let body = message.body;
     const incomingOmemo = message.omemo;
+    if (typeof body === "string") {
+      const keyExchange = parseKeyExchangePayload(body.trim());
+      if (keyExchange) {
+        await storePeerPublicKey(accountId, peerJid, keyExchange);
+        return;
+      }
+    }
     const encrypted = Boolean(incomingOmemo) || (typeof body === "string" && isEncryptedPayload(body));
     let decryptFailed = false;
     if (incomingOmemo) {
