@@ -30,6 +30,20 @@ import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { tryLibsignalEncrypt } from "@/services/xmppBridge";
 import { getOmemoEnabled } from "@/services/omemoSettings";
 
+function parseAesgcmMediaLink(raw?: string): { href: string; fileName: string; isAudio: boolean } | null {
+  if (!raw) return null;
+  const text = raw.trim();
+  if (!text.startsWith("aesgcm://")) return null;
+  const withoutScheme = text.slice("aesgcm://".length);
+  const hashIndex = withoutScheme.indexOf("#");
+  const pathPart = hashIndex >= 0 ? withoutScheme.slice(0, hashIndex) : withoutScheme;
+  const href = `https://${pathPart}`;
+  const fileName = pathPart.split("/").pop() || "encrypted-file";
+  const lower = fileName.toLowerCase();
+  const isAudio = lower.endsWith(".m4a") || lower.endsWith(".mp3") || lower.endsWith(".ogg") || lower.endsWith(".wav") || lower.endsWith(".webm");
+  return { href, fileName, isAudio };
+}
+
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
     ? todayLabel
@@ -129,7 +143,27 @@ function MessageBubble({
               </p>
             </div>
           )}
-          {msg.body && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>}
+          {msg.body && (() => {
+            const aesMedia = parseAesgcmMediaLink(msg.body);
+            if (aesMedia) {
+              return (
+                <div className="text-sm leading-relaxed break-words">
+                  <p className="text-surface-100/90">
+                    {aesMedia.isAudio ? "Encrypted audio attachment" : "Encrypted file attachment"}
+                  </p>
+                  <a
+                    href={aesMedia.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent-soft underline break-all"
+                  >
+                    {aesMedia.fileName}
+                  </a>
+                </div>
+              );
+            }
+            return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>;
+          })()}
           {msg.body && (() => {
             const url = extractFirstUrl(msg.body);
             return url ? <LinkPreviewCard url={url} /> : null;

@@ -51,7 +51,6 @@ const API_URL = normalizeApiUrl(import.meta.env.VITE_API_URL as string | undefin
 
 export const api = axios.create({
   baseURL: API_URL,
-  headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.request.use((config) => {
@@ -82,6 +81,17 @@ api.interceptors.request.use((config) => {
 
   if (config.headers && "X-Conjiweb-Account-Id" in config.headers) {
     delete config.headers["X-Conjiweb-Account-Id"];
+  }
+
+  // Keep JSON default for normal requests, but never force it for FormData uploads.
+  const isFormData =
+    typeof FormData !== "undefined" && config.data instanceof FormData;
+  if (!isFormData) {
+    const hasExplicitContentType =
+      Boolean(config.headers?.["Content-Type"]) || Boolean((config.headers as any)?.["content-type"]);
+    if (!hasExplicitContentType) {
+      (config.headers as any)["Content-Type"] = "application/json";
+    }
   }
 
   return config;
@@ -137,7 +147,7 @@ export const messagesApi = {
 export const attachmentsApi = {
   upload: (file: File, messageId?: string, accountId?: string) => {
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", file, file.name);
     if (messageId) form.append("message_id", messageId);
 
     // CRITICAL: do NOT set Content-Type manually for FormData uploads.
