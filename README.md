@@ -66,6 +66,45 @@ npm run check:buttons
 npm run check
 ```
 
+## Install and Update Commands
+
+### 1) First-Time Server Installation (Linux host)
+
+Run on the target server:
+
+```bash
+cd /opt
+git clone https://github.com/stone086/Conjiweb.git conjiweb-src
+cd conjiweb-src
+chmod +x install.sh manage.sh
+sudo ./install.sh
+```
+
+### 2) Routine Server Update (single host)
+
+Run on the server where Conjiweb is installed:
+
+```bash
+cd /opt/conjiweb-src
+git fetch --prune origin
+git reset --hard origin/main
+sudo /opt/conjiweb/manage.sh update-api
+sudo /opt/conjiweb/manage.sh update-frontend
+sudo systemctl restart conjiweb-api
+```
+
+### 3) One-Click Push + Multi-Host Update (Windows operator machine)
+
+Run from:
+
+`C:\Users\Stone\Documents\github`
+
+```powershell
+.\update-conjiweb-all.ps1
+```
+
+This script is your standard flow: push latest code, then update `vmiss` and `zorin-lan`.
+
 ## Production Notes
 
 - Use `install.sh` for initial server setup.
@@ -89,4 +128,3 @@ Please read [CONTRIBUTING.md](/C:/Users/Stone/Documents/github/web_Conji_native/
 ## License
 
 See [LICENSE](/C:/Users/Stone/Documents/github/web_Conji_native/LICENSE).
-
