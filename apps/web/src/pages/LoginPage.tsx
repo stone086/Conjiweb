@@ -89,22 +89,25 @@ export default function LoginPage() {
     const createdAccount = !existing;
     addAccount({ id, jid, domain, password: form.password, displayName: jid.split("@")[0] });
     setAccountPassword(id, form.password);
-    accountsApi.create({ jid, domain }).catch(() => {});
     const client = createClient({ jid, password: form.password, wsUrl, accountId: id });
     initXmppBridge(client);
     try {
       await withTimeout(client.connect(), 20000, t("login.connectionFailed"));
       const tokenRes = await authApi.getUserToken(jid, form.password);
-    if (tokenRes?.access_token) {
-      setUserToken(id, tokenRes.access_token);
+      if (tokenRes?.access_token) {
+        setUserToken(id, tokenRes.access_token);
 
-      sessionStorage.setItem(
-        `conjiweb-user-token:${id}`,
-        tokenRes.access_token
-      );
+        sessionStorage.setItem(
+          `conjiweb-user-token:${id}`,
+          tokenRes.access_token
+        );
 
-     localStorage.setItem("token", tokenRes.access_token);
-    }
+        localStorage.setItem("token", tokenRes.access_token);
+        console.log("🔥 TOKEN STORED:", id, tokenRes.access_token);
+      }
+      accountsApi.create({ jid, domain }).catch((e) => {
+        console.warn("[API] account create failed after token:", e);
+      });
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       apiSocket.connect(id);
