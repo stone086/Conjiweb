@@ -107,7 +107,7 @@ export default function LoginPage() {
       }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
-      apiSocket.connect(id);
+      // apiSocket.connect(id);
       navigate("/");
     } catch (err: any) {
       client.disconnect();
