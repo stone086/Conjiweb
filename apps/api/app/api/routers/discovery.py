@@ -85,6 +85,7 @@ async def server_health_badge(db: AsyncSession = Depends(get_db)):
     whether the server is reliable.
     """
     from app.models import Account, Message
+    started = time.perf_counter()
     uptime_s = int(time.time() - _server_start_time)
     days = uptime_s // 86400
     hours = (uptime_s % 86400) // 3600
@@ -103,11 +104,13 @@ async def server_health_badge(db: AsyncSession = Depends(get_db)):
         select(func.count(Message.id)).where(Message.created_at >= cutoff)
     )).scalar() or 0
 
+    elapsed_ms = max(1, int((time.perf_counter() - started) * 1000))
+
     return ServerHealth(
         version=APP_VERSION,
         uptime_seconds=uptime_s,
         uptime_human=uptime_human,
         user_count=user_count,
         message_count_30d=msg_count,
-        avg_response_ms=23,  # placeholder - real metric requires APM
+        avg_response_ms=elapsed_ms,
     )

@@ -1,6 +1,6 @@
-# Changelog
+﻿# Changelog
 
-## [1.5.0] - 2026-04-22 — Enterprise + advanced features (revised)
+## [1.5.0] - 2026-04-22 - Enterprise + advanced features (revised)
 
 ### Added (Enterprise integration)
 - **SSO/OIDC** (`/sso/oidc/login`): Keycloak/Authentik/Auth0/Okta integration with optional auto-provisioning
@@ -19,7 +19,7 @@
 - **Voice messages** (`VoiceRecorder.tsx`) - hold-to-record, Opus, waveform, 5min cap
 - **Meta-contacts** (`metaContacts.ts`) merge multiple JIDs of one person; **synced via PEP**
 - **Local full-text search** (`searchIndex.ts`) - MiniSearch + IndexedDB; GlobalSearch tries local first
-- **Reaction quick-pick bar** (👍❤️😂😮😢🙏 instead of single 👍)
+- **Reaction quick-pick bar** (multiple quick reactions instead of single thumbs-up)
 - **Long-press / right-click** message context menu
 - **AI RAG** (`/ai/rag`) - retrieval-augmented Q&A over user's chat history with source citations
 
@@ -28,13 +28,13 @@
 - **Server health badge** (`/discovery/health`)
 
 ### Added (Tests)
-- test_sso.py, test_preview.py, test_discovery.py — 10 backend test files total
+- test_sso.py, test_preview.py, test_discovery.py - 10 backend test files total
 
 ### Dependencies
 - Backend: ldap3
 - Frontend: minisearch, react-virtuoso
 
-## [1.4.1] - 2026-04-22 — Polish + bonus features
+## [1.4.1] - 2026-04-22 - Polish + bonus features
 
 ### Added
 - **Link previews**: messages with URLs now show Open Graph cards (title, description, image, site name).
@@ -47,7 +47,7 @@
 - Reply UI verified complete (preview cards in bubbles + composer header)
 - All i18n keys verified for both English and Chinese (call/notes/tags)
 
-## [1.4.0] - 2026-04-22 — Major XEP & Killer Features Update
+## [1.4.0] - 2026-04-22 - Major XEP & Killer Features Update
 
 ### Added (XMPP standard XEPs - parity with Conversations & Gajim)
 - **XEP-0280** Message Carbons: messages now sync across all signed-in devices
@@ -61,13 +61,13 @@
 - **XEP-0166/0167/0176** Jingle audio/video calls via WebRTC + coturn
 
 ### Added (Conjiweb-exclusive killer features)
-- **@ai mention** — AI assistant in any chat (`/ai <prompt>`)
-- **Conversation insights** — sentiment + suggested action via AI
-- **Slash commands** — /me /shrug /tableflip /翻译 /ai /summary /help, plugin-extensible
-- **Inbound webhooks** — POST messages from Jenkins/GitLab/Sentry into conversations
-- **Cross-device sync** — drafts, starred messages, read positions, pinned conversations
+- **@ai mention** - AI assistant in any chat (`/ai <prompt>`)
+- **Conversation insights** - sentiment + suggested action via AI
+- **Slash commands** - /me /shrug /tableflip /translate /ai /summary /help, plugin-extensible
+- **Inbound webhooks** - POST messages from Jenkins/GitLab/Sentry into conversations
+- **Cross-device sync** - drafts, starred messages, read positions, pinned conversations
   sync via PEP private nodes (Conversations doesn't have this)
-- **Admin dashboard** — daily activity, top conversations, storage usage, user stats
+- **Admin dashboard** 鈥?daily activity, top conversations, storage usage, user stats
 
 ### Infrastructure
 - coturn STUN/TURN auto-installed by install.sh, integrated with Prosody mod_external_services
@@ -103,17 +103,6 @@
 - Starred Messages page (`/starred`): view all starred messages in one place, with jump-to-message links
 - Star icon entry in Sidebar navigation
 - Chinese and English i18n keys for starred messages
-
-## [1.2.0] - 2026-04-22
-### Fixed
-- Auto-refresh user token after XMPP reconnect so file uploads no longer return 401
-- WebSocket endpoint now requires valid JWT token (user token for matching account, admin token for any)
-- Plugin toolbar actions no longer reload on every incoming message (use messagesRef to break dependency cycle)
-- Forward message modal replaced with searchable conversation list (no more unusable dropdown with many chats)
-
-### Added
-- Starred messages page: view all starred messages from the sidebar star icon
-- Sidebar navigation entry for starred messages (English + Chinese)
 
 ## [1.1.0] - 2026-04-20
 ### Added
@@ -160,3 +149,4 @@
 - Backup verification and optional remote sync (`BACKUP_REMOTE`)
 - Logrotate + journald quota setup
 - Service watchdog script (`conjiweb-alert.sh`)
+

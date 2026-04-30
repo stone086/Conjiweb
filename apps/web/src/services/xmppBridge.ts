@@ -68,12 +68,28 @@ export function initXmppBridge(client: XmppClient) {
     if (data.status === "connected") {
       const publishLocalOmemo = async () => {
         try {
+          console.log("[OMEMO] init/publish start", { accountId });
+
           const localDeviceId = getOrCreateLocalDeviceId(accountId);
+          console.log("[OMEMO] local device id:", localDeviceId);
+
           const localBundle = await getOrCreateLocalOmemoBundle(accountId);
+          console.log("[OMEMO] local bundle ready:", {
+            deviceId: localBundle.deviceId,
+            preKeys: localBundle.preKeys?.length ?? 0,
+          });
+
+          console.log("[OMEMO] publishing device list...");
           await client.publishOmemoDeviceList([localDeviceId]);
+          console.log("[OMEMO] device list published");
+
+          console.log("[OMEMO] publishing bundle...");
           await client.publishOmemoBundle(localBundle);
-        } catch {
-          // keep chat flow running even if OMEMO publish fails
+          console.log("[OMEMO] bundle published");
+
+          console.log("[OMEMO] init/publish success");
+        } catch (e) {
+          console.error("[OMEMO] init/publish failed:", e);
         }
       };
       void publishLocalOmemo();
