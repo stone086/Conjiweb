@@ -1,24 +1,28 @@
+"""
+ai.py - AI utility endpoints (summarize, translate, assistant, insight, RAG).
+"""
+import json
+import re
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal, get_db
+from app.models import Conversation, Message
+from app.utils.security import bearer_scheme, decode_token
 
 router = APIRouter()
 
 
-class SummarizeRequest(BaseModel):
-    messages: List[str]
-    conversation_id: Optional[str] = None
-
-
-class SummarizeResponse(BaseModel):
-    summary: str
-    key_points: List[str]
-
-
+# ---------------------------------------------------------------------------
+# Provider config
+# ---------------------------------------------------------------------------
 def _provider_config() -> tuple[str, str, str]:
     api_key = (settings.AI_API_KEY or "").strip()
     if not api_key:
@@ -64,6 +68,37 @@ async def _chat_completion(
         raise HTTPException(status_code=502, detail=f"AI request failed: {exc}")
 
 
+# ---------------------------------------------------------------------------
+# Auth helper for user-scoped endpoints
+# ---------------------------------------------------------------------------
+def _get_ai_actor(
+    credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
+) -> dict:
+    """Accept both admin and user tokens; return role + account_id."""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    role = payload.get("role")
+    if role == "admin":
+        return {"role": "admin", "account_id": payload.get("account_id")}
+    if role == "user" and payload.get("account_id"):
+        return {"role": "user", "account_id": payload["account_id"]}
+    raise HTTPException(status_code=403, detail="AI access denied")
+
+
+# ---------------------------------------------------------------------------
+# Summarize
+# ---------------------------------------------------------------------------
+class SummarizeRequest(BaseModel):
+    messages: List[str]
+    conversation_id: Optional[str] = None
+
+
+class SummarizeResponse(BaseModel):
+    summary: str
+    key_points: List[str]
+
+
 @router.post(
     "/summarize",
     response_model=SummarizeResponse,
@@ -88,6 +123,9 @@ async def summarize_conversation(data: SummarizeRequest):
     return SummarizeResponse(summary=summary_line, key_points=key_points[:5])
 
 
+# ---------------------------------------------------------------------------
+# Translate
+# ---------------------------------------------------------------------------
 @router.post(
     "/translate",
     summary="Translate text",
@@ -104,6 +142,9 @@ async def translate_message(text: str, target_lang: str = "en"):
     return {"original": text, "translated": translated, "lang": target_lang}
 
 
+# ---------------------------------------------------------------------------
+# Smart reply
+# ---------------------------------------------------------------------------
 @router.post(
     "/smart-reply",
     summary="Generate smart replies",
@@ -123,16 +164,15 @@ async def smart_reply(message: str):
     return {"suggestions": suggestions[:3]}
 
 
-
-# =====================================================
-# KILLER-01: @ai mention assistant for group chats
-# =====================================================
+# ---------------------------------------------------------------------------
+# @ai mention assistant
+# ---------------------------------------------------------------------------
 class AssistantRequest(BaseModel):
     """Request to the AI assistant when @ai is mentioned in a chat."""
     prompt: str
-    context_messages: List[str] = []   # last N messages for context
+    context_messages: List[str] = []
     conversation_id: Optional[str] = None
-    persona: Optional[str] = None       # "helpful" / "concise" / "translator"
+    persona: Optional[str] = None
 
 
 class AssistantResponse(BaseModel):
@@ -141,15 +181,7 @@ class AssistantResponse(BaseModel):
 
 @router.post("/assistant", response_model=AssistantResponse)
 async def ai_assistant(req: AssistantRequest):
-    """
-    Group-chat AI assistant. Triggered when a user types @ai in a message.
-
-    The bridge layer detects "@ai" prefix, sends the prompt + recent context
-    to this endpoint, and posts the reply back into the conversation.
-
-    The assistant is persona-aware so admins can configure team-specific
-    behavior (e.g. always reply in English, always cite sources, etc.).
-    """
+    """Group-chat AI assistant triggered by @ai mention."""
     api_key, base_url, model = _provider_config()
 
     persona_prompts = {
@@ -182,25 +214,22 @@ async def ai_assistant(req: AssistantRequest):
         raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
 
 
-# =====================================================
-# KILLER-01: Conversation insights (sentiment, response time)
-# =====================================================
+# ---------------------------------------------------------------------------
+# Conversation insight (sentiment)
+# ---------------------------------------------------------------------------
 class InsightRequest(BaseModel):
     messages: List[str]
 
 
 class InsightResponse(BaseModel):
-    sentiment: str       # "positive" / "neutral" / "negative" / "urgent"
+    sentiment: str
     summary: str
     suggested_action: Optional[str] = None
 
 
 @router.post("/insight", response_model=InsightResponse)
 async def conversation_insight(req: InsightRequest):
-    """
-    Quick conversation insight - sentiment + suggested action.
-    Used in the right-panel "smart suggestions" area.
-    """
+    """Quick conversation insight - sentiment + suggested action."""
     if not req.messages:
         return InsightResponse(sentiment="neutral", summary="")
 
@@ -213,67 +242,74 @@ async def conversation_insight(req: InsightRequest):
     )
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
+            # No response_format — not all providers support it (#15)
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 200,
-                    "response_format": {"type": "json_object"},
                 },
                 headers={"Authorization": f"Bearer {api_key}"},
             )
             resp.raise_for_status()
             data = resp.json()
-            import json
-            parsed = json.loads(data["choices"][0]["message"]["content"])
+            raw = data["choices"][0]["message"]["content"].strip()
+            # Strip markdown fences if present
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            parsed = json.loads(raw)
             return InsightResponse(
                 sentiment=parsed.get("sentiment", "neutral"),
                 summary=parsed.get("summary", ""),
                 suggested_action=parsed.get("suggested_action"),
             )
+    except (json.JSONDecodeError, KeyError, IndexError):
+        return InsightResponse(sentiment="neutral", summary="")
     except Exception:
         return InsightResponse(sentiment="neutral", summary="")
 
 
-
-# =====================================================
-# KILLER-01: RAG question answering over conversation history
-# =====================================================
+# ---------------------------------------------------------------------------
+# RAG (Retrieval-Augmented Generation) — user-scoped (#14)
+# ---------------------------------------------------------------------------
 class RagRequest(BaseModel):
-    """Ask a question, AI answers using cached message history as context."""
+    """Ask a question, AI answers using the caller's own message history."""
     question: str
-    account_id: str
-    max_messages: int = 200          # how many recent messages to use as context
-    conversation_ids: List[str] = []  # if empty, all conversations of this account
+    max_messages: int = 200
+    conversation_ids: List[str] = []
 
 
 class RagResponse(BaseModel):
     answer: str
-    sources: List[dict] = []  # list of {conversation_id, message_id, snippet, timestamp}
+    sources: List[dict] = []
 
 
 @router.post("/rag", response_model=RagResponse)
-async def rag_query(req: RagRequest):
+async def rag_query(
+    req: RagRequest,
+    actor: dict = Depends(_get_ai_actor),
+):
     """
-    Retrieval-augmented generation over the user's local message history.
+    Retrieval-augmented generation over the caller's own message history.
 
-    1. Pull recent messages from DB (server-side store)
-    2. Build a context block with sender + body + timestamp
-    3. Send to LLM with instruction to answer + cite source IDs
-    4. Parse cited message IDs and return as sources
+    - User token: can only query own conversations
+    - Admin token: can query any account (must provide account_id in token)
     """
-    from app.core.database import async_session
-    from app.models import Message, Conversation
-    from sqlalchemy import select, and_, desc
+    account_id = actor.get("account_id")
+    if not account_id:
+        raise HTTPException(400, "account_id required (derived from token)")
 
     api_key, base_url, model = _provider_config()
 
-    async with async_session() as db:
-        query = select(Message, Conversation).join(
-            Conversation, Conversation.id == Message.conversation_id
-        ).where(Conversation.account_id == req.account_id)
+    async with AsyncSessionLocal() as db:
+        query = (
+            select(Message, Conversation)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(Conversation.account_id == account_id)
+        )
 
+        # Validate that requested conversation_ids belong to this account
         if req.conversation_ids:
             query = query.where(Message.conversation_id.in_(req.conversation_ids))
 
@@ -284,7 +320,6 @@ async def rag_query(req: RagRequest):
     if not rows:
         return RagResponse(answer="No messages in history to answer from.", sources=[])
 
-    # Reverse for chronological order in context
     rows = list(reversed(rows))
     context_lines: List[str] = []
     source_index: dict[str, dict] = {}
@@ -299,9 +334,8 @@ async def rag_query(req: RagRequest):
             "timestamp": msg.created_at.isoformat() if msg.created_at else None,
             "sender": msg.sender_jid,
         }
-        context_lines.append(
-            f"[{ref_id}] ({msg.sender_jid}, {msg.created_at.strftime('%Y-%m-%d %H:%M') if msg.created_at else '?'}): {msg.body[:300]}"
-        )
+        ts = msg.created_at.strftime("%Y-%m-%d %H:%M") if msg.created_at else "?"
+        context_lines.append(f"[{ref_id}] ({msg.sender_jid}, {ts}): {msg.body[:300]}")
 
     if not context_lines:
         return RagResponse(answer="No text messages to answer from.", sources=[])
@@ -338,8 +372,6 @@ async def rag_query(req: RagRequest):
     except httpx.HTTPError as e:
         raise HTTPException(502, f"AI provider error: {e}")
 
-    # Extract cited message IDs and resolve to source objects
-    import re
     cited_refs = set(re.findall(r"\[M(\d+)\]", answer))
     sources = [source_index[f"M{ref}"] for ref in cited_refs if f"M{ref}" in source_index]
 

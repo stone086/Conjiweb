@@ -178,3 +178,15 @@ class CallLog(Base):
     duration_seconds = Column(Integer, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SsoIdentity(Base):
+    """Maps external SSO identities (OIDC sub, LDAP DN) to local accounts."""
+    __tablename__ = "sso_identities"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    account_id = Column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False)       # "oidc" or "ldap"
+    provider_sub = Column(String(512), nullable=False)   # OIDC sub claim or LDAP DN
+    provider_email = Column(String(256), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

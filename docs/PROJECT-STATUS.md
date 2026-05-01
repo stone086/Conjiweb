@@ -1,20 +1,32 @@
-﻿# Conjiweb 2.0 项目状态
+# Conjiweb Project Status (v1.5.1)
 
-## 已完成
+## Production-ready modules
 
-- 全新目录结构
-- React + TypeScript + Vite
-- OMEMO Core 模块边界
-- IndexedDB 存储层
-- XMPP 模块边界
-- 按钮联通检测脚本
-- 基础 UI 页面
+- React + TypeScript + Vite frontend (16k+ lines)
+- FastAPI async backend (3.4k+ lines)
+- XMPP via strophe.js (XEP-0280, XEP-0198, XEP-0357, XEP-0313 MAM)
+- OMEMO E2EE (services/omemo + services/e2ee, using libsignal-protocol-typescript)
+- Jingle 1:1 audio/video calls with WebRTC + coturn
+- Group calls via mesh topology (experimental, wired into ChatPage)
+- SSO: OIDC + LDAP with secure code exchange and rate limiting
+- Admin dashboard, plugin system, webhook inbound
+- Full installer for Debian 12 VPS (install.sh / manage.sh)
 
-## 待接入
+## OMEMO encryption (single implementation)
 
-- 真实 XMPP 库
-- 真实 Signal/OMEMO 加密库
-- PubSub device list 发布/获取
-- bundle 发布/获取
-- session 建立
-- Conversations 互通测试
+Production code in `services/omemo/` + `services/e2ee.ts`:
+- libsignal-protocol-typescript for key management and Signal sessions
+- Dual namespace support: `urn:xmpp:omemo:2` + `eu.siacs.conversations.axolotl` (legacy)
+- Decrypt chain: libsignal standard → legacy custom protocol fallback
+- IndexedDB-backed key store (migrated from localStorage)
+- Trust management UI via OmemoTrustView
+
+Previously existing prototype code (omemo2/, omemo-engine/) has been deleted.
+It was never referenced by production code and contained only placeholders.
+
+## Known gaps
+
+- OIDC id_token signature verification (currently relies on userinfo endpoint)
+- Group call SFU for 6+ participants (mesh only for now)
+- Meta-contacts: store + sync + UI exist, but no merge suggestion algorithm
+- RAG: backend ready, minimal frontend entry in GlobalSearch

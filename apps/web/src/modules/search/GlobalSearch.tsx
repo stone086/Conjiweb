@@ -7,10 +7,11 @@ import { useRosterStore } from "@/stores/rosterStore";
 import { useGroupStore } from "@/stores/groupStore";
 import { debounce } from "@/utils/helpers";
 import { searchLocal } from "@/services/searchIndex";
-import { Search, MessageSquare, User, Hash, X, Clock } from "lucide-react";
+import { Search, MessageSquare, User, Hash, X, Clock, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useLanguage } from "@/utils/i18n";
+import { api } from "@/services/api";
 
 type ResultType = "message" | "contact" | "room";
 
@@ -219,6 +220,23 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="px-4 py-2 border-t border-white/5 flex gap-3 text-[10px] text-surface-200/25">
+          <button
+            onClick={() => {
+              if (!query.trim()) return;
+              api.post("/ai/rag", { question: query })
+                .then((r) => {
+                  const answer = r.data?.answer ?? "No answer";
+                  alert(`AI: ${answer}`);
+                })
+                .catch(() => alert("AI RAG unavailable"));
+            }}
+            className="flex items-center gap-1 text-primary hover:text-primary/80 text-[11px]"
+            title={t("search.askAi")}
+          >
+            <Sparkles className="w-3 h-3" />
+            {t("search.askAi")}
+          </button>
+          <span className="flex-1" />
           <span>{t("search.navigate")}</span>
           <span>{t("search.select")}</span>
           <span>{t("search.close")}</span>

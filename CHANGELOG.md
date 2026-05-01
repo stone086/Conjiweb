@@ -1,4 +1,53 @@
-﻿# Changelog
+# Changelog
+
+## [1.5.1] - 2026-05-01 — Security hardening + code quality
+
+### Fixed (P0 — runtime errors)
+- RAG endpoint ImportError: `async_session` was not exported from database.py
+- SSO (OIDC/LDAP) account creation missing required `domain` field → NOT NULL crash
+- SSO account creation missing `AccountPreference` → downstream null-ref errors
+
+### Fixed (Security)
+- OIDC callback no longer exposes JWT in URL fragment; uses one-time code exchange via Redis
+- OIDC id_token signature now verified via JWKS (python-jose), with userinfo fallback
+- LDAP login endpoint now has `@limiter.limit("10/minute")` rate limiting
+- OIDC JID generation uses `sub` claim hash to prevent display-name collisions
+- RAG endpoint now requires user token (scoped to own account), not just admin token
+- Web Vitals metrics endpoint now rate-limited (30/min) to prevent spam
+- Conversation insight endpoint removed `response_format: json_object` for provider compat
+
+### Fixed (Architecture)
+- OIDC CSRF state moved from in-memory dict to Redis (multi-worker safe, auto-expiring)
+- All SSO/LDAP/VAPID config consolidated into `app.core.config.Settings` (pydantic-settings)
+- SSO router no longer uses raw `os.getenv()` — reads from `settings.*`
+- Push router VAPID keys read from `settings.VAPID_*` instead of `os.getenv()`
+- AI router imports (`json`, `re`, models) moved to file top level
+- Deleted dead OMEMO code: omemo2/ (461 lines), core/omemo/engine.ts (217 lines), adapters/ (unused)
+- Only production OMEMO remains: `services/omemo/` + `services/e2ee.ts` (libsignal + legacy fallback)
+- Removed obsolete migration docs (MIGRATION_2.0_README.txt, docs/conjiweb-2.0/)
+- Root package.json renamed to `conjiweb-monorepo`, version synced to 1.5.1
+
+### Fixed (Code quality)
+- Removed UTF-8 BOM from 18 source files (Python, TypeScript, Markdown)
+- Converted CRLF to LF in 13 files (omemo2/*, AdminPage, TopBar, CHANGELOG)
+- `.env.example` now documents VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY, VAPID_EMAIL
+
+### Added (Feature completion)
+- Discovery page (`/discovery`) with public group directory + server health badge
+- Discovery link in sidebar navigation
+- Meta-contacts UI: "Merge contact" button in RightPanel contact details
+- RAG "Ask AI" button in GlobalSearch footer
+- GroupCallView fully wired into ChatPage with event-driven lifecycle
+- GroupCallManager now emits `started`/`ended` events with `on`/`off` API
+- New `/sso/oidc/exchange` endpoint for secure one-time code exchange
+- Alembic migration `0005_sso_identities` + `SsoIdentity` model
+- install.sh auto-installs `libldap2-dev` when `LDAP_ENABLED=true`
+- i18n keys for discovery, meta-contacts, ask-ai (English + Chinese)
+- `docs/PROJECT-STATUS.md` rewritten with accurate module status
+- `MIGRATION_2.0_README.txt` updated to reflect `_experimental/` move
+
+### Version
+- Bumped to 1.5.1
 
 ## [1.5.0] - 2026-04-22 - Enterprise + advanced features (revised)
 

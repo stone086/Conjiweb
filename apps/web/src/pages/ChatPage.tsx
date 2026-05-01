@@ -2,22 +2,25 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import MessageView from "@/modules/chat/MessageView";
 import CallView from "@/modules/call/CallView";
+import GroupCallView from "@/modules/call/GroupCallView";
 import { MessageSquare } from "lucide-react";
 import { useLanguage } from "@/utils/i18n";
 import { useChatStore } from "@/stores/chatStore";
 import { callManager, JingleSession } from "@/services/jingle";
+import { groupCallManager, GroupCall } from "@/services/jingle/groupCall";
 
 export default function ChatPage() {
   const { t } = useLanguage();
   const { conversationId } = useParams();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const [activeCall, setActiveCall] = useState<JingleSession | null>(null);
+  const [activeGroupCall, setActiveGroupCall] = useState<GroupCall | null>(null);
 
   useEffect(() => {
     setActiveConversation(conversationId ?? null);
   }, [conversationId, setActiveConversation]);
 
-  // Listen for incoming calls and active call ending
+  // Listen for incoming 1:1 calls
   useEffect(() => {
     callManager.on("incoming", (session) => setActiveCall(session));
     callManager.on("ended", (session) => {
@@ -26,6 +29,18 @@ export default function ChatPage() {
       }
     });
   }, [activeCall]);
+
+  // Listen for group calls
+  useEffect(() => {
+    const onGroupStart = (gc: GroupCall) => setActiveGroupCall(gc);
+    const onGroupEnd = () => setActiveGroupCall(null);
+    groupCallManager.on("started", onGroupStart);
+    groupCallManager.on("ended", onGroupEnd);
+    return () => {
+      groupCallManager.off("started", onGroupStart);
+      groupCallManager.off("ended", onGroupEnd);
+    };
+  }, []);
 
   if (!conversationId) {
     return (
@@ -40,6 +55,7 @@ export default function ChatPage() {
           </div>
         </div>
         {activeCall && <CallView session={activeCall} onClose={() => setActiveCall(null)} />}
+        {activeGroupCall && <GroupCallView groupCall={activeGroupCall} onClose={() => setActiveGroupCall(null)} />}
       </>
     );
   }
@@ -48,6 +64,7 @@ export default function ChatPage() {
     <>
       <MessageView conversationId={conversationId} />
       {activeCall && <CallView session={activeCall} onClose={() => setActiveCall(null)} />}
+      {activeGroupCall && <GroupCallView groupCall={activeGroupCall} onClose={() => setActiveGroupCall(null)} />}
     </>
   );
 }

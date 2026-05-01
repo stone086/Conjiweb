@@ -674,6 +674,13 @@ deploy_api() {
   cd "${INSTALL_DIR}/api"
   "${PYTHON_BIN}" -m venv .venv
   .venv/bin/pip install -q --upgrade pip
+
+  # Install LDAP system libraries if LDAP is enabled (needed by ldap3 TLS)
+  if [ "${LDAP_ENABLED:-false}" = "true" ]; then
+    log "LDAP enabled — installing system libraries (libldap2-dev, libsasl2-dev)..."
+    apt-get install -y -q libldap2-dev libsasl2-dev >/dev/null 2>&1 || true
+  fi
+
   .venv/bin/pip install -q -r requirements.txt
 
   # Generate VAPID keypair for Web Push (PWA notifications)

@@ -10,8 +10,9 @@
  * requiring an audio asset file.
  */
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Phone, ScreenShare, Circle, StopCircle } from "lucide-react";
+import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Phone, ScreenShare, Circle, StopCircle, UserPlus } from "lucide-react";
 import { JingleSession } from "@/services/jingle";
+import { groupCallManager } from "@/services/jingle/groupCall";
 import Avatar from "@/components/Avatar";
 import { useLanguage } from "@/utils/i18n";
 import { api } from "@/services/api";

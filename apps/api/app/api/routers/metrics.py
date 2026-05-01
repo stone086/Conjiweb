@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
@@ -24,7 +26,8 @@ class WebVitalsBatch(BaseModel):
     "/metrics/web-vitals",
     include_in_schema=False,
 )
-async def collect_web_vitals(batch: WebVitalsBatch):
+@limiter.limit("30/minute")
+async def collect_web_vitals(request: Request, batch: WebVitalsBatch):
     for report in batch.reports:
         if report.name not in WEB_VITAL_NAMES:
             continue

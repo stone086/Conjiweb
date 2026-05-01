@@ -1,11 +1,12 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import OmemoTrustView from "./OmemoTrustView";
 import { useChatStore, Conversation } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore, MucMember } from "@/stores/groupStore";
 import { aiApi } from "@/services/api";
-import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star } from "lucide-react";
+import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star, Merge } from "lucide-react";
+import { useMetaContactStore } from "@/services/metaContacts";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
@@ -187,6 +188,7 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
         {conversation.type === "private" && contact && activeAccountId && (
           <>
             <OmemoTrustButton peerJid={contact.jid} />
+            <MergeContactButton accountId={activeAccountId} jid={contact.jid} displayName={contact.name ?? contact.jid.split("@")[0]} />
             <ContactNotesEditor
               accountId={activeAccountId}
               jid={contact.jid}
@@ -196,6 +198,67 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function MergeContactButton({ accountId, jid, displayName }: { accountId: string; jid: string; displayName: string }) {
+  const { t } = useLanguage();
+  const [showInput, setShowInput] = useState(false);
+  const [mergeJid, setMergeJid] = useState("");
+  const metaStore = useMetaContactStore();
+
+  // Check if this JID already belongs to a meta-contact
+  const existingMetaId = metaStore.jidToMeta[`${accountId}::${jid}`];
+  const existingMeta = existingMetaId ? metaStore.metas[existingMetaId] : null;
+
+  const handleMerge = () => {
+    const target = mergeJid.trim();
+    if (!target || !target.includes("@")) return;
+    if (existingMeta) {
+      // Add to existing meta-contact
+      metaStore.addJidToMeta(existingMeta.id, target);
+    } else {
+      // Create new meta-contact
+      metaStore.addMeta({
+        accountId,
+        displayName,
+        primaryJid: jid,
+        jids: [jid, target],
+      });
+    }
+    setMergeJid("");
+    setShowInput(false);
+  };
+
+  return (
+    <div>
+      <button
+        onClick={() => setShowInput(!showInput)}
+        className="glass rounded-lg p-3 flex items-center gap-2 hover:bg-white/5 text-left w-full"
+      >
+        <Merge size={14} className="text-accent-soft" />
+        <span className="text-sm text-surface-200">
+          {existingMeta
+            ? `${t("meta.merged")} (${existingMeta.jids.length} JIDs)`
+            : t("meta.mergeContact")}
+        </span>
+      </button>
+      {showInput && (
+        <div className="mt-2 flex gap-2 px-1">
+          <input
+            type="text"
+            value={mergeJid}
+            onChange={(e) => setMergeJid(e.target.value)}
+            placeholder="alice@other-server.com"
+            className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-surface-50 placeholder:text-surface-200/30"
+            onKeyDown={(e) => e.key === "Enter" && handleMerge()}
+          />
+          <button onClick={handleMerge} className="text-xs text-primary hover:text-primary/80">
+            {t("meta.add")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -450,4 +513,3 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     </div>
   );
 }
-

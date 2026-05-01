@@ -7,83 +7,169 @@ Two flows are supported:
    - Frontend redirects user to /sso/oidc/login
    - We redirect to provider's authorize endpoint
    - Provider redirects back to /sso/oidc/callback with code
-   - We exchange code for tokens, validate ID token, create user-token
+   - We exchange code for tokens, create one-time code, frontend exchanges for token
 
 2. LDAP (Active Directory / OpenLDAP)
    - Frontend POSTs username + password to /sso/ldap/login
    - We bind to LDAP server with user credentials
    - On success, create / look up XMPP account, return user-token
 
-Configuration via environment variables (read by app.core.config):
-   OIDC_ENABLED=true
-   OIDC_ISSUER=https://auth.example.com/realms/main
-   OIDC_CLIENT_ID=...
-   OIDC_CLIENT_SECRET=...
-   OIDC_REDIRECT_URI=https://chat.example.com/sso/oidc/callback
-
-   LDAP_ENABLED=true
-   LDAP_SERVER=ldap://ldap.example.com
-   LDAP_BIND_DN_TEMPLATE=uid={username},ou=People,dc=example,dc=com
-   LDAP_USER_BASE=ou=People,dc=example,dc=com
+All configuration is read from app.core.config.settings (pydantic-settings).
 """
-import os
+import hashlib
+import re
 import secrets
+import time
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Response, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import get_db
-from app.models import Account, gen_uuid
+from app.core.rate_limit import limiter
+from app.models import Account, AccountPreference, gen_uuid
 from app.utils.security import create_access_token
+
+try:
+    import redis.asyncio as aioredis
+except ImportError:
+    aioredis = None  # type: ignore[assignment]
 
 router = APIRouter()
 
-
-def _oidc_enabled() -> bool:
-    return os.getenv("OIDC_ENABLED", "").lower() in ("true", "1", "yes")
-
-
-def _ldap_enabled() -> bool:
-    return os.getenv("LDAP_ENABLED", "").lower() in ("true", "1", "yes")
+SSO_CODE_TTL = 30        # seconds for one-time exchange code
+OIDC_STATE_TTL = 600     # seconds for OIDC CSRF state
 
 
+# ---------------------------------------------------------------------------
+# Redis helpers for OIDC state + one-time exchange codes
+# ---------------------------------------------------------------------------
+async def _get_redis():
+    """Lazy Redis connection for SSO state storage."""
+    if aioredis is None:
+        return None
+    try:
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.ping()
+        return r
+    except Exception:
+        return None
+
+
+# In-memory fallback (single-worker dev mode only)
+_mem_store: dict[str, tuple[str, float]] = {}
+
+
+async def _store_set(key: str, value: str, ttl: int) -> None:
+    r = await _get_redis()
+    if r:
+        await r.setex(key, ttl, value)
+        await r.aclose()
+    else:
+        _mem_store[key] = (value, time.time() + ttl)
+
+
+async def _store_pop(key: str) -> Optional[str]:
+    r = await _get_redis()
+    if r:
+        pipe = r.pipeline()
+        pipe.get(key)
+        pipe.delete(key)
+        val, _ = await pipe.execute()
+        await r.aclose()
+        return val
+    else:
+        item = _mem_store.pop(key, None)
+        if item and item[1] > time.time():
+            return item[0]
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _sanitize_username(raw: str) -> str:
+    """Produce a safe XMPP localpart from a display name or username."""
+    s = raw.lower().strip().replace(" ", "_")
+    s = re.sub(r"[^a-z0-9._-]", "", s)
+    return s[:64] or "user"
+
+
+def _oidc_jid(sub: str, name: str) -> str:
+    """
+    Build a collision-resistant JID from OIDC claims.
+    Uses the OIDC 'sub' claim hash to guarantee uniqueness even when
+    two users share the same display name.
+    """
+    safe_name = _sanitize_username(name)
+    sub_hash = hashlib.sha256(sub.encode()).hexdigest()[:8]
+    return f"{safe_name}_{sub_hash}@{settings.XMPP_DOMAIN}"
+
+
+async def _ensure_account(
+    db: AsyncSession,
+    jid: str,
+    display_name: str,
+    auto_provision: bool,
+) -> Account:
+    """Look up or auto-create an Account with its AccountPreference."""
+    result = await db.execute(select(Account).where(Account.jid == jid))
+    account = result.scalar_one_or_none()
+    if not account:
+        if not auto_provision:
+            raise HTTPException(403, f"Account {jid} not provisioned. Ask admin to create it.")
+        domain = jid.split("@", 1)[1] if "@" in jid else settings.XMPP_DOMAIN
+        account = Account(
+            id=gen_uuid(),
+            jid=jid,
+            domain=domain,
+            display_name=display_name,
+            is_enabled=True,
+        )
+        db.add(account)
+        db.add(AccountPreference(account_id=account.id))
+        await db.commit()
+    if not account.is_enabled:
+        raise HTTPException(403, "Account is disabled")
+    return account
+
+
+# ---------------------------------------------------------------------------
+# Provider discovery
+# ---------------------------------------------------------------------------
 @router.get("/sso/providers")
 async def list_providers():
     """Tell the frontend which SSO methods are configured."""
     return {
-        "oidc": _oidc_enabled(),
-        "ldap": _ldap_enabled(),
-        "oidc_label": os.getenv("OIDC_LABEL", "Single Sign-On"),
-        "ldap_label": os.getenv("LDAP_LABEL", "Corporate Login"),
+        "oidc": settings.OIDC_ENABLED,
+        "ldap": settings.LDAP_ENABLED,
+        "oidc_label": settings.OIDC_LABEL,
+        "ldap_label": settings.LDAP_LABEL,
     }
 
 
 # =====================================================
-# OIDC flow
+# OIDC flow (with secure one-time code exchange)
 # =====================================================
-_oidc_states: dict[str, float] = {}  # one-time CSRF tokens
-
-
 @router.get("/sso/oidc/login")
 async def oidc_login():
     """Start OIDC authorization code flow."""
-    if not _oidc_enabled():
+    if not settings.OIDC_ENABLED:
         raise HTTPException(404, "OIDC not configured")
 
-    issuer = os.getenv("OIDC_ISSUER", "").rstrip("/")
-    client_id = os.getenv("OIDC_CLIENT_ID", "")
-    redirect_uri = os.getenv("OIDC_REDIRECT_URI", "")
+    issuer = settings.OIDC_ISSUER.rstrip("/")
+    client_id = settings.OIDC_CLIENT_ID
+    redirect_uri = settings.OIDC_REDIRECT_URI
     if not (issuer and client_id and redirect_uri):
         raise HTTPException(503, "OIDC misconfigured")
 
-    state = secrets.token_urlsafe(24)
-    import time
-    _oidc_states[state] = time.time() + 600  # valid 10 min
+    state = secrets.token_urlsafe(32)
+    await _store_set(f"oidc:state:{state}", "1", OIDC_STATE_TTL)
 
     # Discover authorization endpoint
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -94,15 +180,14 @@ async def oidc_login():
         except Exception as e:
             raise HTTPException(502, f"OIDC discovery failed: {e}")
 
-    params = {
+    params = httpx.QueryParams({
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
         "state": state,
-    }
-    qs = "&".join(f"{k}={httpx.QueryParams({k: v})[k]}" for k, v in params.items())
-    return RedirectResponse(f"{auth_endpoint}?{qs}")
+    })
+    return RedirectResponse(f"{auth_endpoint}?{params}")
 
 
 @router.get("/sso/oidc/callback")
@@ -112,18 +197,18 @@ async def oidc_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """Handle OIDC redirect back from provider."""
-    import time
-    if state not in _oidc_states or _oidc_states[state] < time.time():
+    # Validate CSRF state (stored in Redis)
+    stored = await _store_pop(f"oidc:state:{state}")
+    if not stored:
         raise HTTPException(400, "Invalid or expired state")
-    del _oidc_states[state]
 
-    issuer = os.getenv("OIDC_ISSUER", "").rstrip("/")
-    client_id = os.getenv("OIDC_CLIENT_ID", "")
-    client_secret = os.getenv("OIDC_CLIENT_SECRET", "")
-    redirect_uri = os.getenv("OIDC_REDIRECT_URI", "")
+    issuer = settings.OIDC_ISSUER.rstrip("/")
+    client_id = settings.OIDC_CLIENT_ID
+    client_secret = settings.OIDC_CLIENT_SECRET
+    redirect_uri = settings.OIDC_REDIRECT_URI
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # Discover token endpoint + userinfo endpoint
+        # Discover endpoints
         disc = await client.get(f"{issuer}/.well-known/openid-configuration")
         disc.raise_for_status()
         meta = disc.json()
@@ -143,11 +228,33 @@ async def oidc_callback(
         )
         if token_resp.status_code >= 400:
             raise HTTPException(401, "OIDC token exchange failed")
-        access_token = token_resp.json().get("access_token")
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        id_token_raw = token_data.get("id_token")
         if not access_token:
             raise HTTPException(401, "No access_token from OIDC provider")
 
-        # Get user info
+        # Verify id_token signature if present (best practice per OIDC spec)
+        id_token_claims: dict = {}
+        if id_token_raw and meta.get("jwks_uri"):
+            try:
+                from jose import jwt as jose_jwt, JWTError
+                jwks_resp = await client.get(meta["jwks_uri"])
+                jwks_resp.raise_for_status()
+                jwks = jwks_resp.json()
+                id_token_claims = jose_jwt.decode(
+                    id_token_raw,
+                    jwks,
+                    algorithms=meta.get("id_token_signing_alg_values_supported", ["RS256"]),
+                    audience=client_id,
+                    issuer=issuer,
+                    options={"verify_at_hash": False},
+                )
+            except (JWTError, ImportError, Exception):
+                # Fall through to userinfo endpoint as fallback
+                id_token_claims = {}
+
+        # Get user info (authoritative fallback, always called)
         ui = await client.get(
             userinfo_endpoint,
             headers={"Authorization": f"Bearer {access_token}"},
@@ -156,43 +263,49 @@ async def oidc_callback(
             raise HTTPException(401, "OIDC userinfo failed")
         userinfo = ui.json()
 
-    email = userinfo.get("email")
+    # Prefer verified id_token claims, fall back to userinfo
+    merged = {**userinfo, **{k: v for k, v in id_token_claims.items() if v}}
+
+    email = merged.get("email")
     if not email:
         raise HTTPException(401, "OIDC user has no email claim")
-    sub = userinfo.get("sub", email)
-    name = userinfo.get("name") or userinfo.get("preferred_username") or email.split("@")[0]
-    xmpp_domain = os.getenv("XMPP_DOMAIN", "localhost")
-    jid = f"{name.lower().replace(' ', '_')}@{xmpp_domain}"
+    sub = merged.get("sub", email)
+    name = merged.get("name") or merged.get("preferred_username") or email.split("@")[0]
 
-    # Look up or auto-create the account
-    result = await db.execute(select(Account).where(Account.jid == jid))
-    account = result.scalar_one_or_none()
-    if not account:
-        # Auto-provisioning policy: only create if AUTO_PROVISION_OIDC=true
-        if os.getenv("AUTO_PROVISION_OIDC", "").lower() not in ("true", "1", "yes"):
-            raise HTTPException(403, f"Account {jid} not provisioned. Ask admin to create it.")
-        account = Account(
-            id=gen_uuid(),
-            jid=jid,
-            display_name=name,
-            is_enabled=True,
-        )
-        db.add(account)
-        await db.commit()
+    # Build collision-resistant JID using sub claim hash
+    jid = _oidc_jid(sub, name)
+    account = await _ensure_account(db, jid, name, settings.AUTO_PROVISION_OIDC)
 
-    if not account.is_enabled:
-        raise HTTPException(403, "Account is disabled")
+    # Issue internal user token
+    user_token = create_access_token(jid, role="user", account_id=account.id)
 
-    # Issue user token (same shape as /auth/user-token)
-    token = create_access_token(jid, role="user", account_id=account.id)
+    # Store a one-time code in Redis; frontend exchanges code for token
+    exchange_code = secrets.token_urlsafe(48)
+    await _store_set(
+        f"oidc:code:{exchange_code}",
+        f"{user_token}||{jid}",
+        SSO_CODE_TTL,
+    )
 
-    # Redirect frontend with token in URL fragment (not query - safer from logs)
-    frontend_url = os.getenv("FRONTEND_URL", "/")
-    return RedirectResponse(f"{frontend_url}#sso-token={token}&jid={jid}")
+    frontend_url = settings.FRONTEND_URL or "/"
+    return RedirectResponse(f"{frontend_url}#sso-code={exchange_code}")
+
+
+@router.post("/sso/oidc/exchange")
+async def oidc_exchange_code(code: str):
+    """
+    Exchange a one-time SSO code for an access token.
+    The code lives for 30 seconds and can only be used once.
+    """
+    stored = await _store_pop(f"oidc:code:{code}")
+    if not stored:
+        raise HTTPException(401, "Invalid or expired SSO code")
+    token, jid = stored.split("||", 1)
+    return {"access_token": token, "jid": jid}
 
 
 # =====================================================
-# LDAP flow
+# LDAP flow (with rate limiting)
 # =====================================================
 class LdapLoginRequest(BaseModel):
     username: str
@@ -200,29 +313,28 @@ class LdapLoginRequest(BaseModel):
 
 
 @router.post("/sso/ldap/login")
+@limiter.limit("10/minute")
 async def ldap_login(
+    request: Request,
     payload: LdapLoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """Authenticate via LDAP bind, then issue user-token."""
-    if not _ldap_enabled():
+    if not settings.LDAP_ENABLED:
         raise HTTPException(404, "LDAP not configured")
     if not payload.username or not payload.password:
         raise HTTPException(400, "username and password required")
 
-    server = os.getenv("LDAP_SERVER", "")
-    bind_template = os.getenv(
-        "LDAP_BIND_DN_TEMPLATE",
-        "uid={username},ou=People,dc=example,dc=com",
-    )
-    if not server:
+    server_url = settings.LDAP_SERVER
+    bind_template = settings.LDAP_BIND_DN_TEMPLATE
+    if not server_url:
         raise HTTPException(503, "LDAP misconfigured")
 
     bind_dn = bind_template.replace("{username}", payload.username)
 
     try:
         from ldap3 import Server, Connection, ALL, SIMPLE
-        srv = Server(server, get_info=ALL)
+        srv = Server(server_url, get_info=ALL)
         conn = Connection(
             srv,
             user=bind_dn,
@@ -237,24 +349,10 @@ async def ldap_login(
     except Exception:
         raise HTTPException(401, "LDAP authentication failed")
 
-    # Look up account by JID built from LDAP username
-    xmpp_domain = os.getenv("XMPP_DOMAIN", "localhost")
-    jid = f"{payload.username.lower()}@{xmpp_domain}"
-    result = await db.execute(select(Account).where(Account.jid == jid))
-    account = result.scalar_one_or_none()
-    if not account:
-        if os.getenv("AUTO_PROVISION_LDAP", "").lower() not in ("true", "1", "yes"):
-            raise HTTPException(403, f"Account {jid} not provisioned")
-        account = Account(
-            id=gen_uuid(),
-            jid=jid,
-            display_name=payload.username,
-            is_enabled=True,
-        )
-        db.add(account)
-        await db.commit()
-    if not account.is_enabled:
-        raise HTTPException(403, "Account is disabled")
+    # Build JID from LDAP username
+    safe_name = _sanitize_username(payload.username)
+    jid = f"{safe_name}@{settings.XMPP_DOMAIN}"
+    account = await _ensure_account(db, jid, payload.username, settings.AUTO_PROVISION_LDAP)
 
     token = create_access_token(jid, role="user", account_id=account.id)
     return {"access_token": token, "jid": jid}

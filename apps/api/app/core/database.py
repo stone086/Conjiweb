@@ -14,6 +14,9 @@ engine = create_async_engine(
 )
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
+# Convenience alias used by routers that need a session outside of FastAPI Depends
+async_session = AsyncSessionLocal
+
 
 class Base(DeclarativeBase):
     pass

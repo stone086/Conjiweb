@@ -1068,7 +1068,7 @@ export async function tryLibsignalEncrypt(
       sid: newEnvelope.sid,
       iv: arrayBufferToBase64(newEnvelope.iv),
       payload: arrayBufferToBase64(newEnvelope.payload),
-      keys: newEnvelope.keys.map((k) => ({
+      keys: newEnvelope.keys.map((k: { rid: number; body: ArrayBuffer; isPreKey: boolean }) => ({
         rid: k.rid,
         value: arrayBufferToBase64(k.body),
         prekey: k.isPreKey,

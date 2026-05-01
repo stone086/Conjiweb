@@ -94,8 +94,27 @@ export class GroupCall {
   }
 }
 
+type ManagerEvent = "started" | "ended";
+type ManagerListener = (data: any) => void;
+
 class GroupCallManager {
   private active: GroupCall | null = null;
+  private listeners = new Map<ManagerEvent, ManagerListener[]>();
+
+  on(event: ManagerEvent, fn: ManagerListener) {
+    const list = this.listeners.get(event) ?? [];
+    list.push(fn);
+    this.listeners.set(event, list);
+  }
+
+  off(event: ManagerEvent, fn: ManagerListener) {
+    const list = this.listeners.get(event) ?? [];
+    this.listeners.set(event, list.filter((f) => f !== fn));
+  }
+
+  private emit(event: ManagerEvent, data?: any) {
+    for (const fn of this.listeners.get(event) ?? []) fn(data);
+  }
 
   startGroupCall(initiator: string, mediaTypes: CallMediaType[], inviteJids: string[]): GroupCall {
     if (this.active) {
@@ -104,6 +123,7 @@ class GroupCallManager {
     const groupCall = new GroupCall(crypto.randomUUID(), initiator, mediaTypes);
     this.active = groupCall;
     inviteJids.forEach(jid => groupCall.invite(jid).catch(() => {}));
+    this.emit("started", groupCall);
     return groupCall;
   }
 
@@ -114,6 +134,7 @@ class GroupCallManager {
   endActive(): void {
     this.active?.endAll();
     this.active = null;
+    this.emit("ended");
   }
 }
 

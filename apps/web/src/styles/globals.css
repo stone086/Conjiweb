@@ -3,48 +3,28 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* Dark theme — sharper borders, brighter secondaries */
-    --surface-50: 240 244 254;
-    --surface-100: 215 224 245;
-    --surface-200: 190 200 225;     /* ← was 166 178 214 — now readable for meta text */
-    --surface-800: 50 60 90;        /* ← was 44 54 82 — slightly lifted for hover */
-    --surface-900: 38 48 76;        /* ← was 35 44 70 */
-    --surface-950: 28 36 58;
-    --accent: 132 116 250;          /* ← was 124 106 247 — touch brighter for AA on dark */
-    --accent-soft: 178 168 252;
-    --accent-dim: 80 70 195;
-    --success: 52 211 113;
-    --warn: 250 170 30;
-    --danger: 245 90 90;
-    --scrollbar-track: #253150;
-    --scrollbar-thumb: #6b7eb5;     /* ← was #506193 — visible without effort */
+  :root,
+  :root.light,
+  :root.dark {
+    --surface-50: 21 22 28;
+    --surface-100: 67 67 77;
+    --surface-200: 107 107 118;
+    --surface-800: 243 243 245;
+    --surface-900: 255 255 255;
+    --surface-950: 247 247 248;
 
-    /* Border tokens — used everywhere so we can tune in one place */
-    --border-soft: rgba(255, 255, 255, 0.08);   /* hairlines */
-    --border-default: rgba(255, 255, 255, 0.14); /* cards, bubbles, buttons */
-    --border-strong: rgba(255, 255, 255, 0.22);  /* dividers, active states */
-    --ring-focus: rgba(132, 116, 250, 0.45);
-  }
+    --accent: 90 61 208;
+    --accent-soft: 90 61 208;
+    --accent-dim: 74 49 184;
 
-  :root.light {
-    /* Light theme — sharper, more contrast */
-    --surface-50: 18 26 44;
-    --surface-100: 46 60 92;
-    --surface-200: 70 86 122;       /* ← was 80 98 136 — darker for AA */
-    --surface-800: 224 232 246;
-    --surface-900: 234 240 250;
-    --surface-950: 218 226 242;     /* ← was 211 221 240 */
-    --accent: 86 78 220;            /* ← was 92 87 230 — slightly darker for white bg */
-    --accent-soft: 100 110 240;
-    --accent-dim: 64 60 175;
-    --scrollbar-track: #c6d2ea;
-    --scrollbar-thumb: #6f86b8;
+    --success: 15 157 104;
+    --warn: 185 118 43;
+    --danger: 212 76 58;
 
-    --border-soft: rgba(20, 30, 60, 0.08);
-    --border-default: rgba(20, 30, 60, 0.16);
-    --border-strong: rgba(20, 30, 60, 0.28);
-    --ring-focus: rgba(86, 78, 220, 0.35);
+    --border-soft: rgba(227, 227, 232, 0.9);
+    --border-default: #e3e3e8;
+    --border-strong: #c8c8d0;
+    --ring-focus: #f6f4fd;
   }
 
   * {
@@ -53,168 +33,102 @@
 
   body {
     @apply bg-surface-950 text-surface-50 font-sans antialiased;
-    overflow: hidden;
+    font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    letter-spacing: -0.005em;       /* tighter, more modern */
-  }
-
-  /* Universal focus ring — keyboard navigation actually visible */
-  :focus-visible {
-    outline: 2px solid var(--ring-focus);
-    outline-offset: 1px;
-    border-radius: 6px;
-  }
-
-  ::-webkit-scrollbar { width: 8px; height: 8px; }   /* ← was 5px — easier to grab */
-  ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
-  ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb); border-radius: 999px;
-    border: 2px solid transparent; background-clip: content-box;
-  }
-  ::-webkit-scrollbar-thumb:hover { background: #8a9fd0; background-clip: content-box; border: 2px solid transparent; }
-}
-
-@layer components {
-  .glass {
-    @apply bg-surface-800/70 backdrop-blur-md;
-    border: 1px solid var(--border-default);
-  }
-
-  /* Primary button — solid accent, crisper edges, subtle inner highlight */
-  .btn-primary {
-    @apply px-4 py-2 bg-accent text-white rounded-lg font-semibold text-sm
-           hover:bg-accent-dim active:scale-[0.97] transition-all duration-150
-           disabled:opacity-40 disabled:cursor-not-allowed;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12),
-                0 1px 2px rgba(40, 30, 120, 0.35);
     letter-spacing: -0.005em;
-  }
-  .btn-primary:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 6px rgba(40, 30, 120, 0.4); }
-
-  /* Ghost button — now has a visible border on hover, not just bg shift */
-  .btn-ghost {
-    @apply px-3 py-2 rounded-lg text-surface-100 text-sm font-medium
-           active:scale-[0.97] transition-all duration-150;
-    border: 1px solid transparent;
-  }
-  .btn-ghost:hover {
-    background: var(--border-soft);
-    border-color: var(--border-default);
-    @apply text-surface-50;
+    overflow: hidden;
   }
 
-  /* Secondary button — visible at rest, not phantom */
-  .btn-secondary {
-    @apply px-4 py-2 rounded-lg text-sm font-semibold text-surface-50
-           bg-surface-800 active:scale-[0.97] transition-all duration-150;
-    border: 1px solid var(--border-default);
-  }
-  .btn-secondary:hover {
-    @apply bg-surface-900;
-    border-color: var(--border-strong);
-  }
-
-  .input-field {
-    @apply w-full bg-surface-900 rounded-lg px-3 py-2 text-sm
-           text-surface-50 placeholder:text-surface-200/50
-           focus:outline-none transition-all duration-150;
-    border: 1px solid var(--border-default);
-  }
-  .input-field:focus {
+  :focus-visible {
+    outline: none;
     border-color: rgb(var(--accent));
     box-shadow: 0 0 0 3px var(--ring-focus);
   }
 
-  .sidebar-item {
-    @apply flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer
-           text-surface-100 font-medium text-sm
-           transition-all duration-150 select-none;
-    border: 1px solid transparent;
-  }
-  .sidebar-item:hover {
-    background: var(--border-soft);
-    @apply text-surface-50;
-  }
-  .sidebar-item.active {
-    @apply bg-accent/18 text-accent-soft;
-    border-color: rgba(132, 116, 250, 0.30);
-    box-shadow: inset 2px 0 0 rgb(var(--accent));
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #f3f3f5; }
+  ::-webkit-scrollbar-thumb { background: #c8c8d0; border-radius: 999px; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 rounded-md text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+    background: #5a3dd0;
+    box-shadow: 0 1px 2px rgba(50, 30, 130, 0.2);
   }
 
-  .avatar {
-    @apply rounded-full object-cover flex-shrink-0 bg-surface-800;
-    box-shadow: 0 0 0 1.5px var(--border-default);
+  .btn-primary:hover {
+    background: #4a31b8;
+  }
+
+  .btn-ghost {
+    @apply rounded-sm text-text-3 hover:text-text transition-colors;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 rounded-md text-sm font-semibold text-text bg-surface-900 border transition-colors;
+    border-color: var(--border-default);
+  }
+
+  .btn-secondary:hover {
+    background: #ececf0;
+  }
+
+  .input-field {
+    @apply w-full rounded-md px-3 py-2 text-[13.5px] text-text placeholder:text-text-4 focus:outline-none;
+    background: #ffffff;
+    border: 1px solid var(--border-default);
+  }
+
+  .sidebar-item {
+    @apply rounded-md text-[12.5px] text-text-2 transition-colors;
+  }
+
+  .sidebar-item:hover {
+    background: #ececf0;
   }
 
   .badge {
-    @apply inline-flex items-center justify-center min-w-[18px] h-[18px]
-           px-1.5 rounded-full text-[10px] font-bold bg-accent text-white;
-    box-shadow: 0 0 0 2px rgb(var(--surface-950));
-    letter-spacing: 0;
+    @apply inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-semibold text-white;
+    background: #5a3dd0;
+    font-variant-numeric: tabular-nums;
   }
 
-  .presence-dot {
-    @apply w-2.5 h-2.5 rounded-full;
-    border: 2px solid rgb(var(--surface-900));
+  .msg-bubble-out {
+    @apply rounded-xl rounded-br-sm px-[14px] py-[10px] text-[13.5px] leading-relaxed text-white w-fit max-w-full min-w-[8rem];
+    background: #1c1d24;
   }
 
-  .presence-dot.available   { @apply bg-success; }
-  .presence-dot.away        { @apply bg-warn; }
-  .presence-dot.dnd         { @apply bg-danger; }
-  .presence-dot.unavailable { @apply bg-surface-200/50; }
+  .msg-bubble-in {
+    @apply rounded-xl rounded-bl-sm px-[14px] py-[10px] text-[13.5px] leading-relaxed text-text w-fit max-w-full min-w-[8rem];
+    background: #ffffff;
+    border: 1px solid #e3e3e8;
+  }
 
-  /* Card — used for forward modal, lightbox chrome, etc. */
-  .card {
-    @apply bg-surface-900 rounded-xl;
-    border: 1px solid var(--border-default);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  .msg-bubble-system {
+    @apply text-center text-[11.5px] text-text-3 py-2;
+  }
+
+  .chat-meta {
+    @apply flex items-center gap-2 px-1 text-[10.5px];
+    color: #9999a3;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .conversation-item-active {
+    background: #f6f4fd !important;
+    position: relative;
+  }
+
+  .conversation-item-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: #5a3dd0;
   }
 }
 
-/* ─── Message bubbles ──────────────────────────────────────── */
-/* Outgoing: solid accent fill (was 20% tint — too washed out).
-   Incoming: surface-800 with a real border, not 5% white. */
-.msg-bubble-out {
-  @apply bg-accent text-white rounded-2xl rounded-tr-sm px-4 py-2 w-fit max-w-full min-w-[8rem] text-[13.5px] leading-relaxed;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
-              0 1px 2px rgba(40, 30, 120, 0.30);
-  font-weight: 450;
-}
-.msg-bubble-in {
-  @apply bg-surface-800 rounded-2xl rounded-tl-sm px-4 py-2 w-fit max-w-full min-w-[8rem] text-[13.5px] leading-relaxed text-surface-50;
-  border: 1px solid var(--border-default);
-  font-weight: 450;
-}
-.msg-bubble-system {
-  @apply text-center text-xs text-surface-200/65 py-2;
-  font-style: italic;
-}
-
-:root.density-compact .msg-bubble-in,
-:root.density-compact .msg-bubble-out {
-  @apply px-3 py-1.5 text-[12.5px];
-}
-
-:root.density-compact .msg-bubble-system {
-  @apply py-1 text-[11px];
-}
-
-/* Make the universal `border-white/5` legacy class actually visible.
-   Tailwind generates this from `border-white/5` — we override the alpha. */
-.border-white\/5 { border-color: var(--border-soft) !important; }
-.border-white\/10 { border-color: var(--border-default) !important; }
-.divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: var(--border-soft) !important; }
-
-/* Date dividers: was bg-white/5 (invisible). Now visible. */
-.bg-white\/5 { background-color: var(--border-soft); }
-
-/* Tabular nums for timestamps and counts globally */
-.text-\[10px\], .text-\[11px\] { font-variant-numeric: tabular-nums; }
-
-/* Subtle entry animation for new messages — already referenced as animate-fade-in */
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in { animation: fade-in 0.2s ease-out; }

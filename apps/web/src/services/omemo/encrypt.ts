@@ -1,63 +1,126 @@
 /**
- * omemo/encrypt.ts - Backward-compatible browser entry for OMEMO encryption.
+ * OMEMO compatibility wrapper.
  *
- * The real reusable logic now lives in src/core/omemo/engine.ts.
- * This file keeps the old exported function names, so existing native UI/XMPP
- * code can keep importing establishSession(), encryptForDevices(), and
- * decryptEnvelope() without any change.
+ * This repo currently uses services/e2ee.ts as the active crypto path.
+ * Keep this file's API surface stable for xmppBridge imports.
  */
 import {
-  OmemoEngine,
-  NS_OMEMO,
-  type EncryptedEnvelope,
-  type PeerBundleInput,
-  type PeerDeviceInput,
-} from "../../core/omemo/engine";
-import { browserCrypto } from "../../adapters/browser-crypto";
-import { createBrowserOmemoStore } from "../../adapters/browser-omemo-store";
+  encryptOmemoEnvelopeForPeer,
+  decryptOmemoEnvelopeFromPeer,
+  type OmemoBundle,
+  type OmemoEnvelope,
+} from "@/services/e2ee";
 
-const browserOmemoEngine = new OmemoEngine({
-  createStore: createBrowserOmemoStore,
-  crypto: browserCrypto,
-});
+export const NS_OMEMO = "urn:xmpp:omemo:2";
 
-/**
- * Establish a libsignal session with a peer device using their published bundle.
- * Required before the first message to that device.
- */
-export async function establishSession(
-  accountId: string,
-  peerJid: string,
-  peerBundle: PeerBundleInput
-): Promise<void> {
-  return browserOmemoEngine.establishSession(accountId, peerJid, peerBundle);
+export interface PeerBundleInput {
+  deviceId: number;
+  identityKey: ArrayBuffer;
+  signedPreKeyId: number;
+  signedPreKey: ArrayBuffer;
+  signedPreKeySignature: ArrayBuffer;
+  preKey?: {
+    keyId: number;
+    publicKey: ArrayBuffer;
+  };
+}
+
+export interface PeerDeviceInput {
+  peerJid: string;
+  deviceId: number;
+}
+
+export interface EncryptedEnvelope {
+  sid: number;
+  iv: ArrayBuffer;
+  payload: ArrayBuffer;
+  keys: Array<{
+    rid: number;
+    isPreKey: boolean;
+    body: ArrayBuffer;
+  }>;
+}
+
+function abToB64(ab: ArrayBuffer): string {
+  const bytes = new Uint8Array(ab);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function b64ToAb(b64: string): ArrayBuffer {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function toLegacyBundle(bundle: PeerBundleInput): OmemoBundle {
+  const preKeys = bundle.preKey
+    ? [{ preKeyId: bundle.preKey.keyId, value: abToB64(bundle.preKey.publicKey) }]
+    : [];
+  return {
+    deviceId: bundle.deviceId,
+    signedPreKeyId: bundle.signedPreKeyId,
+    signedPreKeyPublic: abToB64(bundle.signedPreKey),
+    signedPreKeySignature: abToB64(bundle.signedPreKeySignature),
+    identityKey: abToB64(bundle.identityKey),
+    preKeys,
+  };
 }
 
 /**
- * Encrypt a plaintext for one or more peer devices.
- * Returns an OMEMO envelope ready for stanza serialization.
+ * Kept for API compatibility. In current implementation, we persist peer bundle.
+ */
+export async function establishSession(accountId: string, peerJid: string, peerBundle: PeerBundleInput): Promise<void> {
+  const { storePeerOmemoBundle } = await import("@/services/e2ee");
+  await storePeerOmemoBundle(accountId, peerJid, toLegacyBundle(peerBundle));
+}
+
+/**
+ * Encrypt plaintext for peer devices.
+ * Current e2ee path returns legacy envelope shape; convert to ArrayBuffer shape.
  */
 export async function encryptForDevices(
   accountId: string,
-  ownDeviceId: number,
+  _ownDeviceId: number,
   plaintext: string,
   peerDevices: PeerDeviceInput[]
 ): Promise<EncryptedEnvelope> {
-  return browserOmemoEngine.encryptForDevices(accountId, ownDeviceId, plaintext, peerDevices);
+  const peerJid = peerDevices[0]?.peerJid;
+  if (!peerJid) throw new Error("No peer devices provided");
+  const result = await encryptOmemoEnvelopeForPeer(accountId, peerJid, plaintext);
+  const envelope = result.envelope;
+  if (!envelope) throw new Error("OMEMO encryption failed");
+
+  return {
+    sid: envelope.sid,
+    iv: b64ToAb(envelope.iv),
+    payload: b64ToAb(envelope.payload),
+    keys: envelope.keys.map((k: { rid: number; value: string; prekey?: boolean }) => ({
+      rid: k.rid,
+      isPreKey: k.prekey === true,
+      body: b64ToAb(k.value),
+    })),
+  };
 }
 
-/**
- * Decrypt an incoming OMEMO envelope addressed to us.
- * Returns the plaintext or null if no key for our device.
- */
 export async function decryptEnvelope(
   accountId: string,
-  ownDeviceId: number,
+  _ownDeviceId: number,
   senderJid: string,
   envelope: EncryptedEnvelope
 ): Promise<string | null> {
-  return browserOmemoEngine.decryptEnvelope(accountId, ownDeviceId, senderJid, envelope);
+  const legacyEnvelope: OmemoEnvelope = {
+    namespace: "eu.siacs.conversations.axolotl",
+    sid: envelope.sid,
+    iv: abToB64(envelope.iv),
+    payload: abToB64(envelope.payload),
+    keys: envelope.keys.map((k) => ({
+      rid: k.rid,
+      value: abToB64(k.body),
+      prekey: k.isPreKey,
+    })),
+  };
+  return decryptOmemoEnvelopeFromPeer(accountId, senderJid, legacyEnvelope);
 }
-
-export { NS_OMEMO, browserOmemoEngine };
-export type { EncryptedEnvelope };

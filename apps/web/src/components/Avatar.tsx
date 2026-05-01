@@ -17,6 +17,14 @@ const SIZES = {
   xl: "w-16 h-16 text-xl",
 };
 
+const SIZE_PX: Record<NonNullable<AvatarProps["size"]>, number> = {
+  xs: 24,
+  sm: 32,
+  md: 40,
+  lg: 48,
+  xl: 64,
+};
+
 const PRESENCE_COLORS = {
   available:   "bg-green-400",
   away:        "bg-yellow-400",
@@ -42,32 +50,15 @@ function getInitials(name: string): string {
     .join("");
 }
 
-/**
- * XEP-0392 Consistent Color Generation
- *
- * Computes a hue angle (0-360) from a deterministic SHA-1 hash of the
- * input identifier (typically a JID). Same JID always produces same color
- * across all XMPP clients that implement this XEP.
- *
- * This synchronous approximation uses FNV-1a-like rolling hash, which is
- * sufficient for visual consistency within Conjiweb. For strict cross-client
- * compliance the SHA-1 variant is recommended (async).
- */
 function colorFromName(name: string): string {
-  // Strip resource if name looks like full JID
   const id = name.split("/")[0].toLowerCase();
-  // FNV-1a 32-bit
   let hash = 2166136261;
   for (let i = 0; i < id.length; i++) {
     hash ^= id.charCodeAt(i);
     hash = (hash * 16777619) >>> 0;
   }
-  // Map low 16 bits to hue 0-360 (XEP-0392 uses CRC-16-XMODEM but FNV gives
-  // visually equivalent distribution)
-  const hue = (hash & 0xffff) % 360;
-  // Use HSL for guaranteed perceptual differentiation
-  // Saturation 65%, Lightness 45% chosen for legibility on dark + light bg
-  return `hsl(${hue}, 65%, 45%)`;
+  const buckets = ["#0f9d68", "#7c5ce4", "#b9762b", "#79a134", "#d04e7b", "#2f7fc7"];
+  return buckets[hash % buckets.length];
 }
 
 export default function Avatar({ src, name, size = "md", presence, className }: AvatarProps) {
@@ -75,6 +66,8 @@ export default function Avatar({ src, name, size = "md", presence, className }: 
   const showImg = src && !imgError;
   const initials = getInitials(name);
   const bg = colorFromName(name);
+  const px = SIZE_PX[size];
+  const initialFontSize = Math.round(px * 0.4);
 
   return (
     <div className={clsx("relative flex-shrink-0", className)}>
@@ -83,7 +76,7 @@ export default function Avatar({ src, name, size = "md", presence, className }: 
           SIZES[size],
           "rounded-full flex items-center justify-center font-semibold text-white overflow-hidden",
         )}
-        style={showImg ? undefined : { backgroundColor: bg }}
+        style={showImg ? undefined : { backgroundColor: bg, fontSize: `${initialFontSize}px`, fontWeight: 600 }}
       >
         {showImg ? (
           <img

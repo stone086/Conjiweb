@@ -63,7 +63,7 @@ export default function VirtualMessageList({
               <button
                 onClick={onLoadOlder}
                 disabled={loadingOlder}
-                className="text-xs text-surface-200/40 hover:text-surface-200 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-900 hover:bg-surface-800 transition-colors disabled:opacity-60"
+                className="text-[11.5px] text-text-4 hover:text-text-2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 hover:bg-surface-hover transition-colors disabled:opacity-60"
               >
                 {loadingOlder ? loadingLabel : loadOlderLabel}
               </button>
@@ -79,17 +79,17 @@ export default function VirtualMessageList({
           <div className="px-4 animate-fade-in" data-mid={msg.id}>
             {showDate && (
               <div className="flex items-center gap-3 py-2 my-1">
-                <div className="flex-1 h-px bg-white/5" />
-                <span className="text-[10px] text-surface-200/30 px-2 py-0.5 rounded-full bg-surface-900">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-[10.5px] text-text-4 px-2 py-0.5 rounded-full bg-surface-2 [font-variant-numeric:tabular-nums]">
                   {dateLabel(msg.timestamp, todayLabel, yesterdayLabel)}
                 </span>
-                <div className="flex-1 h-px bg-white/5" />
+                <div className="flex-1 h-px bg-border" />
               </div>
             )}
             {showUnreadDivider && (
               <div className="flex items-center gap-3 py-2">
                 <div className="flex-1 h-px bg-accent/40" />
-                <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">{unreadLabel}</span>
+                <span className="text-[10.5px] text-primary px-2 py-0.5 rounded-full bg-primary-soft [font-variant-numeric:tabular-nums]">{unreadLabel}</span>
                 <div className="flex-1 h-px bg-accent/40" />
               </div>
             )}

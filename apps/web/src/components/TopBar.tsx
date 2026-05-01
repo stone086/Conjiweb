@@ -61,14 +61,14 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
 
   return (
     <>
-      <header className="h-12 flex items-center gap-3 px-4 border-b border-white/5 bg-surface-950/80 backdrop-blur-sm flex-shrink-0 relative z-20">
+      <header className="h-[52px] flex items-center gap-3 px-4 border-b border-border bg-surface-900 flex-shrink-0 relative z-20">
         <button
           onClick={() => setShowSearch(true)}
-          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border border-white/5 text-surface-200/30 hover:border-white/10 transition-colors cursor-text"
+          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-2 rounded-md bg-surface-2 border border-border text-text-4 transition-colors cursor-text hover:bg-surface-hover"
         >
-          <Search size={13} />
-          <span className="text-xs flex-1 text-left">{t("topbar.searchPlaceholder")}</span>
-          <kbd className="hidden sm:inline text-[9px] px-1.5 py-0.5 rounded bg-surface-800 text-surface-200/30 border border-white/5">
+          <Search size={14} strokeWidth={1.75} />
+          <span className="text-[12.5px] flex-1 text-left">{t("topbar.searchPlaceholder")}</span>
+          <kbd className="hidden sm:inline text-[10.5px] px-1.5 py-0.5 rounded-xs bg-white text-text-3 border border-border">
             {t("topbar.searchShortcut")}
           </kbd>
         </button>
@@ -81,14 +81,14 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
               toast(t("omemo.enabledNotice"), { duration: 5000 });
             }
           }}
-          className="btn-ghost p-2"
+          className="btn-ghost p-2 rounded-sm"
           title={omemoEnabled ? t("omemo.enabled") : t("omemo.disabled")}
         >
-          {omemoEnabled ? <Lock size={16} /> : <Unlock size={16} />}
+          {omemoEnabled ? <Lock size={16} strokeWidth={1.75} /> : <Unlock size={16} strokeWidth={1.75} />}
         </button>
         {showRightToggle && (
-          <button onClick={onToggleRight} className="btn-ghost p-2" title={t("topbar.toggleInfo")}>
-            <PanelRight size={16} />
+          <button onClick={onToggleRight} className="btn-ghost p-2 rounded-sm" title={t("topbar.toggleInfo")}>
+            <PanelRight size={16} strokeWidth={1.75} />
           </button>
         )}
         <button
@@ -97,15 +97,15 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
             setTheme(next);
             applyTheme(next);
           }}
-          className="btn-ghost p-2"
+          className="btn-ghost p-2 rounded-sm"
         >
-          {dark ? <Sun size={16} /> : <Moon size={16} />}
+          {dark ? <Sun size={16} strokeWidth={1.75} /> : <Moon size={16} strokeWidth={1.75} />}
         </button>
         <div ref={notifWrapRef} className="relative">
-          <button onClick={() => setShowNotifs(!showNotifs)} className="btn-ghost p-2 relative">
-            <Bell size={16} />
+          <button onClick={() => setShowNotifs(!showNotifs)} className="btn-ghost p-2 rounded-sm relative">
+            <Bell size={16} strokeWidth={1.75} />
             {totalUnread > 0 && (
-              <span className="absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full bg-accent text-[9px] font-bold flex items-center justify-center text-white px-0.5">
+              <span className="absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full bg-primary text-[9px] font-bold flex items-center justify-center text-white px-0.5">
                 {totalUnread > 9 ? "9+" : totalUnread}
               </span>
             )}
@@ -113,11 +113,11 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
           {showNotifs && <NotificationPanel onClose={() => setShowNotifs(false)} />}
         </div>
         {account && (
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-surface-900 border border-white/5 select-none">
-            <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-accent-soft text-xs uppercase font-medium">
+          <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-2 border border-border select-none">
+            <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs uppercase font-medium">
               {(account.displayName ?? account.jid)[0]}
             </div>
-            <span className="text-surface-200 text-xs max-w-[100px] truncate">
+            <span className="text-text-2 text-[12.5px] max-w-[100px] truncate">
               {account.displayName ?? account.jid.split("@")[0]}
             </span>
             {reconnectingCount > 0 && (
@@ -130,4 +130,3 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
     </>
   );
 }
-

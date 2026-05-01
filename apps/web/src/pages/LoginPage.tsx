@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { normalizeAccountJid, setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
@@ -141,28 +141,41 @@ export default function LoginPage() {
       .catch(() => {});
   }, []);
 
-  // Handle SSO redirect-back-with-token
+  // Handle SSO redirect-back-with-code (secure one-time exchange)
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.startsWith("#sso-token=")) {
+    if (hash.startsWith("#sso-code=")) {
       const params = new URLSearchParams(hash.slice(1));
-      const token = params.get("sso-token");
-      const rawJid = params.get("jid");
-      if (token && rawJid) {
-        const jid = normalizeAccountJid(rawJid);
-        const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
-        // Build the account from SSO token, store it, and connect
-        const id = existing?.id ?? crypto.randomUUID();
-        useAccountStore.getState().addAccount({
-          id, jid,
-          domain: jid.split("@")[1] ?? "",
-          displayName: jid.split("@")[0],
-        });
-        setUserToken(id, token);
-        toast.success("SSO login successful");
-        // Clear hash and redirect
-        window.history.replaceState(null, "", "/");
-        navigate("/");
+      const code = params.get("sso-code");
+      if (code) {
+        // Exchange one-time code for token
+        fetch("/sso/oidc/exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        })
+          .then(async (r) => {
+            if (!r.ok) throw new Error("SSO code exchange failed");
+            return r.json();
+          })
+          .then((data: { access_token: string; jid: string }) => {
+            const jid = normalizeAccountJid(data.jid);
+            const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
+            const id = existing?.id ?? crypto.randomUUID();
+            useAccountStore.getState().addAccount({
+              id, jid,
+              domain: jid.split("@")[1] ?? "",
+              displayName: jid.split("@")[0],
+            });
+            setUserToken(id, data.access_token);
+            toast.success("SSO login successful");
+            window.history.replaceState(null, "", "/");
+            navigate("/");
+          })
+          .catch((err) => {
+            toast.error(err?.message ?? "SSO login failed");
+            window.history.replaceState(null, "", "/login");
+          });
       }
     }
   }, [navigate]);

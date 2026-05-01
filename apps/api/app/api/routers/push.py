@@ -17,6 +17,7 @@ from typing import Optional
 import json
 import os
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models import PushSubscription
 from app.utils.security import get_current_user
@@ -119,8 +120,8 @@ async def notify(
         # pywebpush not installed; log and skip
         return {"status": "pywebpush_missing"}
 
-    vapid_private_key = os.getenv("VAPID_PRIVATE_KEY")
-    vapid_email = os.getenv("VAPID_EMAIL", "admin@conjiweb.local")
+    vapid_private_key = settings.VAPID_PRIVATE_KEY
+    vapid_email = settings.VAPID_EMAIL
     if not vapid_private_key:
         return {"status": "vapid_not_configured"}
 
@@ -167,4 +168,4 @@ async def notify(
 @router.get("/push/vapid-public-key")
 async def get_vapid_public_key():
     """Public endpoint - frontend needs the VAPID public key to subscribe."""
-    return {"key": os.getenv("VAPID_PUBLIC_KEY", "")}
+    return {"key": settings.VAPID_PUBLIC_KEY}
