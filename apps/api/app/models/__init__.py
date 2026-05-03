@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Integer, DateTime, Text, JSON, ForeignKey, BigInteger
+from sqlalchemy import Column, String, Boolean, Integer, DateTime, Text, JSON, ForeignKey, BigInteger, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -40,7 +40,7 @@ class AccountPreference(Base):
 class Contact(Base):
     __tablename__ = "contacts"
     id = Column(String, primary_key=True, default=gen_uuid)
-    account_id = Column(String, ForeignKey("accounts.id"), nullable=False)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
     jid = Column(String, nullable=False, index=True)
     nickname = Column(String)
     avatar_url = Column(String)
@@ -54,8 +54,8 @@ class Contact(Base):
 class Conversation(Base):
     __tablename__ = "conversations"
     id = Column(String, primary_key=True, default=gen_uuid)
-    account_id = Column(String, ForeignKey("accounts.id"), nullable=False)
-    type = Column(String, nullable=False)  # private/group/system
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
+    type = Column(String, nullable=False, index=True)  # private/group/system
     peer_jid = Column(String, nullable=False, index=True)
     title = Column(String)
     avatar_url = Column(String)
@@ -124,8 +124,8 @@ class Plugin(Base):
 class PluginSetting(Base):
     __tablename__ = "plugin_settings"
     id = Column(String, primary_key=True, default=gen_uuid)
-    plugin_id = Column(String, ForeignKey("plugins.id"), nullable=False)
-    account_id = Column(String, nullable=True)
+    plugin_id = Column(String, ForeignKey("plugins.id"), nullable=False, index=True)
+    account_id = Column(String, nullable=True, index=True)
     config_json = Column(JSON, default=dict)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -183,6 +183,7 @@ class CallLog(Base):
 class SsoIdentity(Base):
     """Maps external SSO identities (OIDC sub, LDAP DN) to local accounts."""
     __tablename__ = "sso_identities"
+    __table_args__ = (UniqueConstraint("provider", "provider_sub", name="uq_sso_provider_sub"),)
 
     id = Column(String, primary_key=True, default=gen_uuid)
     account_id = Column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)

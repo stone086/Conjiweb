@@ -1,13 +1,13 @@
 import { Outlet, useLocation, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import Sidebar from "@/components/Sidebar";
 import ConversationList from "@/modules/chat/ConversationList";
 import RosterPanel from "@/modules/roster/RosterPanel";
 import GroupPanel from "@/modules/group/GroupPanel";
 import TopBar from "@/components/TopBar";
+import RightPanel from "@/components/RightPanel";
 import { useLanguage } from "@/utils/i18n";
-const RightPanel = lazy(() => import("@/components/RightPanel"));
 
 type LeftTab = "chats" | "contacts" | "groups";
 
@@ -27,24 +27,24 @@ export default function MainLayout() {
   }, [searchParams]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg">
+    <div className="flex h-screen w-screen overflow-hidden bg-surface-950">
       <Sidebar />
 
       <div
         className={clsx(
-          "w-80 flex-shrink-0 flex-col border-r border-border bg-surface-900",
+          "w-72 flex-shrink-0 flex-col border-r border-white/5 bg-surface-900/50",
           shouldHideLeftPanelOnMobile ? "hidden md:flex" : "flex"
         )}
       >
-        <div className="flex h-[52px] border-b border-border flex-shrink-0 bg-surface-2">
+        <div className="flex border-b border-white/5 flex-shrink-0">
           {(["chats", "contacts", "groups"] as LeftTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setLeftTab(tab)}
-              className={`flex-1 text-[13.5px] font-medium transition-colors ${
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
                 leftTab === tab
-                  ? "text-text font-semibold shadow-[inset_0_-2px_0_#15161c]"
-                  : "text-text-3 hover:text-text"
+                  ? "text-accent-soft border-b-2 border-accent"
+                  : "text-surface-200/40 hover:text-surface-200"
               }`}
             >
               {tab === "chats" ? t("lefttab.chats") : tab === "contacts" ? t("lefttab.contacts") : t("lefttab.groups")}
@@ -68,9 +68,7 @@ export default function MainLayout() {
             <Outlet />
           </div>
           {showRight && conversationId && (
-            <Suspense fallback={<div className="w-[22rem] border-l border-border bg-surface-900" />}>
-              <RightPanel conversationId={conversationId} onClose={() => setShowRight(false)} />
-            </Suspense>
+            <RightPanel conversationId={conversationId} onClose={() => setShowRight(false)} />
           )}
         </div>
       </div>

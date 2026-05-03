@@ -6,7 +6,7 @@ This repository contains the production app plus the 2.0 migration work.
 ## Status
 
 - Active branch: `2.0` architecture migration on top of the existing deployable stack.
-- Current package version: `2.0.0-alpha.1` (see [package.json](/C:/Users/Stone/Documents/github/web_Conji_native/package.json)).
+- Current package version: `1.6.0` (see [package.json](package.json)).
 - Frontend source of truth: `apps/web`
 - Backend API source: `apps/api`
 
@@ -95,9 +95,7 @@ sudo systemctl restart conjiweb-api
 
 ### 3) One-Click Push + Multi-Host Update (Windows operator machine)
 
-Run from:
-
-`C:\Users\Stone\Documents\github`
+Run from your local checkout directory:
 
 ```powershell
 .\update-conjiweb-all.ps1
@@ -123,8 +121,8 @@ Related notes are in the `docs/` folder and `MIGRATION_2.0_README.txt`.
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](/C:/Users/Stone/Documents/github/web_Conji_native/CONTRIBUTING.md).
+Please read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-See [LICENSE](/C:/Users/Stone/Documents/github/web_Conji_native/LICENSE).
+See [LICENSE](LICENSE).

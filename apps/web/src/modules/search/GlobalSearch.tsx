@@ -12,6 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useLanguage } from "@/utils/i18n";
 import { api } from "@/services/api";
+import toast from "react-hot-toast";
 
 type ResultType = "message" | "contact" | "room";
 
@@ -223,12 +224,17 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
           <button
             onClick={() => {
               if (!query.trim()) return;
+              const loadingId = toast.loading(t("search.askAi"));
               api.post("/ai/rag", { question: query })
                 .then((r) => {
-                  const answer = r.data?.answer ?? "No answer";
-                  alert(`AI: ${answer}`);
+                  toast.dismiss(loadingId);
+                  const answer = r.data?.answer ?? t("search.noAnswer");
+                  toast.success(answer, { duration: 8000 });
                 })
-                .catch(() => alert("AI RAG unavailable"));
+                .catch(() => {
+                  toast.dismiss(loadingId);
+                  toast.error(t("search.aiUnavailable"));
+                });
             }}
             className="flex items-center gap-1 text-primary hover:text-primary/80 text-[11px]"
             title={t("search.askAi")}

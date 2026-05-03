@@ -1132,29 +1132,76 @@ setup_backup() {
 #!/bin/bash
 set -euo pipefail
 BACKUP_DIR="/root/backups"
-DATE=$(date +%Y%m%d_%H%M%S)
+DATE=\$(date +%Y%m%d_%H%M%S)
 BACKUP_REMOTE="${BACKUP_REMOTE}"
+BACKUP_ENCRYPTION_KEY_FILE="\${BACKUP_ENCRYPTION_KEY_FILE:-/root/.conjiweb-backup.key}"
 DB_NAME="${APP_USER}"
-mkdir -p "$BACKUP_DIR"
+ALERT_EMAIL="${ALERT_EMAIL}"
+mkdir -p "\$BACKUP_DIR"
+chmod 700 "\$BACKUP_DIR"
 
-# Backup PostgreSQL
-sudo -u postgres pg_dump "$DB_NAME" | gzip > "${BACKUP_DIR}/db_${DATE}.sql.gz"
-if ! gzip -t "${BACKUP_DIR}/db_${DATE}.sql.gz"; then
-  echo "backup verification failed: db_${DATE}.sql.gz" >&2
+# Generate encryption key on first run if missing
+if [ ! -f "\$BACKUP_ENCRYPTION_KEY_FILE" ]; then
+  openssl rand -base64 48 > "\$BACKUP_ENCRYPTION_KEY_FILE"
+  chmod 600 "\$BACKUP_ENCRYPTION_KEY_FILE"
+  echo "Generated new backup encryption key at \$BACKUP_ENCRYPTION_KEY_FILE — back this up off-site!"
+fi
+
+alert() {
+  local msg="\$1"
+  echo "[BACKUP ERROR] \$msg" >&2
+  if [ -n "\$ALERT_EMAIL" ] && command -v mail >/dev/null 2>&1; then
+    echo "\$msg" | mail -s "Conjiweb backup failure on \$(hostname)" "\$ALERT_EMAIL" || true
+  fi
+}
+
+# Disk space pre-check (need at least 1GB free)
+AVAILABLE_KB=\$(df -k "\$BACKUP_DIR" | awk 'NR==2 {print \$4}')
+if [ "\$AVAILABLE_KB" -lt 1048576 ]; then
+  alert "Insufficient disk space (\${AVAILABLE_KB}KB free) for backup"
   exit 1
 fi
 
-# Backup MinIO data
-tar czf "${BACKUP_DIR}/minio_${DATE}.tar.gz" /data/minio/ 2>/dev/null || true
-
-# Retain backups for 7 days
-find "$BACKUP_DIR" -name "*.gz" -mtime +7 -delete
-
-if [[ -n "$BACKUP_REMOTE" ]] && command -v rclone >/dev/null 2>&1; then
-  rclone copy "$BACKUP_DIR/" "$BACKUP_REMOTE" --max-age 7d --transfers 2 --checkers 4 || true
+# Backup PostgreSQL — encrypted with AES-256
+DB_FILE="\${BACKUP_DIR}/db_\${DATE}.sql.gz.enc"
+if ! sudo -u postgres pg_dump "\$DB_NAME" | gzip | \
+     openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
+                 -pass file:"\$BACKUP_ENCRYPTION_KEY_FILE" -out "\$DB_FILE"; then
+  alert "PostgreSQL dump failed for \$DB_NAME"
+  exit 1
 fi
 
-echo "backup completed: ${DATE}"
+# Verify the encrypted file decrypts cleanly
+if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+                 -pass file:"\$BACKUP_ENCRYPTION_KEY_FILE" \
+                 -in "\$DB_FILE" 2>/dev/null | gzip -t; then
+  alert "Backup verification failed: \$DB_FILE"
+  rm -f "\$DB_FILE"
+  exit 1
+fi
+
+# Backup MinIO data — encrypted; use --warning=no-file-changed to tolerate concurrent writes
+MINIO_FILE="\${BACKUP_DIR}/minio_\${DATE}.tar.gz.enc"
+if ! tar czf - --warning=no-file-changed -C / data/minio 2>/dev/null | \
+     openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
+                 -pass file:"\$BACKUP_ENCRYPTION_KEY_FILE" -out "\$MINIO_FILE"; then
+  alert "MinIO backup failed"
+  # Don't exit — DB backup already succeeded
+fi
+
+# Retain backups for 7 days
+find "\$BACKUP_DIR" -name "*.enc" -mtime +7 -delete
+
+# Remote sync — alert on failure (but don't block local backup)
+if [ -n "\$BACKUP_REMOTE" ] && command -v rclone >/dev/null 2>&1; then
+  if ! rclone copy "\$BACKUP_DIR/" "\$BACKUP_REMOTE" \
+                   --max-age 7d --transfers 2 --checkers 4 \
+                   --retries 3 --low-level-retries 5 --timeout 5m; then
+    alert "Remote sync to \$BACKUP_REMOTE failed"
+  fi
+fi
+
+echo "backup completed: \${DATE}"
 BACKUP
   chmod +x /usr/local/bin/conjiweb-backup.sh
 

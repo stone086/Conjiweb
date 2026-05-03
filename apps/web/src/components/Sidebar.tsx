@@ -54,9 +54,11 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-14 flex-shrink-0 flex flex-col items-center py-4 gap-2 bg-surface-900 border-r border-border">
+    <aside className="w-16 flex-shrink-0 flex flex-col items-center py-4 gap-2
+                      bg-surface-950 border-r border-white/5">
       {/* Logo */}
-      <div className="mb-3 w-9 h-9 rounded-[10px] bg-primary/15 flex items-center justify-center border border-primary/30 text-primary font-bold text-sm select-none">
+      <div className="mb-3 w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center
+                      border border-accent/30 text-accent font-bold text-sm select-none">
         W3
       </div>
 
@@ -67,14 +69,15 @@ export default function Sidebar() {
             key={acc.id}
             onClick={() => setActive(acc.id)}
             className={clsx(
-              "relative w-9 h-9 rounded-[10px] transition-all duration-150",
+              "relative w-9 h-9 rounded-xl transition-all duration-150",
               acc.id === activeId
-                ? "ring-2 ring-primary ring-offset-2 ring-offset-surface-900"
+                ? "ring-2 ring-accent ring-offset-2 ring-offset-surface-950"
                 : "opacity-60 hover:opacity-100"
             )}
             title={acc.jid}
           >
-            <div className="w-full h-full rounded-[10px] bg-surface-2 flex items-center justify-center text-text-2 text-xs font-semibold uppercase">
+            <div className="w-full h-full rounded-xl bg-surface-800 flex items-center justify-center
+                            text-surface-200 text-xs font-semibold uppercase">
               {(acc.displayName ?? acc.jid)[0]}
             </div>
             <PresenceBadge presence={acc.presence} />
@@ -84,10 +87,12 @@ export default function Sidebar() {
         {/* Add account */}
         <NavLink
           to="/settings?add=1"
-          className="w-9 h-9 rounded-[10px] border border-dashed border-border-strong flex items-center justify-center text-text-4 hover:border-primary/50 hover:text-primary transition-all duration-150"
+          className="w-9 h-9 rounded-xl border border-dashed border-white/20
+                     flex items-center justify-center text-surface-200/40
+                     hover:border-accent/50 hover:text-accent transition-all duration-150"
           title={t("nav.addAccount")}
         >
-          <Plus size={14} strokeWidth={1.75} />
+          <Plus size={14} />
         </NavLink>
       </div>
 
@@ -103,14 +108,14 @@ export default function Sidebar() {
             title={t(key)}
             className={({ isActive }) =>
               clsx(
-                "w-full flex items-center justify-center py-2.5 rounded-sm transition-all duration-150",
+                "w-full flex items-center justify-center py-2.5 rounded-lg transition-all duration-150",
                 isActive
-                  ? "bg-primary-tint text-primary"
-                  : "text-text-4 hover:bg-surface-hover hover:text-text-2"
+                  ? "bg-accent/15 text-accent-soft"
+                  : "text-surface-200/50 hover:bg-white/5 hover:text-surface-200"
               )
             }
           >
-            <Icon size={18} strokeWidth={1.75} />
+            <Icon size={18} />
           </NavLink>
         ))}
       </nav>

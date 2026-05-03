@@ -188,7 +188,7 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
         {conversation.type === "private" && contact && activeAccountId && (
           <>
             <OmemoTrustButton peerJid={contact.jid} />
-            <MergeContactButton accountId={activeAccountId} jid={contact.jid} displayName={contact.name ?? contact.jid.split("@")[0]} />
+            <MergeContactButton accountId={activeAccountId} jid={contact.jid} displayName={contact.nickname ?? contact.jid.split("@")[0]} />
             <ContactNotesEditor
               accountId={activeAccountId}
               jid={contact.jid}
@@ -482,7 +482,7 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     <div className="w-72 flex-shrink-0 flex flex-col border-l border-white/5 bg-surface-900/30 h-full">
       <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
         <span className="text-sm font-semibold text-surface-50 truncate">{conversation.title ?? conversation.peerJid}</span>
-        <button onClick={onClose} className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-surface-200">
+        <button onClick={onClose} className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-surface-200" aria-label="Close panel">
           <X size={14} />
         </button>
       </div>
@@ -513,3 +513,4 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     </div>
   );
 }
+

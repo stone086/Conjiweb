@@ -19,7 +19,7 @@
  */
 
 import toast from "react-hot-toast";
-import { aiApi } from "./api";
+import { aiApi, getUserToken } from "./api";
 
 export interface SlashCommand {
   name: string;

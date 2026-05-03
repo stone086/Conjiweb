@@ -45,10 +45,18 @@ class CallManager {
     this.iceServers = servers;
   }
 
-  on(event: "incoming" | "ended", fn: Listener) {
+  on(event: "incoming" | "ended", fn: Listener): () => void {
     const arr = this.listeners.get(event) ?? [];
     arr.push(fn);
     this.listeners.set(event, arr);
+    // Return an unsubscribe function for ergonomic cleanup in React effects
+    return () => this.off(event, fn);
+  }
+
+  off(event: "incoming" | "ended", fn: Listener) {
+    const arr = this.listeners.get(event);
+    if (!arr) return;
+    this.listeners.set(event, arr.filter(l => l !== fn));
   }
 
   private emit(event: string, session: JingleSession) {

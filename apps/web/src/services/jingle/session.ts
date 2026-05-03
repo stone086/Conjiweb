@@ -23,6 +23,7 @@ export class JingleSession {
   private pc: RTCPeerConnection | null = null;
   private listeners = new Map<string, Listener[]>();
   private session: CallSession;
+  private _screenStream: MediaStream | null = null;
   private iceServers: IceServer[];
   private localCandidates: RTCIceCandidate[] = [];
 
@@ -44,10 +45,17 @@ export class JingleSession {
     this.iceServers = iceServers;
   }
 
-  on(event: string, fn: Listener) {
+  on(event: string, fn: Listener): () => void {
     const arr = this.listeners.get(event) ?? [];
     arr.push(fn);
     this.listeners.set(event, arr);
+    return () => this.off(event, fn);
+  }
+
+  off(event: string, fn: Listener) {
+    const arr = this.listeners.get(event);
+    if (!arr) return;
+    this.listeners.set(event, arr.filter(l => l !== fn));
   }
 
   private emit(event: string, data?: any) {
@@ -197,6 +205,8 @@ export class JingleSession {
 
   private cleanup() {
     this.session.localStream?.getTracks().forEach(t => t.stop());
+    this._screenStream?.getTracks().forEach(t => t.stop());
+    this._screenStream = null;
     this.pc?.close();
     this.pc = null;
     this.emit("ended");
@@ -228,7 +238,13 @@ export class JingleSession {
         audio: false,
       });
       const screenTrack = screenStream.getVideoTracks()[0];
-      if (!screenTrack) return false;
+      if (!screenTrack) {
+        screenStream.getTracks().forEach(t => t.stop());
+        return false;
+      }
+
+      // Track for later cleanup
+      this._screenStream = screenStream;
 
       // Find the existing video sender and replace its track
       const sender = this.pc.getSenders().find(s => s.track?.kind === "video");
@@ -252,6 +268,11 @@ export class JingleSession {
    * Switch back to camera after screen sharing.
    */
   async stopScreenShare(): Promise<void> {
+    // Stop the screen-share stream regardless of whether the swap succeeds
+    if (this._screenStream) {
+      this._screenStream.getTracks().forEach(t => t.stop());
+      this._screenStream = null;
+    }
     if (!this.pc) return;
     try {
       const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -259,6 +280,15 @@ export class JingleSession {
       const sender = this.pc.getSenders().find(s => s.track?.kind === "video");
       if (sender && camTrack) {
         await sender.replaceTrack(camTrack);
+        // Stop any other tracks from the stream we don't end up using (e.g. audio
+        // tracks if the constraint was wide). The video track stays alive because
+        // it's now owned by the RTCRtpSender.
+        camStream.getTracks().forEach(t => {
+          if (t !== camTrack) t.stop();
+        });
+      } else {
+        // Couldn't attach the new track — release everything to free the camera
+        camStream.getTracks().forEach(t => t.stop());
       }
     } catch {
       // Camera unavailable - just remove the video track

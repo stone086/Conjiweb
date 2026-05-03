@@ -10,7 +10,8 @@
  *   - On release: cancel (drag away) or send (release)
  */
 import { useState, useRef, useEffect } from "react";
-import { Mic, X, Send } from "lucide-react";
+import { Mic, X, Send, Square } from "lucide-react";
+import { attachmentsApi } from "@/services/api";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 
@@ -143,39 +144,39 @@ export default function VoiceRecorder({ onSend, onCancel }: VoiceRecorderProps) 
       <button
         type="button"
         onClick={startRecording}
-        className="p-2.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-primary transition-colors"
+        className="p-2.5 rounded-xl hover:bg-white/5 text-surface-200/60 hover:text-accent-soft transition-colors"
         title={t("voice.record")}
         aria-label={t("voice.record")}
       >
-        <Mic size={16} strokeWidth={1.75} />
+        <Mic size={16} />
       </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-soft border border-primary/30">
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warn/10 border border-warn/30">
       <button
         type="button"
         onClick={cancelRecording}
-        className="text-danger hover:text-danger/80"
+        className="text-warn hover:text-warn-soft"
         title={t("voice.cancel")}
       >
-        <X size={16} strokeWidth={1.75} />
+        <X size={16} />
       </button>
       <div className="flex items-center gap-1 flex-1">
         <div
-          className="w-2 h-2 rounded-full bg-primary animate-pulse"
+          className="w-2 h-2 rounded-full bg-warn animate-pulse"
           style={{ transform: `scale(${1 + audioLevel * 0.5})` }}
         />
-        <span className="text-[11.5px] text-primary font-mono [font-variant-numeric:tabular-nums]">{formatTime(elapsed)}</span>
+        <span className="text-xs text-warn font-mono">{formatTime(elapsed)}</span>
       </div>
       <button
         type="button"
         onClick={finishAndSend}
-        className="p-1.5 rounded-md bg-primary text-white hover:bg-primary-hover transition-colors"
+        className="p-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors"
         title={t("voice.send")}
       >
-        <Send size={14} strokeWidth={1.75} />
+        <Send size={14} />
       </button>
     </div>
   );

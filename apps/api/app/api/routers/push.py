@@ -15,12 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import Optional
 import json
-import os
-
+import logging
 from app.core.config import settings
 from app.core.database import get_db
 from app.models import PushSubscription
 from app.utils.security import get_current_user
+
+logger = logging.getLogger("conjiweb.push")
 
 router = APIRouter()
 
@@ -93,7 +94,7 @@ async def notify(
 
     Authenticated by shared secret (PUSH_SHARED_SECRET env), not JWT.
     """
-    expected = os.getenv("PUSH_SHARED_SECRET")
+    expected = settings.PUSH_SHARED_SECRET or None
     if not expected or payload.secret != expected:
         raise HTTPException(status_code=403, detail="Invalid push secret")
 
@@ -150,8 +151,8 @@ async def notify(
             # 410 = subscription expired/revoked
             if exc.response and exc.response.status_code in (404, 410):
                 failed_endpoints.append(sub.endpoint)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"push_send_failed endpoint={sub.endpoint[:80]} error={type(exc).__name__}: {exc}")
 
     # Clean up dead subscriptions
     if failed_endpoints:

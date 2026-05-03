@@ -282,6 +282,9 @@ const enUS = {
     "search.select": "Select",
     "search.close": "Close",
     "search.askAi": "Ask AI",
+    "search.noAnswer": "No answer",
+    "search.aiUnavailable": "AI is currently unavailable",
+    "search.askAi": "Ask AI",
 
     "error.title": "Something went wrong",
     "error.retry": "Try again",
@@ -667,6 +670,8 @@ const zhCN: Record<MessageKey, string> = {
     "search.select": "回车选择",
     "search.close": "Esc 关闭",
     "search.askAi": "问问 AI",
+    "search.noAnswer": "暂无答案",
+    "search.aiUnavailable": "AI 暂时无法使用",
 
     "error.title": "发生错误",
     "error.retry": "重试",

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.core.database import get_db
 from app.models import Contact
@@ -11,11 +11,11 @@ router = APIRouter()
 
 
 class ContactUpsert(BaseModel):
-    account_id: str
-    jid: str
-    nickname: Optional[str] = None
-    group_name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    account_id: str = Field(..., min_length=1, max_length=64)
+    jid: str = Field(..., min_length=3, max_length=130)
+    nickname: Optional[str] = Field(None, max_length=128)
+    group_name: Optional[str] = Field(None, max_length=64)
+    avatar_url: Optional[str] = Field(None, max_length=2048)
 
 
 class ContactResponse(BaseModel):

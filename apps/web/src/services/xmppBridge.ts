@@ -61,7 +61,7 @@ export function initXmppBridge(client: XmppClient) {
 
   // Connection changes
   client.on("connection.changed", (data: any) => {
-	console.log("[XMPP] connection.changed:", data);
+	console.debug("[XMPP] connection.changed:", data);
     useAccountStore.getState().setConnected(accountId, data.status === "connected");
     if (data.status !== "connected") {
       const store = useChatStore.getState();
@@ -72,10 +72,10 @@ export function initXmppBridge(client: XmppClient) {
     if (data.status === "connected" || data.status === "online" || data.status === "authenticated") {
       const publishLocalOmemo = async () => {
         try {
-          console.log("[OMEMO] init/publish start", { accountId });
+          console.debug("[OMEMO] init/publish start", { accountId });
 
           const { deviceId: localDeviceId } = await initializeOmemoKeys(accountId);
-          console.log("[OMEMO] libsignal local device id:", localDeviceId);
+          console.debug("[OMEMO] libsignal local device id:", localDeviceId);
 
           const ownBundle = await buildOwnBundle(accountId);
           const localBundle = {
@@ -90,20 +90,20 @@ export function initXmppBridge(client: XmppClient) {
             })),
           };
 
-          console.log("[OMEMO] libsignal bundle ready:", {
+          console.debug("[OMEMO] libsignal bundle ready:", {
             deviceId: localBundle.deviceId,
             preKeys: localBundle.preKeys?.length ?? 0,
           });
 
-          console.log("[OMEMO] publishing standard device list...");
+          console.debug("[OMEMO] publishing standard device list...");
           await client.publishOmemoDeviceList([localDeviceId]);
-          console.log("[OMEMO] standard device list published");
+          console.debug("[OMEMO] standard device list published");
 
-          console.log("[OMEMO] publishing standard bundle...");
+          console.debug("[OMEMO] publishing standard bundle...");
           await client.publishOmemoBundle(localBundle);
-          console.log("[OMEMO] standard bundle published");
+          console.debug("[OMEMO] standard bundle published");
 
-          console.log("[OMEMO] init/publish success");
+          console.debug("[OMEMO] init/publish success");
         } catch (e) {
           console.error("[OMEMO] init/publish failed:", e);
         }
@@ -1068,7 +1068,7 @@ export async function tryLibsignalEncrypt(
       sid: newEnvelope.sid,
       iv: arrayBufferToBase64(newEnvelope.iv),
       payload: arrayBufferToBase64(newEnvelope.payload),
-      keys: newEnvelope.keys.map((k: { rid: number; body: ArrayBuffer; isPreKey: boolean }) => ({
+      keys: newEnvelope.keys.map((k) => ({
         rid: k.rid,
         value: arrayBufferToBase64(k.body),
         prekey: k.isPreKey,

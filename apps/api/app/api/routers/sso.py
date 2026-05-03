@@ -17,6 +17,7 @@ Two flows are supported:
 All configuration is read from app.core.config.settings (pydantic-settings).
 """
 import hashlib
+import logging
 import re
 import secrets
 import time
@@ -25,14 +26,14 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import limiter
-from app.models import Account, AccountPreference, gen_uuid
+from app.models import Account, AccountPreference, SsoIdentity, gen_uuid
 from app.utils.security import create_access_token
 
 try:
@@ -41,6 +42,7 @@ except ImportError:
     aioredis = None  # type: ignore[assignment]
 
 router = APIRouter()
+logger = logging.getLogger("conjiweb.sso")
 
 SSO_CODE_TTL = 30        # seconds for one-time exchange code
 OIDC_STATE_TTL = 600     # seconds for OIDC CSRF state
@@ -116,10 +118,48 @@ async def _ensure_account(
     jid: str,
     display_name: str,
     auto_provision: bool,
+    provider: str = "",
+    provider_sub: str = "",
+    provider_email: str = "",
 ) -> Account:
-    """Look up or auto-create an Account with its AccountPreference."""
-    result = await db.execute(select(Account).where(Account.jid == jid))
-    account = result.scalar_one_or_none()
+    """Look up or auto-create an Account with its AccountPreference and SsoIdentity.
+
+    Lookup precedence:
+    1. By SsoIdentity (provider, provider_sub) — survives display-name changes
+    2. By Account.jid — for backward compatibility / when no SSO identity yet
+    3. Auto-provision if enabled
+    """
+    account = None
+
+    # 1. Look up by SsoIdentity (most stable identifier)
+    if provider and provider_sub:
+        ident_result = await db.execute(
+            select(SsoIdentity).where(
+                SsoIdentity.provider == provider,
+                SsoIdentity.provider_sub == provider_sub,
+            )
+        )
+        identity = ident_result.scalar_one_or_none()
+        if identity:
+            acc_result = await db.execute(select(Account).where(Account.id == identity.account_id))
+            account = acc_result.scalar_one_or_none()
+
+    # 2. Fall back to JID lookup (for accounts created before SSO migration)
+    if not account:
+        result = await db.execute(select(Account).where(Account.jid == jid))
+        account = result.scalar_one_or_none()
+        # If found by JID but no SsoIdentity yet, link them
+        if account and provider and provider_sub:
+            db.add(SsoIdentity(
+                id=gen_uuid(),
+                account_id=account.id,
+                provider=provider,
+                provider_sub=provider_sub,
+                provider_email=provider_email or None,
+            ))
+            await db.commit()
+
+    # 3. Auto-provision
     if not account:
         if not auto_provision:
             raise HTTPException(403, f"Account {jid} not provisioned. Ask admin to create it.")
@@ -133,7 +173,16 @@ async def _ensure_account(
         )
         db.add(account)
         db.add(AccountPreference(account_id=account.id))
+        if provider and provider_sub:
+            db.add(SsoIdentity(
+                id=gen_uuid(),
+                account_id=account.id,
+                provider=provider,
+                provider_sub=provider_sub,
+                provider_email=provider_email or None,
+            ))
         await db.commit()
+
     if not account.is_enabled:
         raise HTTPException(403, "Account is disabled")
     return account
@@ -274,7 +323,10 @@ async def oidc_callback(
 
     # Build collision-resistant JID using sub claim hash
     jid = _oidc_jid(sub, name)
-    account = await _ensure_account(db, jid, name, settings.AUTO_PROVISION_OIDC)
+    account = await _ensure_account(
+        db, jid, name, settings.AUTO_PROVISION_OIDC,
+        provider="oidc", provider_sub=sub, provider_email=email,
+    )
 
     # Issue internal user token
     user_token = create_access_token(jid, role="user", account_id=account.id)
@@ -292,7 +344,8 @@ async def oidc_callback(
 
 
 @router.post("/sso/oidc/exchange")
-async def oidc_exchange_code(code: str):
+@limiter.limit("20/minute")
+async def oidc_exchange_code(request: Request, code: str):
     """
     Exchange a one-time SSO code for an access token.
     The code lives for 30 seconds and can only be used once.
@@ -308,8 +361,8 @@ async def oidc_exchange_code(code: str):
 # LDAP flow (with rate limiting)
 # =====================================================
 class LdapLoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=128)
+    password: str = Field(..., min_length=1, max_length=256)
 
 
 @router.post("/sso/ldap/login")
@@ -332,7 +385,8 @@ async def ldap_login(
 
     bind_dn = bind_template.replace("{username}", payload.username)
 
-    try:
+    def _ldap_bind() -> None:
+        """Synchronous LDAP bind, run in worker thread to avoid blocking event loop."""
         from ldap3 import Server, Connection, ALL, SIMPLE
         srv = Server(server_url, get_info=ALL)
         conn = Connection(
@@ -344,15 +398,27 @@ async def ldap_login(
             raise_exceptions=True,
         )
         conn.unbind()
+
+    try:
+        import asyncio
+        await asyncio.to_thread(_ldap_bind)
     except ImportError:
         raise HTTPException(503, "ldap3 library not installed on server")
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            f"ldap_auth_failed username={payload.username} "
+            f"client={request.client.host if request.client else '?'} "
+            f"error={type(exc).__name__}"
+        )
         raise HTTPException(401, "LDAP authentication failed")
 
     # Build JID from LDAP username
     safe_name = _sanitize_username(payload.username)
     jid = f"{safe_name}@{settings.XMPP_DOMAIN}"
-    account = await _ensure_account(db, jid, payload.username, settings.AUTO_PROVISION_LDAP)
+    account = await _ensure_account(
+        db, jid, payload.username, settings.AUTO_PROVISION_LDAP,
+        provider="ldap", provider_sub=bind_dn,
+    )
 
     token = create_access_token(jid, role="user", account_id=account.id)
     return {"access_token": token, "jid": jid}

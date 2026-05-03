@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useChatStore, ChatMessage } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
@@ -21,14 +21,14 @@ import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock, Phone, Video, UserPlus, Mic } from "lucide-react";
 import { callManager } from "@/services/jingle";
 import { processSlashCommand } from "@/services/slashCommands";
+import EmojiPicker from "emoji-picker-react";
+import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { attachmentsApi } from "@/services/api";
 import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { tryLibsignalEncrypt } from "@/services/xmppBridge";
 import { getOmemoEnabled } from "@/services/omemoSettings";
-
-const EmojiPickerPanel = lazy(() => import("@/modules/chat/EmojiPickerPanel"));
 
 function parseAesgcmMediaLink(raw?: string): { href: string; fileName: string; isAudio: boolean } | null {
   if (!raw) return null;
@@ -52,9 +52,9 @@ function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; today
       : format(date, "yyyy-MM-dd");
   return (
     <div className="flex items-center gap-3 py-2 my-1">
-      <div className="flex-1 h-px bg-border" />
-      <span className="text-[10.5px] text-text-4 px-2 py-0.5 rounded-full bg-surface-2 [font-variant-numeric:tabular-nums]">{label}</span>
-      <div className="flex-1 h-px bg-border" />
+      <div className="flex-1 h-px bg-white/5" />
+      <span className="text-[10px] text-surface-200/30 px-2 py-0.5 rounded-full bg-surface-900">{label}</span>
+      <div className="flex-1 h-px bg-white/5" />
     </div>
   );
 }
@@ -119,7 +119,7 @@ function MessageBubble({
         <Avatar name={msg.senderJid} size="xs" className="mt-auto mb-1" />
       )}
       <div className={clsx("flex flex-col gap-1 max-w-[70%] min-w-[8rem]", isOwn ? "items-end" : "items-start")}>
-        {!isOwn && <span className="text-[10.5px] text-text-4 px-1 font-mono">{msg.senderJid.split("@")[0]}</span>}
+        {!isOwn && <span className="text-[10px] text-surface-200/40 px-1">{msg.senderJid.split("@")[0]}</span>}
         <div
           className={isOwn ? "msg-bubble-out" : "msg-bubble-in"}
           onContextMenu={(e) => {
@@ -136,9 +136,9 @@ function MessageBubble({
           }}
         >
           {msg.replyToId && (
-            <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-border-strong bg-surface-2">
-              <p className="text-[10.5px] text-text-4">{replySender ?? t("chat.reply")}</p>
-              <p className="text-[12.5px] text-text-3 line-clamp-2 break-words">
+            <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-white/30 bg-black/15">
+              <p className="text-[10px] text-surface-200/60">{replySender ?? t("chat.reply")}</p>
+              <p className="text-xs text-surface-200/70 line-clamp-2 break-words">
                 {replyPreview ?? t("chat.originalUnavailable")}
               </p>
             </div>
@@ -147,28 +147,28 @@ function MessageBubble({
             const aesMedia = parseAesgcmMediaLink(msg.body);
             if (aesMedia) {
               return (
-                <div className="text-[13.5px] leading-relaxed break-words">
-                  <p className="text-text-2">
+                <div className="text-sm leading-relaxed break-words">
+                  <p className="text-surface-100/90">
                     {aesMedia.isAudio ? "Encrypted audio attachment" : "Encrypted file attachment"}
                   </p>
                   <a
                     href={aesMedia.href}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-primary underline break-all font-mono"
+                    className="text-accent-soft underline break-all"
                   >
                     {aesMedia.fileName}
                   </a>
                 </div>
               );
             }
-            return <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>;
+            return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>;
           })()}
           {msg.body && (() => {
             const url = extractFirstUrl(msg.body);
             return url ? <LinkPreviewCard url={url} /> : null;
           })()}
-          {msg.editedAt && <p className="text-[10.5px] text-text-4 mt-1 cursor-default" title={`${t("chat.editedAt")} ${formatMsgTimeFull(msg.editedAt)}`}>{t("chat.edited")}</p>}
+          {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1 cursor-default" title={`${t("chat.editedAt")} ${formatMsgTimeFull(msg.editedAt)}`}>{t("chat.edited")}</p>}
           {msg.attachments?.map((att) => (
             <div key={att.id} className="mt-2">
               {att.mimeType.startsWith("image/") ? (
@@ -185,25 +185,25 @@ function MessageBubble({
               <button
                 key={emoji}
                 onClick={() => onReact(msg, emoji)}
-                className="text-[11.5px] px-1.5 py-0.5 rounded-full border border-border bg-surface-2"
+                className="text-[11px] px-1.5 py-0.5 rounded-full border border-white/10 bg-white/5"
               >
                 {emoji} {count}
               </button>
             ))}
           </div>
         )}
-        <div className="chat-meta">
-          {msg.starred && <span className="text-[10.5px] text-warn">★</span>}
-          {msg.encrypted && <Lock size={10} strokeWidth={1.75} className="text-success" />}
-          {msg.decryptFailed && <span className="text-[10.5px] text-danger">{t("chat.decryptFailed")}</span>}
-          <span className="text-[10.5px]" title={formatMsgTimeFull(msg.timestamp)}>
+        <div className="flex items-center gap-2 px-1">
+          {msg.starred && <span className="text-[10px] text-warn">★</span>}
+          {msg.encrypted && <Lock size={10} className="text-success" />}
+          {msg.decryptFailed && <span className="text-[10px] text-danger">{t("chat.decryptFailed")}</span>}
+          <span className="text-[10px] text-surface-200/25" title={formatMsgTimeFull(msg.timestamp)}>
             {formatMsgTime(msg.timestamp)}
           </span>
-          {isOwn && <span className="text-[10.5px]">{msg.status === "read" ? readLabel : sentLabel}</span>}
+          {isOwn && <span className="text-[10px] text-surface-200/25">{msg.status === "read" ? readLabel : sentLabel}</span>}
           {isOwn && msg.status === "failed" && (
             <button
               onClick={() => onRetry(msg)}
-              className="text-[10.5px] text-danger hover:text-danger/80 underline"
+              className="text-[10px] text-danger hover:text-danger/80 underline"
             >
               {t("chat.retry")}
             </button>
@@ -211,32 +211,32 @@ function MessageBubble({
         </div>
       </div>
       <div className={clsx("flex items-center self-center transition-opacity", hovered ? "opacity-100" : "opacity-0")}>
-        <button onClick={() => onReply(msg)} className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-text-2">
-          <CornerUpLeft size={13} strokeWidth={1.75} />
+        <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
+          <CornerUpLeft size={13} />
         </button>
         <div className="relative" ref={menuRef}>
-          <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-text-2">
-            <MoreVertical size={13} strokeWidth={1.75} />
+          <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
+            <MoreVertical size={13} />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-7 z-20 w-36 rounded-lg border border-border bg-surface-900 shadow-pop p-1">
-              <button onClick={() => { onToggleStar(msg); setMenuOpen(false); }} className="w-full text-left text-[11.5px] px-2 py-1.5 hover:bg-surface-hover rounded flex items-center gap-2">
-                <Star size={12} strokeWidth={1.75} /> {msg.starred ? "Unstar" : "Star"}
+            <div className="absolute right-0 top-7 z-20 w-36 rounded-lg border border-white/10 bg-surface-900 shadow-xl p-1">
+              <button onClick={() => { onToggleStar(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                <Star size={12} /> {msg.starred ? "Unstar" : "Star"}
               </button>
               {isOwn && (
-                <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-[11.5px] px-2 py-1.5 hover:bg-surface-hover rounded flex items-center gap-2">
-                  <Pencil size={12} strokeWidth={1.75} /> Edit
+                <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                  <Pencil size={12} /> Edit
                 </button>
               )}
-              <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-[11.5px] px-2 py-1.5 hover:bg-surface-hover rounded flex items-center gap-2">
-                <Forward size={12} strokeWidth={1.75} /> Forward
+              <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                <Forward size={12} /> Forward
               </button>
-              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-border">
+              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-white/5">
                 {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((em) => (
                   <button
                     key={em}
                     onClick={() => { onReact(msg, em); setMenuOpen(false); }}
-                    className="w-7 h-7 rounded hover:bg-surface-hover text-base transition-transform hover:scale-110"
+                    className="w-7 h-7 rounded hover:bg-white/10 text-base transition-transform hover:scale-110"
                     title={`React with ${em}`}
                   >
                     {em}
@@ -244,8 +244,8 @@ function MessageBubble({
                 ))}
               </div>
               {isOwn && (
-                <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-[11.5px] px-2 py-1.5 hover:bg-surface-hover rounded text-danger flex items-center gap-2">
-                  <Trash2 size={12} strokeWidth={1.75} /> Delete
+                <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
+                  <Trash2 size={12} /> Delete
                 </button>
               )}
             </div>
@@ -271,14 +271,14 @@ function TypingBubble({ name }: { name: string }) {
 
 function ReplyPreview({ msg, onCancel, title }: { msg: ChatMessage; onCancel: () => void; title: string }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-t border-border bg-surface-2">
+    <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
       <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-[10.5px] text-primary font-medium">{title} <span className="font-mono">{msg.senderJid.split("@")[0]}</span></p>
-        <p className="text-[12.5px] text-text-3 truncate">{msg.body}</p>
+        <p className="text-[10px] text-accent-soft font-medium">{title} {msg.senderJid.split("@")[0]}</p>
+        <p className="text-xs text-surface-200/50 truncate">{msg.body}</p>
       </div>
-      <button onClick={onCancel} className="text-text-4 hover:text-text-2 p-1">
-        <X size={12} strokeWidth={1.75} />
+      <button onClick={onCancel} className="text-surface-200/30 hover:text-surface-200 p-1">
+        <X size={12} />
       </button>
     </div>
   );
@@ -305,10 +305,10 @@ function ForwardModal({
     (c.title ?? c.peerJid).toLowerCase().includes(search.toLowerCase())
   );
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface-900 shadow-pop p-4 flex flex-col gap-3">
-        <h3 className="text-[13.5px] font-semibold text-text">{t("chat.forwardMessage")}</h3>
-        <p className="text-[11.5px] text-text-3 line-clamp-2">{message.body}</p>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-surface-50">{t("chat.forwardMessage")}</h3>
+        <p className="text-xs text-surface-200/50 line-clamp-2">{message.body}</p>
         <input
           autoFocus
           value={search}
@@ -318,21 +318,21 @@ function ForwardModal({
         />
         <div className="max-h-52 overflow-y-auto flex flex-col gap-1 pr-1">
           {filtered.length === 0 && (
-            <p className="text-[11.5px] text-text-4 text-center py-4">{t("chat.noMatchingConversations")}</p>
+            <p className="text-xs text-surface-200/30 text-center py-4">{t("chat.noMatchingConversations")}</p>
           )}
           {filtered.map((c) => (
             <button
               key={c.id}
               onClick={() => onSelectTarget(c.id)}
               className={clsx(
-                "w-full text-left text-[12.5px] px-3 py-2 rounded-lg transition-colors",
+                "w-full text-left text-sm px-3 py-2 rounded-lg transition-colors",
                 targetId === c.id
-                  ? "bg-primary-tint text-primary"
-                  : "hover:bg-surface-hover text-text-3"
+                  ? "bg-accent/20 text-accent-soft"
+                  : "hover:bg-white/5 text-surface-200/70"
               )}
             >
-              <span className="font-mono">{c.title ?? c.peerJid}</span>
-              <span className="text-[10.5px] text-text-4 ml-1.5">
+              {c.title ?? c.peerJid}
+              <span className="text-xs text-surface-200/30 ml-1.5">
                 ({c.type === "group" ? t("chat.groupConversation") : t("chat.privateConversation")})
               </span>
             </button>
@@ -966,7 +966,7 @@ export default function MessageView({ conversationId }: { conversationId: string
     }
   };
 
-  if (!conversation) return <div className="flex items-center justify-center h-full text-text-4 text-[12.5px]">{t("chat.notFound")}</div>;
+  if (!conversation) return <div className="flex items-center justify-center h-full text-surface-200/30 text-sm">{t("chat.notFound")}</div>;
 
   const handleStartCall = async (mediaTypes: ("audio" | "video")[]) => {
     if (!conversation?.peerJid) return;
@@ -1007,22 +1007,22 @@ export default function MessageView({ conversationId }: { conversationId: string
     <div className="flex flex-col h-full relative">
       {/* Chat header with peer info + call buttons */}
       {conversation.type === "private" && (
-        <div className="flex items-center justify-end gap-1 px-4 py-2 border-b border-border bg-surface-2">
+        <div className="flex items-center justify-end gap-1 px-4 py-2 border-b border-white/5 bg-surface-900/30">
           <button
             onClick={() => handleStartCall(["audio"])}
-            className="w-8 h-8 rounded-sm hover:bg-surface-hover flex items-center justify-center text-text-4 hover:text-primary transition-colors"
+            className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
             title={t("chat.audioCall")}
             aria-label={t("chat.audioCall")}
           >
-            <Phone size={14} strokeWidth={1.75} />
+            <Phone size={14} />
           </button>
           <button
             onClick={() => handleStartCall(["audio", "video"])}
-            className="w-8 h-8 rounded-sm hover:bg-surface-hover flex items-center justify-center text-text-4 hover:text-primary transition-colors"
+            className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
             title={t("chat.videoCall")}
             aria-label={t("chat.videoCall")}
           >
-            <Video size={14} strokeWidth={1.75} />
+            <Video size={14} />
           </button>
         </div>
       )}
@@ -1039,16 +1039,16 @@ export default function MessageView({ conversationId }: { conversationId: string
             <button
               onClick={fetchHistory}
               disabled={mamLoading}
-              className="text-[11.5px] text-text-4 hover:text-text-2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 hover:bg-surface-hover transition-colors"
+              className="text-xs text-surface-200/40 hover:text-surface-200 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-900 hover:bg-surface-800 transition-colors"
             >
-              {mamLoading && <Loader size={11} strokeWidth={1.75} className="animate-spin" />}
+              {mamLoading && <Loader size={11} className="animate-spin" />}
               {mamLoading ? t("chat.loading") : t("chat.loadOlder")}
             </button>
           </div>
         )}
         {messages.length === 0 && !mamLoading && (
-          <div className="flex flex-col items-center justify-center flex-1 gap-2 text-text-4">
-            <p className="text-[12.5px]">{t("chat.noMessages")}</p>
+          <div className="flex flex-col items-center justify-center flex-1 gap-2 text-surface-200/25">
+            <p className="text-sm">{t("chat.noMessages")}</p>
           </div>
         )}
         {useVirtualMessages ? (
@@ -1083,7 +1083,7 @@ export default function MessageView({ conversationId }: { conversationId: string
               {showUnreadDivider && (
                 <div className="flex items-center gap-3 py-2">
                   <div className="flex-1 h-px bg-accent/40" />
-                  <span className="text-[10.5px] text-primary px-2 py-0.5 rounded-full bg-primary-soft [font-variant-numeric:tabular-nums]">{t("chat.unread")}</span>
+                  <span className="text-[10px] text-accent-soft px-2 py-0.5 rounded-full bg-accent/10">{t("chat.unread")}</span>
                   <div className="flex-1 h-px bg-accent/40" />
                 </div>
               )}
@@ -1098,14 +1098,14 @@ export default function MessageView({ conversationId }: { conversationId: string
       {showScrollBtn && (
         <button
           onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-          className="absolute bottom-24 right-4 w-8 h-8 rounded-full bg-surface-900 border border-border flex items-center justify-center text-text-4 hover:text-text z-10 shadow-2"
+          className="absolute bottom-24 right-4 w-8 h-8 rounded-full bg-surface-800 border border-white/10 flex items-center justify-center text-surface-200/70 hover:text-surface-50 shadow-lg z-10"
         >
-          <ChevronDown size={14} strokeWidth={1.75} />
+          <ChevronDown size={14} />
         </button>
       )}
 
       {showUpload && (
-        <div className="px-4 py-3 border-t border-border bg-surface-2">
+        <div className="px-4 py-3 border-t border-white/5 bg-surface-900/30">
           <FileUploadZone
             onUploaded={(f) => setPendingFiles((p) => [...p, f])}
             onCancel={() => setShowUpload(false)}
@@ -1115,12 +1115,12 @@ export default function MessageView({ conversationId }: { conversationId: string
       )}
 
       {pendingFiles.length > 0 && !showUpload && (
-        <div className="px-4 py-2 border-t border-border flex gap-2 flex-wrap">
+        <div className="px-4 py-2 border-t border-white/5 flex gap-2 flex-wrap">
           {pendingFiles.map((f) => (
-            <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-2 text-[11.5px] text-text-3 border border-border">
-              <span className="truncate max-w-[100px] font-mono">{f.name}</span>
-              <button onClick={() => setPendingFiles((p) => p.filter((x) => x.id !== f.id))} className="text-text-4 hover:text-danger">
-                <X size={10} strokeWidth={1.75} />
+            <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-800 text-xs text-surface-200/70 border border-white/5">
+              <span className="truncate max-w-[100px]">{f.name}</span>
+              <button onClick={() => setPendingFiles((p) => p.filter((x) => x.id !== f.id))} className="text-surface-200/30 hover:text-danger">
+                <X size={10} />
               </button>
             </div>
           ))}
@@ -1129,23 +1129,23 @@ export default function MessageView({ conversationId }: { conversationId: string
 
       {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} title={t("chat.replyingTo")} />}
       {editingMessageId && (
-        <div className="flex items-center gap-2 px-4 py-2 border-t border-border bg-surface-2">
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
           <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
-          <div className="flex-1 min-w-0 text-[11.5px] text-text-3">{t("chat.editingMessage")}</div>
+          <div className="flex-1 min-w-0 text-xs text-surface-200/70">{t("chat.editingMessage")}</div>
           <button
             onClick={() => {
               setEditingMessageId(null);
               setInput("");
               clearComposerDraft(conversationId);
             }}
-            className="text-text-4 hover:text-text-2 p-1"
+            className="text-surface-200/30 hover:text-surface-200 p-1"
           >
-            <X size={12} strokeWidth={1.75} />
+            <X size={12} />
           </button>
         </div>
       )}
 
-      <div ref={composerRef} className="border-t border-border bg-surface-900 px-4 py-3 flex-shrink-0 relative">
+      <div ref={composerRef} className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0 relative">
         {pluginToolbarActions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {pluginToolbarActions.map((action) => (
@@ -1173,7 +1173,7 @@ export default function MessageView({ conversationId }: { conversationId: string
                     },
                   })
                 }
-                className="px-2.5 py-1 rounded-lg text-[11.5px] border border-border bg-surface-2 text-text-3 hover:text-text hover:bg-surface-hover"
+                className="px-2.5 py-1 rounded-lg text-xs border border-white/10 bg-white/5 text-surface-200/80 hover:text-surface-50 hover:bg-white/10"
               >
                 {action.label}
               </button>
@@ -1187,7 +1187,7 @@ export default function MessageView({ conversationId }: { conversationId: string
             className={clsx("btn-ghost p-2 flex-shrink-0", showUpload && "text-accent")}
             title={t("chat.attachFile")}
           >
-            <Paperclip size={16} strokeWidth={1.75} />
+            <Paperclip size={16} />
           </button>
           {needsContactApproval ? (
             <button
@@ -1196,7 +1196,7 @@ export default function MessageView({ conversationId }: { conversationId: string
               className="btn-ghost p-2 flex-shrink-0 opacity-60 cursor-not-allowed"
               title={t("chat.addContactBeforeReply")}
             >
-              <Mic size={16} strokeWidth={1.75} />
+              <Mic size={16} />
             </button>
           ) : (
             <VoiceRecorder
@@ -1236,11 +1236,12 @@ export default function MessageView({ conversationId }: { conversationId: string
             className={clsx("btn-ghost p-2 flex-shrink-0", showEmojiPicker && "text-accent")}
             title="Emoji"
           >
-            <Smile size={16} strokeWidth={1.75} />
+            <Smile size={16} />
           </button>
           <textarea
             ref={textareaRef}
             value={input}
+            maxLength={10000}
             onChange={(e) => {
               const nextValue = e.target.value;
               setInput(nextValue);
@@ -1265,17 +1266,17 @@ export default function MessageView({ conversationId }: { conversationId: string
             placeholder={needsContactApproval ? t("chat.addContactBeforeReply") : `${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
             disabled={needsContactApproval}
             rows={1}
-            className="flex-1 bg-white border border-border rounded-lg px-4 py-2.5 text-[13.5px] text-text placeholder:text-text-4 focus:outline-none focus:border-primary focus:shadow-[0_0_0_3px_#f6f4fd] resize-none min-h-[40px] max-h-[120px] disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px] disabled:opacity-60 disabled:cursor-not-allowed"
           />
-          <button onClick={() => void sendMessage()} disabled={needsContactApproval || (!input.trim() && !pendingFiles.length)} className="btn-primary p-2.5 flex-shrink-0 rounded-md h-9 w-9" title={t("chat.send")}>
-            <Send size={16} strokeWidth={1.75} />
+          <button onClick={() => void sendMessage()} disabled={needsContactApproval || (!input.trim() && !pendingFiles.length)} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
+            <Send size={16} />
           </button>
         </div>
         {needsContactApproval && (
           <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/10 px-3 py-2">
             <div className="min-w-0">
-              <p className="text-[12.5px] font-semibold text-text">{t("chat.pendingContactTitle")}</p>
-              <p className="text-[11.5px] text-text-3 truncate">
+              <p className="text-xs font-semibold text-surface-50">{t("chat.pendingContactTitle")}</p>
+              <p className="text-xs text-surface-200/60 truncate">
                 {t("chat.pendingContactBody").replace("{jid}", conversation.peerJid)}
               </p>
             </div>
@@ -1284,26 +1285,26 @@ export default function MessageView({ conversationId }: { conversationId: string
               onClick={handleAcceptContact}
               className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs flex-shrink-0"
             >
-              <UserPlus size={14} strokeWidth={1.75} />
+              <UserPlus size={14} />
               {t("roster.accept")}
             </button>
           </div>
         )}
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-14 z-20">
-            <Suspense fallback={<div className="rounded-lg border border-border bg-surface-900 px-3 py-2 text-[11.5px] text-text-4">Loading emoji...</div>}>
-              <EmojiPickerPanel
-                onPick={(emoji) => {
-                  const next = `${input}${emoji}`;
-                  setInput(next);
-                  setComposerDraft(conversationId, next);
-                  textareaRef.current?.focus();
-                }}
-              />
-            </Suspense>
+            <EmojiPicker
+              theme={Theme.DARK}
+              lazyLoadEmojis
+              onEmojiClick={(emojiData) => {
+                const next = `${input}${emojiData.emoji}`;
+                setInput(next);
+                setComposerDraft(conversationId, next);
+                textareaRef.current?.focus();
+              }}
+            />
           </div>
         )}
-        <p className="text-[10.5px] text-text-4 mt-1 pl-1">{t("chat.hint")}</p>
+        <p className="text-[10px] text-surface-200/20 mt-1 pl-1">{t("chat.hint")}</p>
       </div>
       {lightbox && (
         <ImageLightbox

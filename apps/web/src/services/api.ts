@@ -67,14 +67,14 @@ api.interceptors.request.use((config) => {
     accountId = store.accounts[0].id;
   }
 
-  console.log("[API] using accountId:", accountId);
+  console.debug("[API] using accountId:", accountId);
 
   const token =
-    getUserToken(accountId) ?? localStorage.getItem("admin_token");
+    getUserToken(accountId) ?? sessionStorage.getItem("admin_token");
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-    console.log("[API] token attached ✔");
+    console.debug("[API] token attached ✔");
   } else {
     console.warn("[API] NO TOKEN ❌", accountId);
   }
@@ -101,8 +101,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    if (status === 401 && localStorage.getItem("admin_token")) {
-      localStorage.removeItem("admin_token");
+    if (status === 401 && sessionStorage.getItem("admin_token")) {
+      sessionStorage.removeItem("admin_token");
       window.dispatchEvent(new Event(ADMIN_SESSION_EXPIRED_EVENT));
     }
     return Promise.reject(error);

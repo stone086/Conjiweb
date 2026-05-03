@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState } from "react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useXmppReconnect } from "@/hooks/useXmppReconnect";
@@ -8,16 +8,12 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import MainLayout from "@/layouts/MainLayout";
 import LoginPage from "@/pages/LoginPage";
 import ChatPage from "@/pages/ChatPage";
-const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
-const AdminPage = lazy(() => import("@/pages/AdminPage"));
-const PluginsPage = lazy(() => import("@/pages/PluginsPage"));
-const StarredPage = lazy(() => import("@/pages/StarredPage"));
-const CallHistoryPage = lazy(() => import("@/pages/CallHistoryPage"));
-const DiscoveryPage = lazy(() => import("@/pages/DiscoveryPage"));
-
-function LazyPage({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<div className="h-full w-full bg-bg" />}>{children}</Suspense>;
-}
+import SettingsPage from "@/pages/SettingsPage";
+import AdminPage from "@/pages/AdminPage";
+import PluginsPage from "@/pages/PluginsPage";
+import StarredPage from "@/pages/StarredPage";
+import CallHistoryPage from "@/pages/CallHistoryPage";
+import DiscoveryPage from "@/pages/DiscoveryPage";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const accounts = useAccountStore((s) => s.accounts);
@@ -68,12 +64,12 @@ function AppInner() {
               </ErrorBoundary>
             }
           />
-          <Route path="settings" element={<LazyPage><SettingsPage /></LazyPage>} />
-          <Route path="plugins" element={<LazyPage><PluginsPage /></LazyPage>} />
-          <Route path="starred" element={<LazyPage><StarredPage /></LazyPage>} />
-          <Route path="calls" element={<LazyPage><CallHistoryPage /></LazyPage>} />
-          <Route path="discovery" element={<LazyPage><DiscoveryPage /></LazyPage>} />
-          <Route path="admin" element={<LazyPage><AdminPage /></LazyPage>} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="plugins" element={<PluginsPage />} />
+          <Route path="starred" element={<StarredPage />} />
+          <Route path="calls" element={<CallHistoryPage />} />
+          <Route path="discovery" element={<DiscoveryPage />} />
+          <Route path="admin" element={<AdminPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

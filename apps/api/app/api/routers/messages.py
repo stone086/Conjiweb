@@ -34,13 +34,13 @@ def require_account_access(account_id: str, actor: dict[str, str | None]) -> Non
 
 
 class MessageCreate(BaseModel):
-    conversation_id: str
-    sender_jid: str
-    receiver_jid: Optional[str]
-    body: str
-    body_type: str = "text"
-    direction: str
-    xmpp_stanza_id: Optional[str]
+    conversation_id: str = Field(..., min_length=1, max_length=64)
+    sender_jid: str = Field(..., min_length=3, max_length=130)
+    receiver_jid: Optional[str] = Field(None, max_length=130)
+    body: str = Field(..., max_length=65536)  # 64KB max — enough for any sane message
+    body_type: str = Field("text", max_length=16)
+    direction: str = Field(..., max_length=16)
+    xmpp_stanza_id: Optional[str] = Field(None, max_length=256)
     metadata_json: Optional[dict] = Field(default_factory=dict)
 
 

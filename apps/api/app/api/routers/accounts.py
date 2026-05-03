@@ -12,9 +12,9 @@ router = APIRouter()
 
 
 class AccountCreate(BaseModel):
-    jid: str
-    domain: str
-    display_name: Optional[str] = None
+    jid: str = Field(..., min_length=3, max_length=130)
+    domain: str = Field(..., min_length=1, max_length=64)
+    display_name: Optional[str] = Field(None, max_length=128)
 
 
 class AccountResponse(BaseModel):
@@ -37,8 +37,8 @@ class AccountPreferenceResponse(BaseModel):
 
 class AccountPreferenceUpdate(BaseModel):
     auto_login: Optional[bool] = None
-    default_presence: Optional[str] = None
-    theme_override: Optional[str] = None
+    default_presence: Optional[str] = Field(None, max_length=16)
+    theme_override: Optional[str] = Field(None, max_length=32)
     notifications_enabled: Optional[bool] = None
     config_json: Optional[dict] = None
 

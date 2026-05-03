@@ -20,15 +20,19 @@ export default function ChatPage() {
     setActiveConversation(conversationId ?? null);
   }, [conversationId, setActiveConversation]);
 
-  // Listen for incoming 1:1 calls
+  // Listen for incoming 1:1 calls (register once on mount, clean up on unmount)
   useEffect(() => {
-    callManager.on("incoming", (session) => setActiveCall(session));
-    callManager.on("ended", (session) => {
-      if (activeCall?.info.id === session.info.id) {
-        setActiveCall(null);
-      }
-    });
-  }, [activeCall]);
+    const onIncoming = (session: JingleSession) => setActiveCall(session);
+    const onEnded = (session: JingleSession) => {
+      setActiveCall((current) => (current?.info.id === session.info.id ? null : current));
+    };
+    const offIncoming = callManager.on("incoming", onIncoming);
+    const offEnded = callManager.on("ended", onEnded);
+    return () => {
+      offIncoming();
+      offEnded();
+    };
+  }, []);
 
   // Listen for group calls
   useEffect(() => {

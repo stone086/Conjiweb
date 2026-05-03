@@ -15,9 +15,14 @@ the external service (Jenkins, GitLab, Sentry, etc).
 
 Authenticated by the random webhook_id token in the URL itself.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
+
+from app.core.rate_limit import limiter
+
+logger = logging.getLogger("conjiweb.webhooks")
 from sqlalchemy import select
 from typing import Optional
 import secrets
@@ -30,8 +35,8 @@ router = APIRouter()
 
 
 class WebhookCreate(BaseModel):
-    name: str
-    conversation_id: str
+    name: str = Field(..., min_length=1, max_length=128)
+    conversation_id: str = Field(..., min_length=1, max_length=64)
 
 
 class WebhookOut(BaseModel):
@@ -43,9 +48,9 @@ class WebhookOut(BaseModel):
 
 
 class WebhookPost(BaseModel):
-    message: str
-    username: Optional[str] = None
-    icon_emoji: Optional[str] = None
+    message: str = Field(..., min_length=1, max_length=4096)
+    username: Optional[str] = Field(None, max_length=64)
+    icon_emoji: Optional[str] = Field(None, max_length=32)
 
 
 @router.post("/webhooks", response_model=WebhookOut, dependencies=[Depends(get_current_admin)])
@@ -97,7 +102,9 @@ async def delete_webhook(webhook_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/webhooks/{webhook_id}/{token}", include_in_schema=False)
+@limiter.limit("60/minute")
 async def trigger_webhook(
+    request: Request,
     webhook_id: str,
     token: str,
     payload: WebhookPost,

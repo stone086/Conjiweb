@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.utils.security import create_access_token
 from app.core.config import settings
 from app.core.rate_limit import limiter
@@ -8,30 +8,33 @@ from app.models import Account, AccountPreference
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-import os
+import asyncio
+import logging
 import re
+import secrets
 import subprocess
 import uuid
 
 router = APIRouter()
+logger = logging.getLogger("conjiweb.auth")
 
-ADMIN_USERNAME = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASS")
+ADMIN_USERNAME = settings.ADMIN_USER
+ADMIN_PASSWORD = settings.ADMIN_PASS or None
 
 
 class AdminLogin(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=256)
 
 
 class RegisterRequest(BaseModel):
-    jid: str
-    password: str
+    jid: str = Field(..., min_length=3, max_length=130)  # localpart(64) + @ + domain(64)
+    password: str = Field(..., min_length=6, max_length=256)
 
 
 class UserTokenRequest(BaseModel):
-    jid: str
-    password: str
+    jid: str = Field(..., min_length=3, max_length=130)
+    password: str = Field(..., min_length=1, max_length=256)
 
 
 @router.get(
@@ -54,10 +57,13 @@ async def auth_config():
 )
 @limiter.limit("5/minute")
 async def admin_login(request: Request, data: AdminLogin):
+    client_host = request.client.host if request.client else "?"
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="ADMIN_PASS is not configured")
-    if data.username != ADMIN_USERNAME or data.password != ADMIN_PASSWORD:
+    if data.username != ADMIN_USERNAME or not secrets.compare_digest(data.password, ADMIN_PASSWORD):
+        logger.warning(f"admin_login_failed username={data.username} client={client_host}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    logger.info(f"admin_login_ok username={data.username} client={client_host}")
     token = create_access_token(data.username)
     return {"access_token": token, "token_type": "bearer"}
 
@@ -113,7 +119,9 @@ async def register_xmpp_account(request: Request, data: RegisterRequest):
     cmd = ["/usr/bin/sudo", "-n", "/usr/bin/prosodyctl", "register", username, domain, data.password]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=False)
+        result = await asyncio.to_thread(
+            subprocess.run, cmd, capture_output=True, text=True, timeout=20, check=False
+        )
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="prosodyctl not found on server")
     except subprocess.TimeoutExpired:
@@ -153,7 +161,9 @@ async def issue_user_token(
     check_password_unsupported = False
     for cmd in verify_cmds:
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+            result = await asyncio.to_thread(
+                subprocess.run, cmd, capture_output=True, text=True, timeout=15, check=False
+            )
         except FileNotFoundError:
             raise HTTPException(status_code=500, detail="prosodyctl not found on server")
         except subprocess.TimeoutExpired:
@@ -174,7 +184,47 @@ async def issue_user_token(
 
     if not verified:
         if check_password_unsupported:
-            verified = True
+            # Prosody version doesn't support "check password" — we CANNOT verify.
+            # Allowing login without password verification would be a critical auth bypass.
+            # Fall back to XMPP SASL authentication instead (async, non-blocking).
+            import base64
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection("127.0.0.1", 5222),
+                    timeout=5,
+                )
+                writer.write(
+                    f"<?xml version='1.0'?><stream:stream to='{domain}' "
+                    f"xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' "
+                    f"version='1.0'>".encode()
+                )
+                await writer.drain()
+                # Read initial stream response (we just need the connection to succeed)
+                await asyncio.wait_for(reader.read(4096), timeout=5)
+                # Send PLAIN auth
+                auth_str = base64.b64encode(f"\x00{username}\x00{password}".encode()).decode()
+                writer.write(
+                    f"<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='PLAIN'>{auth_str}</auth>".encode()
+                )
+                await writer.drain()
+                resp_bytes = await asyncio.wait_for(reader.read(4096), timeout=5)
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                resp = resp_bytes.decode(errors="replace")
+                if "<success" in resp:
+                    verified = True
+                else:
+                    raise HTTPException(status_code=401, detail="Invalid JID or password")
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Password verification unavailable (prosodyctl check password not supported, SASL fallback failed)"
+                )
         else:
             raise HTTPException(status_code=401, detail="Invalid JID or password")
 

@@ -61,15 +61,15 @@ self.addEventListener("push", (event: PushEvent) => {
     data = { title: "New message", body: event.data.text() };
   }
 
-  const title = data.title || "Conjiweb";
+  const title = (data.title || "Conjiweb").slice(0, 100);
   const options: NotificationOptions = {
-    body: data.body || "",
+    body: (data.body || "").slice(0, 500),
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     tag: data.tag || "conjiweb-msg",
     data: {
       conversationId: data.conversationId,
-      url: data.conversationId ? `/chat/${data.conversationId}` : "/",
+      url: data.conversationId ? `/chat/${encodeURIComponent(data.conversationId)}` : "/",
     },
   };
 
@@ -78,7 +78,9 @@ self.addEventListener("push", (event: PushEvent) => {
 
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
-  const url = (event.notification.data as { url?: string })?.url || "/";
+  const rawUrl = (event.notification.data as { url?: string })?.url || "/";
+  // Only allow same-origin paths (not absolute external URLs)
+  const url = rawUrl.startsWith("/") && !rawUrl.startsWith("//") ? rawUrl : "/";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       // If a window is already open, focus it and navigate
@@ -95,8 +97,20 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
   );
 });
 
-// Skip waiting on update
+// Skip waiting on update — only accept messages from same-origin clients
 self.addEventListener("message", (event) => {
+  // Validate the source is one of our own clients (same origin)
+  if (event.source && "url" in event.source) {
+    const sourceUrl = (event.source as Client).url;
+    try {
+      const sourceOrigin = new URL(sourceUrl).origin;
+      if (sourceOrigin !== self.location.origin) {
+        return;
+      }
+    } catch {
+      return;
+    }
+  }
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
   }

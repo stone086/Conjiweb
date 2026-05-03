@@ -44,7 +44,6 @@ class Settings(BaseSettings):
     LDAP_ENABLED: bool = False
     LDAP_SERVER: str = ""
     LDAP_BIND_DN_TEMPLATE: str = "uid={username},ou=People,dc=example,dc=com"
-    LDAP_USER_BASE: str = "ou=People,dc=example,dc=com"
     LDAP_LABEL: str = "Corporate Login"
     AUTO_PROVISION_LDAP: bool = False
 
@@ -52,6 +51,16 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     VAPID_PUBLIC_KEY: str = ""
     VAPID_EMAIL: str = "admin@conjiweb.local"
+
+    # SFU (Selective Forwarding Unit for group calls)
+    SFU_URL: str = ""
+
+    # Admin credentials
+    ADMIN_USER: str = "admin"
+    ADMIN_PASS: str = ""
+
+    # Push shared secret (for server-to-server push triggers)
+    PUSH_SHARED_SECRET: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 

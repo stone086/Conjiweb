@@ -103,7 +103,6 @@ export default function LoginPage() {
         );
 
         localStorage.setItem("token", tokenRes.access_token);
-        console.log("🔥 TOKEN STORED:", id, tokenRes.access_token);
       }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
@@ -280,6 +279,10 @@ export default function LoginPage() {
                   className="input-field pl-9"
                   required
                   autoFocus
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </div>
               {loginDomain && (
@@ -294,7 +297,10 @@ export default function LoginPage() {
                 <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
                 <input type={showPass ? "text" : "password"} value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="********" className="input-field pl-9 pr-10" required />
+                  placeholder="********" className="input-field pl-9 pr-10" required
+                  autoComplete="current-password"
+                  spellCheck={false}
+                />
                 <button type="button" onClick={() => setShowPass(!showPass)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-200/30 hover:text-surface-200">
                   {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -347,6 +353,10 @@ export default function LoginPage() {
                     onChange={(e) => setLdapUser(e.target.value)}
                     className="input-field text-sm"
                     autoFocus
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
                   <input
                     type="password"
@@ -354,6 +364,8 @@ export default function LoginPage() {
                     value={ldapPass}
                     onChange={(e) => setLdapPass(e.target.value)}
                     className="input-field text-sm"
+                    autoComplete="current-password"
+                    spellCheck={false}
                   />
                   <button type="submit" disabled={loading} className="btn-primary text-sm py-2">
                     {t("login.ldapSignIn")}

@@ -2,20 +2,24 @@
 ai.py - AI utility endpoints (summarize, translate, assistant, insight, RAG).
 """
 import json
+import logging
 import re
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
+from app.core.rate_limit import limiter
 from app.models import Conversation, Message
 from app.utils.security import bearer_scheme, decode_token
+
+logger = logging.getLogger("conjiweb.ai")
 
 router = APIRouter()
 
@@ -90,8 +94,8 @@ def _get_ai_actor(
 # Summarize
 # ---------------------------------------------------------------------------
 class SummarizeRequest(BaseModel):
-    messages: List[str]
-    conversation_id: Optional[str] = None
+    messages: List[str] = Field(..., min_length=1, max_length=200)
+    conversation_id: Optional[str] = Field(None, max_length=64)
 
 
 class SummarizeResponse(BaseModel):
@@ -105,9 +109,17 @@ class SummarizeResponse(BaseModel):
     summary="Summarize conversation",
     description="Summarizes conversation messages via configured AI provider.",
 )
-async def summarize_conversation(data: SummarizeRequest):
+@limiter.limit("20/minute")
+async def summarize_conversation(
+    request: Request,
+    data: SummarizeRequest,
+    actor: dict = Depends(_get_ai_actor),
+):
     if not data.messages:
         raise HTTPException(status_code=400, detail="messages is required")
+    # Reject individual messages that are too large (per-element list field)
+    if any(len(m) > 16384 for m in data.messages):
+        raise HTTPException(status_code=413, detail="Message too large (max 16KB per message)")
 
     merged = "\n".join(data.messages[-80:])
     content = await _chat_completion(
@@ -131,7 +143,13 @@ async def summarize_conversation(data: SummarizeRequest):
     summary="Translate text",
     description="Translates a message into the target language via configured AI provider.",
 )
-async def translate_message(text: str, target_lang: str = "en"):
+@limiter.limit("30/minute")
+async def translate_message(
+    request: Request,
+    text: str,
+    target_lang: str = "en",
+    actor: dict = Depends(_get_ai_actor),
+):
     if not text.strip():
         raise HTTPException(status_code=400, detail="text is required")
     translated = await _chat_completion(
@@ -150,7 +168,12 @@ async def translate_message(text: str, target_lang: str = "en"):
     summary="Generate smart replies",
     description="Generates short reply suggestions via configured AI provider.",
 )
-async def smart_reply(message: str):
+@limiter.limit("30/minute")
+async def smart_reply(
+    request: Request,
+    message: str,
+    actor: dict = Depends(_get_ai_actor),
+):
     if not message.strip():
         raise HTTPException(status_code=400, detail="message is required")
     content = await _chat_completion(
@@ -169,10 +192,10 @@ async def smart_reply(message: str):
 # ---------------------------------------------------------------------------
 class AssistantRequest(BaseModel):
     """Request to the AI assistant when @ai is mentioned in a chat."""
-    prompt: str
-    context_messages: List[str] = []
-    conversation_id: Optional[str] = None
-    persona: Optional[str] = None
+    prompt: str = Field(..., min_length=1, max_length=4000)
+    context_messages: List[str] = Field(default_factory=list, max_length=50)
+    conversation_id: Optional[str] = Field(None, max_length=64)
+    persona: Optional[str] = Field(None, max_length=32)
 
 
 class AssistantResponse(BaseModel):
@@ -180,7 +203,12 @@ class AssistantResponse(BaseModel):
 
 
 @router.post("/assistant", response_model=AssistantResponse)
-async def ai_assistant(req: AssistantRequest):
+@limiter.limit("20/minute")
+async def ai_assistant(
+    request: Request,
+    req: AssistantRequest,
+    actor: dict = Depends(_get_ai_actor),
+):
     """Group-chat AI assistant triggered by @ai mention."""
     api_key, base_url, model = _provider_config()
 
@@ -218,7 +246,7 @@ async def ai_assistant(req: AssistantRequest):
 # Conversation insight (sentiment)
 # ---------------------------------------------------------------------------
 class InsightRequest(BaseModel):
-    messages: List[str]
+    messages: List[str] = Field(..., min_length=1, max_length=100)
 
 
 class InsightResponse(BaseModel):
@@ -228,7 +256,12 @@ class InsightResponse(BaseModel):
 
 
 @router.post("/insight", response_model=InsightResponse)
-async def conversation_insight(req: InsightRequest):
+@limiter.limit("20/minute")
+async def conversation_insight(
+    request: Request,
+    req: InsightRequest,
+    actor: dict = Depends(_get_ai_actor),
+):
     """Quick conversation insight - sentiment + suggested action."""
     if not req.messages:
         return InsightResponse(sentiment="neutral", summary="")
@@ -264,9 +297,11 @@ async def conversation_insight(req: InsightRequest):
                 summary=parsed.get("summary", ""),
                 suggested_action=parsed.get("suggested_action"),
             )
-    except (json.JSONDecodeError, KeyError, IndexError):
+    except (json.JSONDecodeError, KeyError, IndexError) as exc:
+        logger.info(f"insight_parse_failed: {type(exc).__name__}: {exc}")
         return InsightResponse(sentiment="neutral", summary="")
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"insight_provider_error: {type(exc).__name__}: {exc}")
         return InsightResponse(sentiment="neutral", summary="")
 
 
@@ -275,9 +310,9 @@ async def conversation_insight(req: InsightRequest):
 # ---------------------------------------------------------------------------
 class RagRequest(BaseModel):
     """Ask a question, AI answers using the caller's own message history."""
-    question: str
-    max_messages: int = 200
-    conversation_ids: List[str] = []
+    question: str = Field(..., min_length=1, max_length=2000)
+    max_messages: int = Field(200, ge=1, le=500)
+    conversation_ids: List[str] = Field(default_factory=list, max_length=50)
 
 
 class RagResponse(BaseModel):
@@ -286,7 +321,9 @@ class RagResponse(BaseModel):
 
 
 @router.post("/rag", response_model=RagResponse)
+@limiter.limit("10/minute")
 async def rag_query(
+    request: Request,
     req: RagRequest,
     actor: dict = Depends(_get_ai_actor),
 ):

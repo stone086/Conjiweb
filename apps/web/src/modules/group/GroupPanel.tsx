@@ -66,42 +66,42 @@ function RoomCard({ room, onInvite }: { room: MucRoom; onInvite: (room: MucRoom)
 
   return (
     <div className={clsx(
-      "glass rounded-xl p-4 flex items-start gap-3 cursor-pointer hover:bg-surface-hover transition-colors",
+      "glass rounded-xl p-4 flex items-start gap-3 cursor-pointer hover:bg-white/4 transition-colors",
       room.joined && "border-accent/20"
     )} onClick={join}>
       <div className="w-10 h-10 rounded-xl bg-surface-800 flex items-center justify-center flex-shrink-0">
-        <Hash size={16} strokeWidth={1.75} className="text-text-3" />
+        <Hash size={16} className="text-surface-200/60" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-surface-50 truncate">{room.name}</p>
         </div>
-        <p className="text-[11.5px] text-text-4 truncate font-mono">{room.jid}</p>
-        {room.subject && <p className="text-[11.5px] text-text-3 mt-1 truncate">{room.subject}</p>}
+        <p className="text-xs text-surface-200/40 truncate">{room.jid}</p>
+        {room.subject && <p className="text-xs text-surface-200/50 mt-1 truncate">{room.subject}</p>}
         {room.memberCount && (
-          <p className="text-[11.5px] text-text-4 mt-0.5 flex items-center gap-1">
-            <Users size={10} strokeWidth={1.75} /> {room.memberCount} {t("group.members")}
+          <p className="text-xs text-surface-200/30 mt-0.5 flex items-center gap-1">
+            <Users size={10} /> {room.memberCount} {t("group.members")}
           </p>
         )}
       </div>
       {room.joined && (
         <div className="flex items-center gap-1 flex-shrink-0">
           <button onClick={(e) => { e.stopPropagation(); onInvite(room); }}
-            className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-primary"
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-accent-soft"
             title={t("group.invite")}>
-            <UserPlus size={13} strokeWidth={1.75} />
+            <UserPlus size={13} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); leave(); }}
-            className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-danger"
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger"
             title={t("group.leave")}>
-            <LogOut size={13} strokeWidth={1.75} />
+            <LogOut size={13} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); removeLocalRoom(); }}
-            className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-danger"
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/30 hover:text-danger"
             title={t("common.remove")}
           >
-            <Trash2 size={13} strokeWidth={1.75} />
+            <Trash2 size={13} />
           </button>
         </div>
       )}
@@ -250,32 +250,32 @@ export default function GroupPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-3 border-b border-border">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
         <h2 className="text-sm font-semibold text-surface-50 flex items-center gap-2">
-          <Users size={14} strokeWidth={1.75} /> {t("group.title")}
+          <Users size={14} /> {t("group.title")}
         </h2>
         <div className="flex gap-1">
           <button onClick={() => { setShowDiscover(!showDiscover); setShowJoin(false); setShowCreate(false); }}
-            className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-text-2"
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200"
             title={t("group.discover")}>
-            <Compass size={14} strokeWidth={1.75} />
+            <Compass size={14} />
           </button>
           <button onClick={() => { setShowJoin(!showJoin); setShowCreate(false); setShowDiscover(false); }}
-            className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-text-2"
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200"
             title={t("group.joinRoom")}>
-            <Hash size={14} strokeWidth={1.75} />
+            <Hash size={14} />
           </button>
           <button onClick={() => { setShowCreate(!showCreate); setShowJoin(false); setShowDiscover(false); }}
-            className="p-1.5 rounded-sm hover:bg-surface-hover text-text-4 hover:text-text-2"
+            className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200"
             title={t("group.createRoom")}>
-            <Plus size={14} strokeWidth={1.75} />
+            <Plus size={14} />
           </button>
         </div>
       </div>
 
       {showDiscover && (
-        <div className="px-3 py-3 border-b border-border flex flex-col gap-2 animate-fade-in">
-          <p className="text-[11.5px] text-text-3 font-medium">{t("group.discoverTitle")}</p>
+        <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.discoverTitle")}</p>
           <div className="flex gap-2">
             <input
               value={discoverServer}
@@ -288,7 +288,7 @@ export default function GroupPanel() {
               disabled={discovering}
               className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
             >
-              <RefreshCw size={12} strokeWidth={1.75} className={clsx(discovering && "animate-spin")} />
+              <RefreshCw size={12} className={clsx(discovering && "animate-spin")} />
               {t("group.discover")}
             </button>
           </div>
@@ -300,12 +300,12 @@ export default function GroupPanel() {
                   <button
                     key={room.jid}
                     onClick={() => joinRoomNow(room.jid, room.name ?? room.jid.split("@")[0], defaultNickname)}
-                    className="w-full flex items-center gap-2 rounded-lg border border-border bg-surface-900 px-2.5 py-2 text-left hover:bg-surface-hover"
+                    className="w-full flex items-center gap-2 rounded-lg border border-white/5 bg-surface-900/50 px-2.5 py-2 text-left hover:bg-white/5"
                   >
-                    <Hash size={13} strokeWidth={1.75} className="text-text-4 flex-shrink-0" />
+                    <Hash size={13} className="text-surface-200/40 flex-shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-xs font-semibold text-surface-50 truncate">{room.name ?? room.jid.split("@")[0]}</span>
-                      <span className="block text-[11px] text-text-4 truncate font-mono">{room.jid}</span>
+                      <span className="block text-[11px] text-surface-200/40 truncate">{room.jid}</span>
                     </span>
                     {existing?.joined && <span className="text-[10px] text-accent-soft flex-shrink-0">{t("group.joined")}</span>}
                   </button>
@@ -317,8 +317,8 @@ export default function GroupPanel() {
       )}
 
       {showJoin && (
-        <div className="px-3 py-3 border-b border-border flex flex-col gap-2 animate-fade-in">
-          <p className="text-[11.5px] text-text-3 font-medium">{t("group.joinRoomTitle")}</p>
+        <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.joinRoomTitle")}</p>
           <input value={joinForm.jid} onChange={(e) => setJoinForm({ ...joinForm, jid: e.target.value })}
             placeholder={t("group.roomJidPlaceholder")}
             className="input-field text-xs py-1.5" />
@@ -333,8 +333,8 @@ export default function GroupPanel() {
       )}
 
       {showCreate && (
-        <div className="px-3 py-3 border-b border-border flex flex-col gap-2 animate-fade-in">
-          <p className="text-[11.5px] text-text-3 font-medium">{t("group.createRoomTitle")}</p>
+        <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.createRoomTitle")}</p>
           <input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
             placeholder={t("group.roomNamePlaceholder")}
             className="input-field text-xs py-1.5" />
@@ -357,8 +357,8 @@ export default function GroupPanel() {
       )}
 
       {inviteRoom && (
-        <div className="px-3 py-3 border-b border-border flex flex-col gap-2 animate-fade-in">
-          <p className="text-[11.5px] text-text-3 font-medium">{t("group.invite")} {inviteRoom.name}</p>
+        <div className="px-3 py-3 border-b border-white/5 flex flex-col gap-2 animate-fade-in">
+          <p className="text-xs text-surface-200/50 font-medium">{t("group.invite")} {inviteRoom.name}</p>
           <input
             value={inviteForm.jid}
             onChange={(e) => setInviteForm((prev) => ({ ...prev, jid: e.target.value }))}
@@ -388,7 +388,7 @@ export default function GroupPanel() {
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
         {rooms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 gap-2 text-text-4">
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-surface-200/30">
             <Hash size={20} />
             <span className="text-xs">{t("group.empty")}</span>
           </div>

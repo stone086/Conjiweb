@@ -37,7 +37,7 @@ class ApiSocketClient {
     if (this.ws?.readyState === WebSocket.OPEN) return;
     this.accountId = accountId;
 
-    const token = getUserToken(accountId) ?? localStorage.getItem("admin_token") ?? "";
+    const token = getUserToken(accountId) ?? sessionStorage.getItem("admin_token") ?? "";
     const wsBase = (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
       .replace(/^https/, "wss")
       .replace(/^http/, "ws");

@@ -1,7 +1,12 @@
+import logging
+import sys
+import time
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -31,11 +36,25 @@ from app.core.version import get_app_version
 from app.utils.security import get_current_admin
 
 
+# ---------------------------------------------------------------------------
+# Logging setup — structured logs to stderr (systemd journal will pick up)
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s | %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("conjiweb")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info(f"Conjiweb API starting (version {get_app_version()})")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    logger.info("Conjiweb API shutting down")
     await engine.dispose()
 
 
@@ -67,9 +86,45 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """Attach a request ID, log timing, and catch unhandled exceptions."""
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    request.state.request_id = request_id
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.error(
+            f"request_failed id={request_id} method={request.method} path={request.url.path} "
+            f"error={type(exc).__name__}: {exc} elapsed_ms={elapsed_ms:.1f}",
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "request_id": request_id},
+            headers={"X-Request-ID": request_id},
+        )
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Request-ID"] = request_id
+    # Only log slow requests or errors at INFO; debug for normal traffic
+    if response.status_code >= 500 or elapsed_ms > 1000:
+        logger.warning(
+            f"slow_or_error id={request_id} method={request.method} path={request.url.path} "
+            f"status={response.status_code} elapsed_ms={elapsed_ms:.1f}"
+        )
+    elif response.status_code >= 400:
+        logger.info(
+            f"request_4xx id={request_id} method={request.method} path={request.url.path} "
+            f"status={response.status_code} elapsed_ms={elapsed_ms:.1f}"
+        )
+    return response
 
 admin_dep = [Depends(get_current_admin)]
 
@@ -81,7 +136,7 @@ app.include_router(attachments.router, prefix="/attachments", tags=["attachments
 app.include_router(calls.router, tags=["calls"])
 app.include_router(messages.router, prefix="/messages", tags=["messages"])
 app.include_router(plugins.router, prefix="/plugins", tags=["plugins"])
-app.include_router(ai.router, prefix="/ai", tags=["ai"], dependencies=admin_dep)
+app.include_router(ai.router, prefix="/ai", tags=["ai"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"], dependencies=admin_dep)
 app.include_router(push.router, tags=["push"])
 app.include_router(webhooks.router, tags=["webhooks"])

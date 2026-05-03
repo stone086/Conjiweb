@@ -1,19 +1,36 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-sqlalchemy[asyncio]==2.0.30
-asyncpg==0.29.0
-alembic==1.13.1
-pydantic==2.7.1
-pydantic-settings==2.3.0
-redis==5.0.4
-minio==7.2.7
-python-multipart==0.0.9
-python-jose[cryptography]==3.3.0
+# Core framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Validation
+pydantic==2.9.2
+pydantic-settings==2.6.0
+
+# Auth & security (python-jose 3.4.0+ fixes CVE-2024-33663 and CVE-2024-33664)
+python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
-httpx==0.27.0
-aiofiles==23.2.1
-Pillow==10.3.0
+
+# python-multipart 0.0.18+ fixes CVE-2024-24762
+python-multipart==0.0.18
+
+# Storage & caching
+redis==5.2.0
+minio==7.2.10
+
+# Networking & file handling
+httpx==0.27.2
+aiofiles==24.1.0
+Pillow==11.0.0
+
+# Background tasks
 celery==5.4.0
+
+# Rate limiting & security utilities
 slowapi==0.1.9
 python-magic==0.4.27
 pywebpush==2.0.0

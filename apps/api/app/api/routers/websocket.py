@@ -70,16 +70,30 @@ async def websocket_endpoint(ws: WebSocket, account_id: str):
         await ws.close(code=4001, reason="Invalid or expired token")
         return
 
+    # Limit concurrent connections per account (prevent resource exhaustion)
+    MAX_CONNECTIONS_PER_ACCOUNT = 10
+    existing = manager.connections.get(account_id, set())
+    if len(existing) >= MAX_CONNECTIONS_PER_ACCOUNT:
+        await ws.close(code=4008, reason="Too many connections")
+        return
+
     await manager.connect(ws, account_id)
+    consecutive_timeouts = 0
+    MAX_IDLE_TIMEOUTS = 6  # 6 * 30s = 3 minutes idle → disconnect
     try:
         await ws.send_json({"type": "connected", "account_id": account_id})
         while True:
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=30)
+                consecutive_timeouts = 0
                 msg = json.loads(data)
                 if msg.get("type") == "ping":
                     await ws.send_json({"type": "pong"})
             except asyncio.TimeoutError:
+                consecutive_timeouts += 1
+                if consecutive_timeouts >= MAX_IDLE_TIMEOUTS:
+                    await ws.close(code=4009, reason="Idle timeout")
+                    break
                 await ws.send_json({"type": "ping"})
             except Exception:
                 break

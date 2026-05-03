@@ -73,6 +73,7 @@ usage() {
   echo ""
   echo "Ops:"
   echo "  backup          Run backup now"
+  echo "  backup-restore  Restore database from backup file"
   echo "  update          Recommended: incremental update (pull + api + frontend)"
   echo "  update-front    Update frontend only"
   echo "  update-api      Update API only"
@@ -329,18 +330,111 @@ cmd_ports() {
 
 cmd_backup_verify() {
   local latest
-  latest="$(ls -1t /root/backups/db_*.sql.gz 2>/dev/null | head -n1 || true)"
+  local key_file="${BACKUP_ENCRYPTION_KEY_FILE:-/root/.conjiweb-backup.key}"
+  latest="$(ls -1t /root/backups/db_*.sql.gz.enc 2>/dev/null | head -n1 || true)"
   if [[ -z "${latest}" ]]; then
-    echo "No backup archive found under /root/backups"
-    exit 1
+    # Fall back to legacy non-encrypted format
+    latest="$(ls -1t /root/backups/db_*.sql.gz 2>/dev/null | head -n1 || true)"
+    if [[ -z "${latest}" ]]; then
+      echo "No backup archive found under /root/backups"
+      exit 1
+    fi
+    echo "Verifying (legacy): ${latest}"
+    if gzip -t "${latest}"; then
+      echo "Backup archive is valid"
+    else
+      echo "Backup archive is corrupted"
+      exit 1
+    fi
+    return
   fi
   echo "Verifying: ${latest}"
-  if gzip -t "${latest}"; then
-    echo "Backup archive is valid"
-  else
-    echo "Backup archive is corrupted"
+  if [[ ! -f "${key_file}" ]]; then
+    echo "Encryption key file not found: ${key_file}"
     exit 1
   fi
+  if openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+                 -pass file:"${key_file}" \
+                 -in "${latest}" 2>/dev/null | gzip -t; then
+    echo "Encrypted backup archive is valid"
+  else
+    echo "Backup archive is corrupted or wrong key"
+    exit 1
+  fi
+}
+
+cmd_backup_restore() {
+  local backup_file="${2:-}"
+  local key_file="${BACKUP_ENCRYPTION_KEY_FILE:-/root/.conjiweb-backup.key}"
+
+  if [[ -z "${backup_file}" ]]; then
+    echo "Usage: $0 backup-restore <path-to-backup-file>"
+    echo "Available backups:"
+    ls -lh /root/backups/db_*.sql.gz* 2>/dev/null | awk '{print "  " $9 "  (" $5 ", " $6 " " $7 " " $8 ")"}' || true
+    exit 1
+  fi
+
+  if [[ ! -f "${backup_file}" ]]; then
+    echo "Backup file not found: ${backup_file}"
+    exit 1
+  fi
+
+  load_env
+  local DB_NAME="${APP_USER:-conjiweb}"
+
+  echo "WARNING: This will REPLACE the current database '${DB_NAME}'."
+  echo "All current data will be lost."
+  read -r -p "Type 'restore' to confirm: " confirm
+  if [[ "${confirm}" != "restore" ]]; then
+    echo "Aborted"
+    exit 1
+  fi
+
+  # Stop API to prevent writes during restore
+  systemctl stop conjiweb-api
+
+  local tmp_sql
+  tmp_sql=$(mktemp --suffix=.sql)
+  trap "rm -f '${tmp_sql}'" EXIT
+
+  # Decrypt if .enc, otherwise just decompress
+  if [[ "${backup_file}" == *.enc ]]; then
+    if [[ ! -f "${key_file}" ]]; then
+      echo "Encryption key not found: ${key_file}"
+      systemctl start conjiweb-api
+      exit 1
+    fi
+    if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+                     -pass file:"${key_file}" \
+                     -in "${backup_file}" | gunzip > "${tmp_sql}"; then
+      echo "Decrypt failed"
+      systemctl start conjiweb-api
+      exit 1
+    fi
+  else
+    if ! gunzip -c "${backup_file}" > "${tmp_sql}"; then
+      echo "Decompress failed"
+      systemctl start conjiweb-api
+      exit 1
+    fi
+  fi
+
+  # Drop and recreate the DB
+  echo "Dropping and recreating database ${DB_NAME}..."
+  sudo -u postgres dropdb --if-exists "${DB_NAME}"
+  sudo -u postgres createdb -O "${DB_NAME}" "${DB_NAME}"
+
+  echo "Restoring from backup..."
+  if sudo -u postgres psql "${DB_NAME}" < "${tmp_sql}" >/dev/null; then
+    echo "Restore complete"
+  else
+    echo "Restore failed — database may be in inconsistent state!"
+    systemctl start conjiweb-api
+    exit 1
+  fi
+
+  systemctl start conjiweb-api
+  echo "API restarted"
 }
 
 cmd_env_check() {
@@ -384,6 +478,7 @@ case "${1:-}" in
   list-users)      cmd_list_users ;;
   change-pass)     cmd_change_pass ;;
   backup)          /usr/local/bin/conjiweb-backup.sh ;;
+  backup-restore)  cmd_backup_restore "$@" ;;
   update)          cmd_update_all ;;
   update-front)    cmd_update_front ;;
   update-api)      cmd_update_api ;;

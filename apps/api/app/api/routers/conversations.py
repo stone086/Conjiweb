@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.core.database import get_db
 from app.models import Conversation, Message
@@ -11,11 +11,11 @@ router = APIRouter()
 
 
 class ConversationCreate(BaseModel):
-    account_id: str
-    type: str  # private/group/system
-    peer_jid: str
-    title: Optional[str] = None
-    avatar_url: Optional[str] = None
+    account_id: str = Field(..., min_length=1, max_length=64)
+    type: str = Field(..., max_length=16)  # private/group/system
+    peer_jid: str = Field(..., min_length=3, max_length=130)
+    title: Optional[str] = Field(None, max_length=256)
+    avatar_url: Optional[str] = Field(None, max_length=2048)
 
 
 class ConversationResponse(BaseModel):

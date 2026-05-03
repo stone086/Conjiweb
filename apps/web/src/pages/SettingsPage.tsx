@@ -495,9 +495,11 @@ export default function SettingsPage() {
             <div className="glass rounded-xl p-4 mb-3 flex flex-col gap-3 animate-fade-in">
               <h3 className="text-sm font-medium text-surface-50">{t("settings.addNewAccount")}</h3>
               <input className="input-field text-sm" placeholder="user@xmpp.example.com"
-                value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })} />
+                value={form.jid} onChange={(e) => setForm({ ...form, jid: e.target.value })}
+                autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
               <input className="input-field text-sm" type="password" placeholder={t("settings.password")}
-                value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
+                autoComplete="new-password" spellCheck={false} />
               <input className="input-field text-sm" placeholder={t("settings.wsOptional")}
                 value={form.wsUrl} onChange={(e) => setForm({ ...form, wsUrl: e.target.value })} />
               <div className="flex gap-2">

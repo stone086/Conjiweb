@@ -104,7 +104,7 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
               {t("omemo.trustTitle")}: {peerJid.split("@")[0]}
             </h2>
           </div>
-          <button onClick={onClose} className="text-surface-200/40 hover:text-surface-50">
+          <button onClick={onClose} className="text-surface-200/40 hover:text-surface-50" aria-label="Close">
             <X size={16} />
           </button>
         </div>

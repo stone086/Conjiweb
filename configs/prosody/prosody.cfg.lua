@@ -42,7 +42,7 @@ modules_disabled = {}
 allow_registration = false
 c2s_require_encryption = true
 s2s_require_encryption = true
-s2s_secure_auth = false
+s2s_secure_auth = true  -- Verify remote server TLS certificates
 authentication = "internal_hashed"
 storage = "internal"
 

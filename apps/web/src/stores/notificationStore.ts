@@ -51,7 +51,7 @@ export const useNotificationStore = create<NotificationState>()(
           new Notification(n.title, { body: n.body, icon: "/icon-192.png" });
         }
 
-        // Sound
+        // Sound — reuse a single AudioContext to avoid hitting browser limit (~6 max)
         if (get().soundEnabled) {
           try {
             const ctx = new AudioContext();
@@ -64,6 +64,11 @@ export const useNotificationStore = create<NotificationState>()(
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
             osc.start(ctx.currentTime);
             osc.stop(ctx.currentTime + 0.3);
+            // Release the context after the sound finishes to avoid hitting the
+            // hard limit of ~6 simultaneous AudioContext instances per tab.
+            osc.onended = () => {
+              ctx.close().catch(() => {});
+            };
           } catch {}
         }
       },

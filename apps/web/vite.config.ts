@@ -88,6 +88,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: "127.0.0.1",  // Never bind to 0.0.0.0 — prevents CVE-2025-30208 / CVE-2025-32395 exposure
+    strictPort: false,
+    fs: {
+      strict: true,  // Only serve files inside project root
+    },
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
     },
@@ -98,21 +103,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
-          if (
-            id.includes("/react/")
-            || id.includes("/react-dom/")
-            || id.includes("scheduler")
-          ) return "react-vendor";
-          if (
-            id.includes("react-router")
-          ) return "router";
-          if (
-            id.includes("@tanstack/react-query")
-            || id.includes("axios")
-          ) return "query-net";
           if (id.includes("strophe.js") || id.includes("@converse/headless")) return "xmpp";
-          if (id.includes("@privacyresearch/libsignal-protocol-typescript")) return "crypto";
-          if (id.includes("lucide-react")) return "icons";
           if (id.includes("emoji-picker-react") || id.includes("react-dropzone")) return "rich-input";
           if (id.includes("dexie")) return "dexie";
           return undefined;

@@ -72,7 +72,12 @@ async def upload_file(
 ):
     ensure_bucket()
     file_id = str(uuid.uuid4())
-    ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
+    # Sanitize filename: strip path components, limit characters
+    raw_name = file.filename or "unnamed"
+    safe_name = raw_name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]  # strip path
+    safe_name = "".join(c for c in safe_name if c.isalnum() or c in "._- ").strip()
+    safe_name = safe_name[:200] or "file"
+    ext = safe_name.rsplit(".", 1)[-1] if "." in safe_name else "bin"
     object_key = f"uploads/{file_id}.{ext}"
 
     content = await file.read()
@@ -104,7 +109,7 @@ async def upload_file(
         id=file_id,
         message_id=message_id,
         object_key=object_key,
-        file_name=file.filename,
+        file_name=safe_name,
         mime_type=detected_mime,
         size_bytes=size,
         download_url=download_url,
@@ -116,7 +121,7 @@ async def upload_file(
         id=file_id,
         object_key=object_key,
         download_url=download_url,
-        file_name=file.filename,
+        file_name=safe_name,
         mime_type=detected_mime,
         size_bytes=size,
     )

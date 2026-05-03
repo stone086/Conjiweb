@@ -37,16 +37,17 @@ export default function DiscoveryPage() {
   const handleJoinGroup = (group: PublicGroup) => {
     if (!activeAccountId) return;
     // Create a group conversation entry so user can start chatting
-    useChatStore.getState().upsertConversation({
+    useChatStore.getState().addOrUpdateConversation({
       id: `group-${group.jid}`,
       accountId: activeAccountId,
       type: "group",
       peerJid: group.jid,
       title: group.name,
       unreadCount: 0,
-      lastMessage: "",
+      lastMessageBody: "",
       lastMessageAt: Date.now(),
       pinned: false,
+      archived: false,
     });
     toast.success(`Joined ${group.name}`);
   };

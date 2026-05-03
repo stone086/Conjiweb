@@ -123,6 +123,8 @@ export default function GroupCallView({ groupCall, onClose, onAddParticipant }: 
         <button
           onClick={handleHangup}
           className="w-16 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-colors"
+          aria-label={t("call.hangup")}
+          title={t("call.hangup")}
         >
           <PhoneOff size={22} />
         </button>

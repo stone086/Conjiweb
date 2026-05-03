@@ -53,17 +53,17 @@ export default function ConversationList() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-3">{t("conv.title")}</h2>
-        <span className="text-[10.5px] text-text-4 [font-variant-numeric:tabular-nums]">{filtered.length}</span>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <h2 className="text-sm font-semibold text-surface-50">{t("conv.title")}</h2>
+        <span className="text-xs text-surface-200/40">{filtered.length}</span>
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto py-1">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-text-4">
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-surface-200/30">
             <MessageSquare size={24} />
-            <span className="text-[12.5px]">{t("conv.empty")}</span>
+            <span className="text-xs">{t("conv.empty")}</span>
           </div>
         ) : (
           filtered.map((conv) => {
@@ -73,10 +73,10 @@ export default function ConversationList() {
               key={conv.id}
               onClick={() => handleSelect(conv.id)}
               className={clsx(
-                "group w-full flex items-center gap-3 px-[10px] py-[10px] transition-all duration-100 text-left rounded-lg",
+                "group w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-100 text-left",
                 conversationId === conv.id
-                  ? "conversation-item-active"
-                  : "hover:bg-surface-hover"
+                  ? "bg-accent/10 border-r-2 border-accent"
+                  : "hover:bg-white/4"
               )}
             >
               <Avatar name={conv.title ?? conv.peerJid ?? "?"} size="sm" presence={presence as any} />
@@ -84,11 +84,11 @@ export default function ConversationList() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <span className="text-[13.5px] font-semibold text-text truncate">
+                  <span className="text-sm font-medium text-surface-50 truncate">
                     {conv.title ?? conv.peerJid}
                   </span>
                   {conv.lastMessageAt && (
-                    <span className="text-[10.5px] text-text-4 flex-shrink-0 ml-1 [font-variant-numeric:tabular-nums]">
+                    <span className="text-[10px] text-surface-200/40 flex-shrink-0 ml-1">
                       {formatDistanceToNow(conv.lastMessageAt, {
                         addSuffix: false,
                         locale: lang === "zh-CN" ? zhCN : undefined,
@@ -97,7 +97,7 @@ export default function ConversationList() {
                   )}
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
-                  <span className="text-[12.5px] text-text-3 truncate">
+                  <span className="text-xs text-surface-200/50 truncate">
                     {composerDrafts[conv.id]
                       ? `${t("conv.draft")} ${composerDrafts[conv.id]}`
                       : (conv.lastMessage ?? t("conv.noMessages"))}
@@ -114,10 +114,10 @@ export default function ConversationList() {
                   e.stopPropagation();
                   handleDelete(conv.id);
                 }}
-                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-sm hover:bg-surface-active text-text-4 hover:text-danger flex-shrink-0"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
                 title={t("conv.deleteConversation")}
               >
-                <Trash2 size={13} strokeWidth={1.75} />
+                <Trash2 size={13} />
               </div>
             </button>
             );

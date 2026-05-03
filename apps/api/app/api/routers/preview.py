@@ -10,6 +10,7 @@ Cached in Redis for 1 hour to avoid hammering target sites.
 """
 import re
 import asyncio
+import time
 from urllib.parse import urlparse
 from typing import Optional
 
@@ -34,10 +35,28 @@ class LinkPreview(BaseModel):
 # In-process cache as a fallback if Redis is unavailable
 _local_cache: dict[str, tuple[float, LinkPreview]] = {}
 _CACHE_TTL = 3600.0  # 1 hour
+_CACHE_MAX_ENTRIES = 1000  # Bound memory usage
 
 
-def _looks_safe(url: str) -> bool:
-    """Reject internal/loopback URLs to prevent SSRF."""
+def _local_cache_set(url: str, expires_at: float, preview: LinkPreview) -> None:
+    """Set cache entry; if over size limit, evict expired then oldest entries."""
+    now = time.time()
+    if len(_local_cache) >= _CACHE_MAX_ENTRIES:
+        # First, drop expired entries
+        expired = [k for k, (exp, _) in _local_cache.items() if exp <= now]
+        for k in expired:
+            _local_cache.pop(k, None)
+        # If still over limit, drop oldest (lowest expiry)
+        if len(_local_cache) >= _CACHE_MAX_ENTRIES:
+            sorted_items = sorted(_local_cache.items(), key=lambda kv: kv[1][0])
+            for k, _ in sorted_items[: len(_local_cache) - _CACHE_MAX_ENTRIES + 1]:
+                _local_cache.pop(k, None)
+    _local_cache[url] = (expires_at, preview)
+
+
+async def _looks_safe(url: str) -> bool:
+    """Reject internal/loopback URLs to prevent SSRF (including DNS rebinding)."""
+    import ipaddress
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
@@ -45,16 +64,23 @@ def _looks_safe(url: str) -> bool:
         host = (parsed.hostname or "").lower()
         if not host:
             return False
-        # Block private IP ranges and localhost
+        # Block obvious private hostnames
         if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
             return False
         if host.endswith(".local") or host.endswith(".internal"):
             return False
-        # Block link-local and private IPv4
-        for prefix in ("10.", "192.168.", "169.254.", "172."):
-            if host.startswith(prefix):
-                # 172.16-31.* is private, but a quick crude check is fine here
-                return False
+        # Resolve hostname (non-blocking) and check the actual IP address
+        # This blocks DNS rebinding attacks where a public hostname
+        # resolves to a private IP
+        try:
+            loop = asyncio.get_event_loop()
+            infos = await loop.getaddrinfo(host, None, type=1)  # SOCK_STREAM=1
+            for family, _, _, _, sockaddr in infos:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    return False
+        except Exception:
+            return False  # Cannot resolve → reject
         return True
     except Exception:
         return False
@@ -87,7 +113,7 @@ async def link_preview(url: str = Query(..., min_length=1, max_length=2000)):
     """
     Fetch a URL and return Open Graph metadata for rendering a preview card.
     """
-    if not _looks_safe(url):
+    if not await _looks_safe(url):
         raise HTTPException(400, "URL not allowed")
 
     import time
@@ -154,7 +180,7 @@ async def link_preview(url: str = Query(..., min_length=1, max_length=2000)):
         raise HTTPException(502, f"Fetch failed: {e}")
 
     # Store in caches
-    _local_cache[url] = (now + _CACHE_TTL, preview)
+    _local_cache_set(url, now + _CACHE_TTL, preview)
     if redis_client:
         try:
             import json

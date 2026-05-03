@@ -5,9 +5,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Minimum permissions
+permissions:
+  contents: read
+
+# Only one deploy at a time; cancel any in-progress run when a new commit lands
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production  # Optional: enable required reviewers in repo settings
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -18,14 +29,17 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # Add port if non-default; fingerprint pinning recommended:
+          # fingerprint: ${{ secrets.VPS_SSH_FINGERPRINT }}
+          command_timeout: 10m
           script: |
-            set -e
+            set -euo pipefail
             if [ -f /opt/conjiweb-src/manage.sh ]; then
               cd /opt/conjiweb-src
             elif [ -f /opt/conjiweb-src/web_Conji_native/manage.sh ]; then
               cd /opt/conjiweb-src/web_Conji_native
             else
-              echo "manage.sh not found under /opt/conjiweb-src"
+              echo "manage.sh not found under /opt/conjiweb-src" >&2
               exit 1
             fi
             bash manage.sh update

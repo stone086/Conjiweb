@@ -32,10 +32,17 @@ export class GroupCall {
     public readonly mediaTypes: CallMediaType[]
   ) {}
 
-  on(event: "participant.joined" | "participant.left" | "participant.state", fn: (data: any) => void) {
+  on(event: "participant.joined" | "participant.left" | "participant.state", fn: (data: any) => void): () => void {
     const arr = this.listeners.get(event) ?? [];
     arr.push(fn);
     this.listeners.set(event, arr);
+    return () => this.off(event, fn);
+  }
+
+  off(event: "participant.joined" | "participant.left" | "participant.state", fn: (data: any) => void) {
+    const arr = this.listeners.get(event);
+    if (!arr) return;
+    this.listeners.set(event, arr.filter(l => l !== fn));
   }
 
   private emit(event: string, data: any) {

@@ -1,5 +1,137 @@
 # Changelog
 
+## [1.6.0] - 2026-05-02 — Hardening, observability, and resource hygiene
+
+A large multi-pass review pass covering security, performance, dependencies,
+observability, accessibility, UX, and resource management.
+
+### Security — Authentication & Authorization
+- Critical: fixed auth bypass when `prosodyctl check password` is unsupported —
+  now falls back to async XMPP SASL PLAIN bind instead of silently allowing login
+- Admin password comparison now uses `secrets.compare_digest` (timing attack hardening)
+- OIDC `id_token` signature now verified via JWKS (python-jose), not just userinfo
+- OIDC callback uses one-time code exchange via Redis (token no longer in URL fragment)
+- LDAP login + SSO exchange + AI endpoints + webhook trigger all rate-limited
+- Webhook inbound: rate limited 60/min, payload limited
+- SSO `_ensure_account` looks up by `(provider, provider_sub)` first, falls back to JID,
+  preventing duplicate accounts when display name changes
+- `SsoIdentity` model now has `UniqueConstraint(provider, provider_sub)` matching migration
+- Filename sanitization on attachment uploads (path stripping + char allowlist)
+- Admin token storage moved from `localStorage` to `sessionStorage` (XSS exposure window cut)
+
+### Security — Network & Transport
+- SSRF DNS rebinding fix: preview endpoint resolves hostnames and validates the
+  returned IP via `ipaddress.ip_address` (private/loopback/link-local/reserved blocked)
+- Strict TLS ciphers, `ssl_session_tickets off`, ssl_prefer_server_ciphers
+- Added `Permissions-Policy`, `Cross-Origin-Opener-Policy` headers
+- CSP: added `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'self'`
+- API docs (`/api/docs`, `/redoc`, `/openapi.json`) restricted to localhost in nginx
+- Prosody `s2s_secure_auth = true` (verifies federation peer certificates)
+- Service Worker validates `event.source` is same-origin before `skipWaiting`
+- Service Worker notification click only allows same-origin paths (no open-redirect)
+- Service Worker push body length capped (title 100, body 500) to prevent OOM
+
+### Security — Inputs & DoS
+- All Pydantic request models now have `Field(min_length, max_length)` constraints
+  on every string field (auth, sso, messages, ai, webhooks, accounts, contacts,
+  conversations) — prevents memory-DoS via giant request bodies
+- Per-element list validation in AI summarize endpoint
+- Frontend message textarea has `maxLength={10000}`
+- WebSocket: max 10 connections per account, 3-minute idle disconnect
+
+### Security — Dependencies & CVEs
+- Backend: python-jose 3.3.0 → 3.4.0 (CVE-2024-33663, CVE-2024-33664)
+- Backend: python-multipart 0.0.9 → 0.0.18 (CVE-2024-24762)
+- Backend: bumped fastapi/sqlalchemy/pydantic/asyncpg/alembic/pillow to current stable
+- Frontend: vite 5.2.13 → 5.4.18 (CVE-2024-45812, CVE-2025-30208, CVE-2025-31125, CVE-2025-32395)
+- Frontend: bumped axios, react-router-dom, dexie, lucide-react to current stable
+- Vite dev server pinned to `host: "127.0.0.1"`, `fs.strict: true`
+
+### Performance
+- Async event loop unblocked in 5 places: `subprocess.run`, `socket.create_connection`,
+  `socket.getaddrinfo`, `ldap3.Connection.auto_bind` all wrapped in `asyncio.to_thread`
+  or replaced with `asyncio.open_connection` / `loop.getaddrinfo`
+- Database: 8 new indexes (alembic 0006_perf_indexes), including composite indexes
+  `(account_id, type)` on conversations and `(conversation_id, created_at)` on messages
+- preview link cache: bounded to 1000 entries with LRU-style eviction
+- AI endpoints: rate-limited (10–30/min by endpoint type)
+
+### Observability
+- Structured logging configured in `app.main` (logs to stderr → systemd journal)
+- Per-module loggers: `conjiweb.auth`, `conjiweb.sso`, `conjiweb.ai`, `conjiweb.push`, `conjiweb.webhooks`
+- Request-ID middleware: generates `X-Request-ID`, echoes in response headers,
+  logs slow requests (>1s) and 4xx/5xx with timing
+- Global exception middleware catches unhandled errors, returns JSON with request_id
+- Auth audit logging: `admin_login_failed`, `admin_login_ok`, `ldap_auth_failed` (with client IP)
+- Push notification failures and AI provider errors no longer silently swallowed
+
+### Resource hygiene
+- Fixed AudioContext leak in notificationStore (was leaking 6/tab → silent notifications)
+- Fixed MediaStream leak in jingle screen-share (camera light staying on)
+- Fixed ChatPage `useEffect` listener accumulation (incoming-call listeners doubled per call)
+- `JingleSession.on()`, `CallManager.on()`, `GroupCall.on()`, `GroupCallManager.on()`
+  now return unsubscribe functions; matching `off()` methods added
+- preview link cache: bounded growth (was unlimited memory leak)
+
+### Infrastructure
+- Both Dockerfiles rewritten as multi-stage with non-root users + HEALTHCHECK
+- Added `.dockerignore` to API and web (prevents `.env` and `.git` leaking into images)
+- systemd service hardened with 17 sandboxing directives
+  (`NoNewPrivileges`, `ProtectKernel*`, `MemoryDenyWriteExecute`, `SystemCallFilter`, etc.)
+- Backup script: AES-256 encryption with PBKDF2 100k iterations
+- Backup script: pre-flight disk check, alert email on remote sync failure
+- New `manage.sh backup-restore` command for encrypted backup recovery
+- `manage.sh backup-verify` fixed to handle encrypted format
+- install.sh auto-installs `libldap2-dev libsasl2-dev` when LDAP enabled
+
+### CI / CD
+- CI: ShellCheck, `tsc --noEmit` typecheck, `npm audit`, `pip-audit`, CodeQL scans
+- CI: minimum permissions (`contents: read`)
+- Deploy: concurrency control, `environment: production` for required reviewers,
+  `command_timeout` to prevent SSH hangs
+
+### Code quality
+- Removed UTF-8 BOM from 18 source files
+- Converted CRLF to LF in 13 files
+- Removed `console.log("TOKEN STORED:", token)` (admin JWT was leaking to browser console)
+- Demoted other `console.log` to `console.debug`
+- AST-scanned all Python for blocking-IO-in-async; all clean
+- Removed dead OMEMO code (omemo2/, core/omemo/, adapters/) — production runs only
+  `services/omemo/` + `services/e2ee.ts` with libsignal + legacy `axolotl` namespace fallback
+
+### Accessibility & UX
+- All password inputs: `autoComplete="current-password|new-password"`, `spellCheck={false}`
+  — prevents Chrome enhanced-spellcheck from uploading passwords to cloud
+- All username/JID inputs: `autoCapitalize="none"`, `autoCorrect="off"`
+- Icon-only call/close buttons: added `aria-label` and `title`
+- Replaced native `alert()` in GlobalSearch RAG with `react-hot-toast` (loading + success + error)
+- Added i18n keys for new UX strings (English + Chinese)
+
+### Test coverage
+- New tests: `test_ai.py`, `test_webhooks.py`, `test_metrics.py`
+- SSO tests expanded: code exchange, JID collision, sanitizer, provider labels
+
+### Privacy
+- README: removed Windows path leak `/C:/Users/Stone/Documents/...`
+- README: version bumped to current
+
+### Configuration
+- All SSO/LDAP/VAPID/PUSH config moved to pydantic Settings (zero `os.getenv` in routers)
+- `.env.example` documents all 30+ Settings fields with usage hints
+- Removed unused `LDAP_USER_BASE` field
+
+### Frontend feature wiring
+- Discovery page (`/discovery`) with public group directory + server health
+- Meta-contacts UI: "Merge contact" button in RightPanel
+- RAG "Ask AI" button in GlobalSearch
+- GroupCallView fully integrated into ChatPage with event-driven lifecycle
+
+### Database
+- New table `sso_identities` (alembic 0005) with `(provider, provider_sub)` unique constraint
+- 8 new indexes (alembic 0006) for high-traffic FK columns and common composite filters
+
+---
+
 ## [1.5.1] - 2026-05-01 — Security hardening + code quality
 
 ### Fixed (P0 — runtime errors)

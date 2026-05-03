@@ -24,7 +24,7 @@ function StatCard({ icon: Icon, label, value, color = "text-surface-50" }: {
 
 export default function AdminPage() {
   const { t } = useLanguage();
-  const [authed, setAuthed] = useState(!!localStorage.getItem("admin_token"));
+  const [authed, setAuthed] = useState(!!sessionStorage.getItem("admin_token"));
   const [creds, setCreds] = useState({ username: "", password: "" });
 
   const { data: status } = useQuery({
@@ -50,7 +50,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       const res = await adminApi.login(creds.username, creds.password);
-      localStorage.setItem("admin_token", res.access_token);
+      sessionStorage.setItem("admin_token", res.access_token);
       setAuthed(true);
       toast.success(t("admin.loginGranted"));
     } catch {
@@ -89,6 +89,8 @@ export default function AdminPage() {
                 placeholder={t("admin.password")}
                 value={creds.password}
                 onChange={(e) => setCreds({ ...creds, password: e.target.value })}
+                autoComplete="current-password"
+                spellCheck={false}
               />
               <button type="submit" className="btn-primary flex items-center justify-center gap-2">
                 <Shield size={14} /> {t("admin.login")}
@@ -177,7 +179,7 @@ export default function AdminPage() {
         </section>
 
         <button
-          onClick={() => { localStorage.removeItem("admin_token"); setAuthed(false); }}
+          onClick={() => { sessionStorage.removeItem("admin_token"); setAuthed(false); }}
           className="btn-ghost text-xs text-danger self-start flex items-center gap-1.5"
         >
           <Shield size={12} /> {t("admin.logout")}

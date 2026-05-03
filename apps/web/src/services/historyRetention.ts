@@ -21,7 +21,7 @@ export function setStoredHistoryRetentionDays(days: number) {
 
 export async function clearAllHistoryNow() {
   const accounts = useAccountStore.getState().accounts;
-  const hasAdminToken = !!localStorage.getItem("admin_token");
+  const hasAdminToken = !!sessionStorage.getItem("admin_token");
   if (accounts.length > 0) {
     const clearableAccounts = accounts.filter((account) => hasAdminToken || !!getUserToken(account.id));
     if (clearableAccounts.length > 0) {
