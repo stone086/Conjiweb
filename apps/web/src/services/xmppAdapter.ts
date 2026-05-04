@@ -140,6 +140,7 @@ function parseXmppDelayTimestamp(stanza: Element): number {
 const OMEMO_NAMESPACE_LEGACY = "eu.siacs.conversations.axolotl";
 const OMEMO_NAMESPACE_MODERN = "urn:xmpp:omemo:2";
 const OMEMO_NAMESPACES = [OMEMO_NAMESPACE_MODERN, OMEMO_NAMESPACE_LEGACY] as const;
+const OMEMO_FALLBACK_BODY = "This message is OMEMO encrypted";
 const PUBSUB_NS = "http://jabber.org/protocol/pubsub";
 function omemoDeviceListNode(namespace: string): string {
   return namespace === OMEMO_NAMESPACE_MODERN
@@ -625,7 +626,15 @@ export class XmppClient {
     if (!this._connection || !this._connected) throw new Error("Not connected");
     const id = crypto.randomUUID();
     const stanza = this._$msg({ to: toJid, type, id })
-      .c("body").t("This message is OMEMO encrypted")
+      .c("body").t(OMEMO_FALLBACK_BODY)
+      .up()
+      .c("store", { xmlns: "urn:xmpp:hints" })
+      .up()
+      .c("encryption", {
+        xmlns: "urn:xmpp:eme:0",
+        namespace: envelope.namespace || OMEMO_NAMESPACE_LEGACY,
+        name: "OMEMO",
+      })
       .up()
       .c("request", { xmlns: "urn:xmpp:receipts" })
       .up();
@@ -663,7 +672,7 @@ export class XmppClient {
       id,
       from: this.config.jid,
       to: toJid,
-      body: "This message is OMEMO encrypted",
+      body: OMEMO_FALLBACK_BODY,
       timestamp: Date.now(),
       type,
       replyTo: options?.replyToId,

@@ -281,7 +281,6 @@ const enUS = {
     "search.navigate": "Navigate",
     "search.select": "Select",
     "search.close": "Close",
-    "search.askAi": "Ask AI",
     "search.noAnswer": "No answer",
     "search.aiUnavailable": "AI is currently unavailable",
     "search.askAi": "Ask AI",

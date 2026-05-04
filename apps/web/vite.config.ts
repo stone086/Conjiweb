@@ -103,9 +103,13 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
+          if (id.includes("react-router") || id.includes("@tanstack/react-query")) return "framework";
+          if (id.includes("lucide-react") || id.includes("clsx") || id.includes("date-fns")) return "ui-utils";
           if (id.includes("strophe.js") || id.includes("@converse/headless")) return "xmpp";
           if (id.includes("emoji-picker-react") || id.includes("react-dropzone")) return "rich-input";
           if (id.includes("dexie")) return "dexie";
+          if (id.includes("workbox") || id.includes("vite-plugin-pwa")) return "pwa";
+          if (id.includes("@privacyresearch/curve25519-typescript") || id.includes("libsignal")) return "crypto";
           return undefined;
         },
       },

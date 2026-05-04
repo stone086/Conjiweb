@@ -45,6 +45,21 @@ const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
 const avatarFetchInFlight = new Set<string>();
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const OMEMO_FALLBACK_BODY = "This message is OMEMO encrypted";
+
+type OmemoDecryptFailureReason =
+  | "no-local-device-id"
+  | "missing-recipient-key"
+  | "libsignal-decrypt-failed"
+  | "legacy-decrypt-failed"
+  | "ciphertext-decrypt-failed";
+
+function logOmemoDecryptFailure(
+  reason: OmemoDecryptFailureReason,
+  context: Record<string, unknown>
+) {
+  console.warn("[OMEMO] decrypt failed", { reason, ...context });
+}
 
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
   const value = (show ?? "").toLowerCase();
@@ -450,10 +465,13 @@ export function initXmppBridge(client: XmppClient) {
       // Try the standard libsignal-based decryption first (for messages
       // from Conversations / Gajim / Movim using XEP-0384 v0.8+).
       let decrypted: string | null = null;
+      let failureReason: OmemoDecryptFailureReason | null = null;
       try {
         const store = new OmemoStore(accountId);
         const localDeviceId = await store.getLocalRegistrationId();
-        if (localDeviceId && incomingOmemo.namespace?.includes("axolotl")) {
+        if (!localDeviceId) {
+          failureReason = "no-local-device-id";
+        } else if (incomingOmemo.namespace?.includes("axolotl")) {
           // Convert legacy envelope format to new EncryptedEnvelope
           const ourKey = incomingOmemo.keys.find((k: any) => k.rid === localDeviceId);
           if (ourKey) {
@@ -468,10 +486,13 @@ export function initXmppBridge(client: XmppClient) {
               })),
             };
             decrypted = await decryptEnvelope(accountId, localDeviceId, from, newEnvelope);
+          } else {
+            failureReason = "missing-recipient-key";
           }
         }
       } catch {
         // libsignal decrypt failed - fall through to legacy
+        failureReason = "libsignal-decrypt-failed";
       }
       // Fall back to legacy custom-protocol decryption
       if (decrypted == null) {
@@ -480,14 +501,35 @@ export function initXmppBridge(client: XmppClient) {
       if (decrypted == null) {
         incomingBody = "[Encrypted message - unable to decrypt]";
         decryptFailed = true;
+        logOmemoDecryptFailure(failureReason ?? "legacy-decrypt-failed", {
+          accountId,
+          from,
+          messageId: message.id,
+          namespace: incomingOmemo.namespace,
+          sid: incomingOmemo.sid,
+        });
       } else {
         incomingBody = decrypted;
       }
+    } else if (typeof incomingBody === "string" && incomingBody.trim() === OMEMO_FALLBACK_BODY) {
+      incomingBody = "[Encrypted message - unable to decrypt]";
+      decryptFailed = true;
+      logOmemoDecryptFailure("legacy-decrypt-failed", {
+        accountId,
+        from,
+        messageId: message.id,
+        fallbackOnly: true,
+      });
     } else if (incomingEncrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, from, incomingBody);
       if (decrypted == null) {
         incomingBody = "[Encrypted message - unable to decrypt]";
         decryptFailed = true;
+        logOmemoDecryptFailure("ciphertext-decrypt-failed", {
+          accountId,
+          from,
+          messageId: message.id,
+        });
       } else {
         incomingBody = decrypted;
       }
@@ -638,14 +680,37 @@ export function initXmppBridge(client: XmppClient) {
       if (decrypted == null) {
         body = "[Encrypted message - unable to decrypt]";
         decryptFailed = true;
+        logOmemoDecryptFailure("legacy-decrypt-failed", {
+          accountId,
+          from: peerJid,
+          messageId: message.id,
+          source: "mam",
+          sid: incomingOmemo.sid,
+          namespace: incomingOmemo.namespace,
+        });
       } else {
         body = decrypted;
       }
+    } else if (typeof body === "string" && body.trim() === OMEMO_FALLBACK_BODY) {
+      body = "[Encrypted message - unable to decrypt]";
+      decryptFailed = true;
+      logOmemoDecryptFailure("legacy-decrypt-failed", {
+        accountId,
+        from: peerJid,
+        messageId: message.id,
+        source: "mam-fallback-only",
+      });
     } else if (encrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, peerJid, body);
       if (decrypted == null) {
         body = "[Encrypted message - unable to decrypt]";
         decryptFailed = true;
+        logOmemoDecryptFailure("ciphertext-decrypt-failed", {
+          accountId,
+          from: peerJid,
+          messageId: message.id,
+          source: "mam",
+        });
       } else {
         body = decrypted;
       }
@@ -1016,59 +1081,75 @@ export async function tryLibsignalEncrypt(
     });
     if (deviceIds.length === 0) return null;
 
-    // 2. For each device, fetch its bundle and ensure session
-    for (const deviceId of deviceIds) {
-      const sessionExists = await store.loadSession(`${peerJid}.${deviceId}`);
-      if (sessionExists) continue;
+    const ensureSessions = async (targetJid: string, targetDeviceIds: number[]) => {
+      for (const deviceId of targetDeviceIds) {
+        const sessionExists = await store.loadSession(`${targetJid}.${deviceId}`);
+        if (sessionExists) continue;
 
-      const bundleEl = await (client as any).fetchPepNode(peerJid, `${NS_BUNDLES}:${deviceId}`);
-      if (!bundleEl) continue;
+        const bundleEl = await (client as any).fetchPepNode(targetJid, `${NS_BUNDLES}:${deviceId}`);
+        if (!bundleEl) continue;
 
-      const identityKey = base64ToArrayBuffer(
-        bundleEl.querySelector("identityKey")?.textContent?.trim() ?? ""
-      );
-      const signedPreKeyEl = bundleEl.querySelector("signedPreKeyPublic");
-      const signedPreKeyId = parseInt(signedPreKeyEl?.getAttribute("signedPreKeyId") ?? "0", 10);
-      const signedPreKey = base64ToArrayBuffer(signedPreKeyEl?.textContent?.trim() ?? "");
-      const signedPreKeySignature = base64ToArrayBuffer(
-        bundleEl.querySelector("signedPreKeySignature")?.textContent?.trim() ?? ""
-      );
-      // Pick a random one-time prekey
-      const preKeyEls = bundleEl.querySelectorAll("preKeyPublic");
-      let preKey: { keyId: number; publicKey: ArrayBuffer } | undefined;
-      if (preKeyEls.length > 0) {
-        const picked = preKeyEls[Math.floor(Math.random() * preKeyEls.length)] as Element;
-        preKey = {
-          keyId: parseInt(picked.getAttribute("preKeyId") ?? "0", 10),
-          publicKey: base64ToArrayBuffer(picked.textContent?.trim() ?? ""),
-        };
+        const identityKey = base64ToArrayBuffer(
+          bundleEl.querySelector("identityKey")?.textContent?.trim() ?? ""
+        );
+        const signedPreKeyEl = bundleEl.querySelector("signedPreKeyPublic");
+        const signedPreKeyId = parseInt(signedPreKeyEl?.getAttribute("signedPreKeyId") ?? "0", 10);
+        const signedPreKey = base64ToArrayBuffer(signedPreKeyEl?.textContent?.trim() ?? "");
+        const signedPreKeySignature = base64ToArrayBuffer(
+          bundleEl.querySelector("signedPreKeySignature")?.textContent?.trim() ?? ""
+        );
+        const preKeyEls = bundleEl.querySelectorAll("preKeyPublic");
+        let preKey: { keyId: number; publicKey: ArrayBuffer } | undefined;
+        if (preKeyEls.length > 0) {
+          const picked = preKeyEls[Math.floor(Math.random() * preKeyEls.length)] as Element;
+          preKey = {
+            keyId: parseInt(picked.getAttribute("preKeyId") ?? "0", 10),
+            publicKey: base64ToArrayBuffer(picked.textContent?.trim() ?? ""),
+          };
+        }
+
+        try {
+          await establishSession(accountId, targetJid, {
+            deviceId,
+            identityKey,
+            signedPreKeyId,
+            signedPreKey,
+            signedPreKeySignature,
+            preKey,
+          });
+        } catch {
+          // Skip this device if session establishment fails
+        }
       }
+    };
 
-      try {
-        await establishSession(accountId, peerJid, {
-          deviceId,
-          identityKey,
-          signedPreKeyId,
-          signedPreKey,
-          signedPreKeySignature,
-          preKey,
-        });
-      } catch {
-        // Skip this device if session establishment fails
-      }
-    }
+    // 2. For each peer device, fetch bundle and ensure session
+    await ensureSessions(peerJid, deviceIds);
 
-    // 3. Encrypt for all devices
+    // 3. Also include our own published devices for self-decrypt / multi-device sync
+    const ownDeviceIdsRaw = await (client as any).fetchPepNode(client.config.jid, NS_DEVICELIST);
+    const ownDeviceIds: number[] = [];
+    ownDeviceIdsRaw?.querySelectorAll("device").forEach((dev: Element) => {
+      const id = parseInt(dev.getAttribute("id") ?? "", 10);
+      if (Number.isFinite(id) && id !== ownDeviceId) ownDeviceIds.push(id);
+    });
+    await ensureSessions(client.config.jid, ownDeviceIds);
+
+    // 4. Encrypt for peer + own devices (excluding our sender device id)
     const peerDevices = deviceIds.map((id) => ({ peerJid, deviceId: id }));
-    const newEnvelope = await encryptForDevices(accountId, ownDeviceId, plaintext, peerDevices);
+    const ownTargetDevices = ownDeviceIds.map((id) => ({ peerJid: client.config.jid, deviceId: id }));
+    const allDevices = [...peerDevices, ...ownTargetDevices];
+    if (allDevices.length === 0) return null;
 
-    // 4. Convert new envelope shape to legacy shape (so existing sendOmemoMessage works)
+    const newEnvelope = await encryptForDevices(accountId, ownDeviceId, plaintext, allDevices);
+
+    // 5. Convert new envelope shape to legacy shape (so existing sendOmemoMessage works)
     return {
       namespace: "eu.siacs.conversations.axolotl",
       sid: newEnvelope.sid,
       iv: arrayBufferToBase64(newEnvelope.iv),
       payload: arrayBufferToBase64(newEnvelope.payload),
-      keys: newEnvelope.keys.map((k) => ({
+      keys: newEnvelope.keys.map((k: { rid: number; body: ArrayBuffer; isPreKey: boolean }) => ({
         rid: k.rid,
         value: arrayBufferToBase64(k.body),
         prekey: k.isPreKey,

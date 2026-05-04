@@ -92,6 +92,14 @@ api.interceptors.request.use((config) => {
     if (!hasExplicitContentType) {
       (config.headers as any)["Content-Type"] = "application/json";
     }
+  } else {
+    // Let browser/axios set multipart boundary automatically.
+    if (config.headers && "Content-Type" in config.headers) {
+      delete (config.headers as any)["Content-Type"];
+    }
+    if (config.headers && "content-type" in (config.headers as any)) {
+      delete (config.headers as any)["content-type"];
+    }
   }
 
   return config;

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useChatStore, ChatMessage } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
@@ -21,7 +21,6 @@ import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock, Phone, Video, UserPlus, Mic } from "lucide-react";
 import { callManager } from "@/services/jingle";
 import { processSlashCommand } from "@/services/slashCommands";
-import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
@@ -29,6 +28,7 @@ import { attachmentsApi } from "@/services/api";
 import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { tryLibsignalEncrypt } from "@/services/xmppBridge";
 import { getOmemoEnabled } from "@/services/omemoSettings";
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
 function parseAesgcmMediaLink(raw?: string): { href: string; fileName: string; isAudio: boolean } | null {
   if (!raw) return null;
@@ -42,6 +42,21 @@ function parseAesgcmMediaLink(raw?: string): { href: string; fileName: string; i
   const lower = fileName.toLowerCase();
   const isAudio = lower.endsWith(".m4a") || lower.endsWith(".mp3") || lower.endsWith(".ogg") || lower.endsWith(".wav") || lower.endsWith(".webm");
   return { href, fileName, isAudio };
+}
+
+function parseHttpMediaLink(raw?: string): { href: string; fileName: string; isAudio: boolean } | null {
+  if (!raw) return null;
+  const text = raw.trim();
+  if (!/^https?:\/\//i.test(text)) return null;
+  try {
+    const url = new URL(text);
+    const fileName = url.pathname.split("/").pop() || "attachment";
+    const lower = fileName.toLowerCase();
+    const isAudio = [".m4a", ".mp3", ".ogg", ".wav", ".webm"].some((ext) => lower.endsWith(ext));
+    return { href: text, fileName, isAudio };
+  } catch {
+    return null;
+  }
 }
 
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
@@ -151,6 +166,11 @@ function MessageBubble({
                   <p className="text-surface-100/90">
                     {aesMedia.isAudio ? "Encrypted audio attachment" : "Encrypted file attachment"}
                   </p>
+                  {aesMedia.isAudio && (
+                    <audio controls preload="metadata" className="mt-2 w-full max-w-xs">
+                      <source src={aesMedia.href} />
+                    </audio>
+                  )}
                   <a
                     href={aesMedia.href}
                     target="_blank"
@@ -158,6 +178,26 @@ function MessageBubble({
                     className="text-accent-soft underline break-all"
                   >
                     {aesMedia.fileName}
+                  </a>
+                </div>
+              );
+            }
+            const httpMedia = parseHttpMediaLink(msg.body);
+            if (httpMedia) {
+              return (
+                <div className="text-sm leading-relaxed break-words">
+                  {httpMedia.isAudio && (
+                    <audio controls preload="metadata" className="mb-2 w-full max-w-xs">
+                      <source src={httpMedia.href} />
+                    </audio>
+                  )}
+                  <a
+                    href={httpMedia.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent-soft underline break-all"
+                  >
+                    {httpMedia.fileName}
                   </a>
                 </div>
               );
@@ -614,6 +654,9 @@ export default function MessageView({ conversationId }: { conversationId: string
   const sendMessage = useCallback(async () => {
     let body = input.trim();
     if (!body && !pendingFiles.length) return;
+    if (!body && pendingFiles.length > 0) {
+      body = pendingFiles.map((f) => f.downloadUrl).filter(Boolean).join("\n");
+    }
     if (!activeAccountId) return;
     if (needsContactApproval) {
       toast.error(t("chat.addContactBeforeReply"));
@@ -1292,16 +1335,18 @@ export default function MessageView({ conversationId }: { conversationId: string
         )}
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-14 z-20">
-            <EmojiPicker
-              theme={Theme.DARK}
-              lazyLoadEmojis
-              onEmojiClick={(emojiData) => {
-                const next = `${input}${emojiData.emoji}`;
-                setInput(next);
-                setComposerDraft(conversationId, next);
-                textareaRef.current?.focus();
-              }}
-            />
+            <Suspense fallback={null}>
+              <EmojiPicker
+                theme={Theme.DARK}
+                lazyLoadEmojis
+                onEmojiClick={(emojiData) => {
+                  const next = `${input}${emojiData.emoji}`;
+                  setInput(next);
+                  setComposerDraft(conversationId, next);
+                  textareaRef.current?.focus();
+                }}
+              />
+            </Suspense>
           </div>
         )}
         <p className="text-[10px] text-surface-200/20 mt-1 pl-1">{t("chat.hint")}</p>

@@ -188,7 +188,7 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
         {conversation.type === "private" && contact && activeAccountId && (
           <>
             <OmemoTrustButton peerJid={contact.jid} />
-            <MergeContactButton accountId={activeAccountId} jid={contact.jid} displayName={contact.nickname ?? contact.jid.split("@")[0]} />
+            <MergeContactButton accountId={activeAccountId} jid={contact.jid} displayName={contact.name ?? contact.jid.split("@")[0]} />
             <ContactNotesEditor
               accountId={activeAccountId}
               jid={contact.jid}
@@ -513,4 +513,3 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
     </div>
   );
 }
-

@@ -36,6 +36,12 @@ ALLOWED_MIME_TYPES = {
     "audio/wav",
     "application/pdf",
     "application/zip",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "text/plain",
 }
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
