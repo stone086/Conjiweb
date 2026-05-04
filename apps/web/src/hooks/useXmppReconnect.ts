@@ -11,7 +11,7 @@ const RECONNECT_DELAYS = [3000, 5000, 10000, 30000]; // ms
  * Watches all accounts and auto-reconnects disconnected ones.
  * Mount this once at the app root level.
  */
-export function useXmppReconnect() {
+export function useXmppReconnect(enabled: boolean = true) {
   const accounts = useAccountStore((s) => s.accounts);
   const setConnected = useAccountStore((s) => s.setConnected);
   const setReconnecting = useReconnectStore((s) => s.setReconnecting);
@@ -19,6 +19,13 @@ export function useXmppReconnect() {
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
+    if (!enabled) {
+      Object.values(timersRef.current).forEach(clearTimeout);
+      timersRef.current = {};
+      Object.keys(attemptsRef.current).forEach((k) => delete attemptsRef.current[k]);
+      return;
+    }
+
     accounts.forEach((account) => {
       if (!account.is_enabled) return;
 
@@ -90,5 +97,5 @@ export function useXmppReconnect() {
     return () => {
       Object.values(timersRef.current).forEach(clearTimeout);
     };
-  }, [accounts, setConnected, setReconnecting]);
+  }, [accounts, setConnected, setReconnecting, enabled]);
 }

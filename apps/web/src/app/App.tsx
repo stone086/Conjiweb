@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -23,7 +23,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 function AppInner() {
-  useXmppReconnect();
+  const location = useLocation();
+  const reconnectEnabled = !location.pathname.startsWith("/login");
+  useXmppReconnect(reconnectEnabled);
   usePWA();
   const mergeDuplicatePrivateConversations = useChatStore((s) => s.mergeDuplicatePrivateConversations);
   const [browserOnline, setBrowserOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAccountStore } from "@/stores/accountStore";
+
 export const ADMIN_SESSION_EXPIRED_EVENT = "conjiweb:admin-session-expired";
 const USER_TOKEN_KEY_PREFIX = "conjiweb-user-token:";
 
@@ -22,23 +23,18 @@ function normalizeApiUrl(raw?: string): string {
   const value = raw.trim().replace(/\/+$/, "");
   if (!value) return fallback;
 
-  // Absolute URL: ensure path ends with /api
   if (/^https?:\/\//i.test(value)) {
     try {
       const u = new URL(value);
       const path = (u.pathname || "/").replace(/\/+$/, "");
-      if (path === "" || path === "/") {
-        u.pathname = "/api";
-      } else if (!path.endsWith("/api")) {
-        u.pathname = `${path}/api`;
-      }
+      if (path === "" || path === "/") u.pathname = "/api";
+      else if (!path.endsWith("/api")) u.pathname = `${path}/api`;
       return u.toString().replace(/\/+$/, "");
     } catch {
       return fallback;
     }
   }
 
-  // Relative path: ensure /api suffix
   if (value.startsWith("/")) {
     if (value === "/api" || value.endsWith("/api")) return value;
     return `${value}/api`.replace(/\/{2,}/g, "/");
@@ -53,39 +49,43 @@ export const api = axios.create({
   baseURL: API_URL,
 });
 
+function isPublicAuthRequest(url?: string): boolean {
+  if (!url) return false;
+  const path = url.toLowerCase();
+  return (
+    path.includes("/auth/config")
+    || path.includes("/auth/register")
+    || path.includes("/auth/user-token")
+    || path.includes("/sso/providers")
+    || path.includes("/sso/oidc/login")
+    || path.includes("/sso/oidc/exchange")
+    || path.includes("/sso/ldap/login")
+  );
+}
+
 api.interceptors.request.use((config) => {
   const store = useAccountStore.getState();
-
   let accountId =
     (typeof config.headers?.["X-Conjiweb-Account-Id"] === "string"
       ? config.headers["X-Conjiweb-Account-Id"]
-      : undefined) ??
-    store.activeAccountId;
-
-  // 🔥 兜底：没有 activeAccountId 时用第一个账号
+      : undefined) ?? store.activeAccountId;
   if (!accountId && store.accounts?.length > 0) {
     accountId = store.accounts[0].id;
   }
 
-  console.debug("[API] using accountId:", accountId);
-
-  const token =
-    getUserToken(accountId) ?? sessionStorage.getItem("admin_token");
-
-  if (token) {
+  const token = getUserToken(accountId) ?? sessionStorage.getItem("admin_token");
+  const skipAuth = isPublicAuthRequest(config.url);
+  if (!skipAuth && token) {
     config.headers.Authorization = `Bearer ${token}`;
-    console.debug("[API] token attached ✔");
-  } else {
-    console.warn("[API] NO TOKEN ❌", accountId);
+  } else if (config.headers && "Authorization" in config.headers) {
+    delete (config.headers as any).Authorization;
   }
 
   if (config.headers && "X-Conjiweb-Account-Id" in config.headers) {
     delete config.headers["X-Conjiweb-Account-Id"];
   }
 
-  // Keep JSON default for normal requests, but never force it for FormData uploads.
-  const isFormData =
-    typeof FormData !== "undefined" && config.data instanceof FormData;
+  const isFormData = typeof FormData !== "undefined" && config.data instanceof FormData;
   if (!isFormData) {
     const hasExplicitContentType =
       Boolean(config.headers?.["Content-Type"]) || Boolean((config.headers as any)?.["content-type"]);
@@ -93,7 +93,6 @@ api.interceptors.request.use((config) => {
       (config.headers as any)["Content-Type"] = "application/json";
     }
   } else {
-    // Let browser/axios set multipart boundary automatically.
     if (config.headers && "Content-Type" in config.headers) {
       delete (config.headers as any)["Content-Type"];
     }
@@ -117,7 +116,6 @@ api.interceptors.response.use(
   }
 );
 
-// Accounts
 export const accountsApi = {
   list: () => api.get("/accounts/").then((r) => r.data),
   create: (data: { jid: string; domain: string; display_name?: string }) =>
@@ -137,7 +135,6 @@ export const accountsApi = {
   ) => api.put(`/accounts/${accountId}/preferences`, data).then((r) => r.data),
 };
 
-// Messages
 export const messagesApi = {
   search: (q: string, accountId: string) =>
     api.get("/messages/search", { params: { q, account_id: accountId } }).then((r) => r.data),
@@ -151,30 +148,17 @@ export const messagesApi = {
     }).then((r) => r.data),
 };
 
-// Attachments
 export const attachmentsApi = {
   upload: (file: File, messageId?: string, accountId?: string) => {
     const form = new FormData();
     form.append("file", file, file.name);
     if (messageId) form.append("message_id", messageId);
-
-    // CRITICAL: do NOT set Content-Type manually for FormData uploads.
-    // The browser must set it automatically as
-    //   "multipart/form-data; boundary=----WebKitFormBoundary..."
-    // Setting it manually omits the boundary, the server fails to parse the
-    // body (returning 400 or in some configs 401 from the auth middleware
-    // running before body parse), and the upload appears to fail.
-    //
-    // The axios request interceptor will still add Authorization: Bearer <token>
-    // because we are not setting that header here.
     const headers: Record<string, string> = {};
     if (accountId) headers["X-Conjiweb-Account-Id"] = accountId;
-
     return api.post("/attachments/upload", form, { headers }).then((r) => r.data);
   },
 };
 
-// Plugins
 export const pluginsApi = {
   list: () =>
     api.get("/plugins/").then((r) => {
@@ -188,7 +172,6 @@ export const pluginsApi = {
   disable: (id: string) => api.post(`/plugins/${id}/disable`).then((r) => r.data),
 };
 
-// AI
 export const aiApi = {
   summarize: (messages: string[], conversationId?: string) =>
     api.post("/ai/summarize", { messages, conversation_id: conversationId }).then((r) => r.data),
@@ -198,7 +181,6 @@ export const aiApi = {
     api.post("/ai/translate", null, { params: { text, target_lang: targetLang } }).then((r) => r.data),
 };
 
-// Admin
 export const adminApi = {
   status: () => api.get("/admin/status").then((r) => r.data),
   serviceHealth: () => api.get("/admin/service-health").then((r) => r.data),
@@ -208,7 +190,6 @@ export const adminApi = {
     api.post("/auth/admin/login", { username, password }).then((r) => r.data),
 };
 
-// Auth
 export const authApi = {
   config: () =>
     api.get("/auth/config").then((r) => r.data as {
