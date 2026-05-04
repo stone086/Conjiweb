@@ -93,16 +93,20 @@ export default function LoginPage() {
     initXmppBridge(client);
     try {
       await withTimeout(client.connect(), 20000, t("login.connectionFailed"));
-      const tokenRes = await authApi.getUserToken(jid, form.password);
-      if (tokenRes?.access_token) {
-        setUserToken(id, tokenRes.access_token);
-
-        sessionStorage.setItem(
-          `conjiweb-user-token:${id}`,
-          tokenRes.access_token
-        );
-
-        localStorage.setItem("token", tokenRes.access_token);
+      try {
+        const tokenRes = await authApi.getUserToken(jid, form.password);
+        if (tokenRes?.access_token) {
+          setUserToken(id, tokenRes.access_token);
+          sessionStorage.setItem(
+            `conjiweb-user-token:${id}`,
+            tokenRes.access_token
+          );
+          localStorage.setItem("token", tokenRes.access_token);
+        }
+      } catch (tokenErr) {
+        // Keep login usable when API token endpoint is unavailable on this server.
+        // XMPP connection has already succeeded at this point.
+        console.warn("[API] user-token unavailable, continue with XMPP session", tokenErr);
       }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
