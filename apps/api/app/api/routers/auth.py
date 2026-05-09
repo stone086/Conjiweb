@@ -11,6 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
+import base64
+import socket
+import ssl
 import logging
 import re
 import secrets
@@ -175,6 +178,60 @@ def parse_jid(jid: str, request: Request | None = None):
     return username, domain
 
 
+def _recv_until(sock: socket.socket, needle: bytes, timeout: float = 5.0) -> bytes:
+    sock.settimeout(timeout)
+    chunks: list[bytes] = []
+    data = b""
+    while needle not in data and len(data) < 65536:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        data = b"".join(chunks)
+    return data
+
+
+def _verify_xmpp_sasl_plain(username: str, domain: str, password: str) -> bool:
+    """Verify a Prosody password through local XMPP SASL PLAIN.
+
+    Some distro Prosody versions do not support `prosodyctl check password`.
+    The server may require STARTTLS before advertising SASL mechanisms, so this
+    performs a minimal client-to-server STARTTLS negotiation before auth.
+    """
+    stream = (
+        f"<?xml version='1.0'?><stream:stream to='{domain}' "
+        "xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' "
+        "version='1.0'>"
+    ).encode()
+    auth = base64.b64encode(f"\x00{username}\x00{password}".encode()).decode()
+    auth_stanza = (
+        f"<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='PLAIN'>{auth}</auth>"
+    ).encode()
+
+    with socket.create_connection(("127.0.0.1", 5222), timeout=5) as raw:
+        raw.sendall(stream)
+        features = _recv_until(raw, b"</stream:features>")
+
+        if b"urn:ietf:params:xml:ns:xmpp-tls" in features:
+            raw.sendall(b"<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>")
+            proceed = _recv_until(raw, b"/>")
+            if b"<proceed" not in proceed:
+                return False
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            with context.wrap_socket(raw, server_hostname=domain) as tls_sock:
+                tls_sock.sendall(stream)
+                _recv_until(tls_sock, b"</stream:features>")
+                tls_sock.sendall(auth_stanza)
+                resp = _recv_until(tls_sock, b"/>")
+                return b"<success" in resp
+
+        raw.sendall(auth_stanza)
+        resp = _recv_until(raw, b"/>")
+        return b"<success" in resp
+
+
 @router.post(
     "/register",
     summary="Register XMPP account",
@@ -263,37 +320,10 @@ async def issue_user_token(
 
     if not verified:
         if check_password_unsupported:
-            # Prosody version doesn't support "check password" — we CANNOT verify.
-            # Allowing login without password verification would be a critical auth bypass.
-            # Fall back to XMPP SASL authentication instead (async, non-blocking).
-            import base64
+            # Older Prosody packages do not support `prosodyctl check password`.
+            # Verify against local C2S with STARTTLS + SASL PLAIN instead.
             try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection("127.0.0.1", 5222),
-                    timeout=5,
-                )
-                writer.write(
-                    f"<?xml version='1.0'?><stream:stream to='{domain}' "
-                    f"xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' "
-                    f"version='1.0'>".encode()
-                )
-                await writer.drain()
-                # Read initial stream response (we just need the connection to succeed)
-                await asyncio.wait_for(reader.read(4096), timeout=5)
-                # Send PLAIN auth
-                auth_str = base64.b64encode(f"\x00{username}\x00{password}".encode()).decode()
-                writer.write(
-                    f"<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='PLAIN'>{auth_str}</auth>".encode()
-                )
-                await writer.drain()
-                resp_bytes = await asyncio.wait_for(reader.read(4096), timeout=5)
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
-                    pass
-                resp = resp_bytes.decode(errors="replace")
-                if "<success" in resp:
+                if await asyncio.to_thread(_verify_xmpp_sasl_plain, username, domain, password):
                     verified = True
                 else:
                     raise HTTPException(status_code=401, detail="Invalid JID or password")
