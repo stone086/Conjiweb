@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     VAPID_PUBLIC_KEY: str = ""
     VAPID_EMAIL: str = "admin@conjiweb.local"
 
+    # TURN/STUN credentials for Prosody/coturn integration. The API does not
+    # expose TURN_SECRET publicly; accepting it here keeps install-generated
+    # runtime env files compatible with strict Pydantic settings.
+    TURN_SECRET: str = ""
+    TURN_HOST: str = ""
+    TURN_PORT: int = 3478
+
     # SFU (Selective Forwarding Unit for group calls)
     SFU_URL: str = ""
 
