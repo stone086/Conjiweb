@@ -58,8 +58,14 @@ export const useAccountStore = create<AccountState>()(
         set((s) => {
           const jid = normalizeAccountJid(account.jid);
           const existing = s.accounts.find((a) => normalizeAccountJid(a.jid) === jid);
+          const nextId = account.id || existing?.id || crypto.randomUUID();
+          if (existing && nextId && existing.id !== nextId) {
+            migrateSessionValue(PASSWORD_KEY_PREFIX, existing.id, nextId);
+            migrateSessionValue(USER_TOKEN_KEY_PREFIX, existing.id, nextId);
+            migrateSessionValue(USER_REFRESH_KEY_PREFIX, existing.id, nextId);
+          }
           const nextAccount: XmppAccount = {
-            id: existing?.id ?? account.id,
+            id: nextId,
             jid,
             domain: jid.split("@")[1] ?? account.domain,
             displayName: account.displayName ?? existing?.displayName,
@@ -74,7 +80,10 @@ export const useAccountStore = create<AccountState>()(
           ]);
           return {
             accounts,
-            activeAccountId: existing?.id ?? s.activeAccountId ?? nextAccount.id,
+            activeAccountId:
+              s.activeAccountId === existing?.id
+                ? nextAccount.id
+                : s.activeAccountId ?? nextAccount.id,
           };
         }),
 
@@ -82,6 +91,7 @@ export const useAccountStore = create<AccountState>()(
         set((s) => {
           sessionStorage.removeItem(`${PASSWORD_KEY_PREFIX}${id}`);
           sessionStorage.removeItem(`${USER_TOKEN_KEY_PREFIX}${id}`);
+          sessionStorage.removeItem(`${USER_REFRESH_KEY_PREFIX}${id}`);
           return {
             accounts: s.accounts.filter((a) => a.id !== id),
             activeAccountId:
@@ -126,6 +136,16 @@ export const useAccountStore = create<AccountState>()(
 
 const PASSWORD_KEY_PREFIX = "conjiweb-account-password:";
 const USER_TOKEN_KEY_PREFIX = "conjiweb-user-token:";
+const USER_REFRESH_KEY_PREFIX = "conjiweb-user-refresh:";
+
+function migrateSessionValue(prefix: string, fromId: string, toId: string) {
+  const fromKey = `${prefix}${fromId}`;
+  const value = sessionStorage.getItem(fromKey);
+  if (value && !sessionStorage.getItem(`${prefix}${toId}`)) {
+    sessionStorage.setItem(`${prefix}${toId}`, value);
+  }
+  sessionStorage.removeItem(fromKey);
+}
 
 export function setAccountPassword(accountId: string, password: string) {
   sessionStorage.setItem(`${PASSWORD_KEY_PREFIX}${accountId}`, password);

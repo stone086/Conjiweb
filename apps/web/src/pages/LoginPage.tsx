@@ -86,10 +86,23 @@ export default function LoginPage() {
     const jid = normalizeAccountJid(jidOverride ?? expandJid(form.jid));
     const domain = jid.split("@")[1] ?? "localhost";
     const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
-    const id = existing?.id ?? crypto.randomUUID();
+    // Prefer the backend account_id when available. A random local id makes
+    // REST calls like /accounts/{id}/preferences fail with 403 because the JWT
+    // contains the real server-side account_id.
+    const tokenRes = await authApi.getUserToken(jid, form.password).catch((tokenErr) => {
+      console.warn("REST user token fallback failed; continuing with XMPP session", tokenErr);
+      return null;
+    });
+    const id = tokenRes?.account_id ?? existing?.id ?? crypto.randomUUID();
     const createdAccount = !existing;
     addAccount({ id, jid, domain, password: form.password, displayName: jid.split("@")[0] });
     setAccountPassword(id, form.password);
+    if (tokenRes?.access_token) {
+      setUserToken(id, tokenRes.access_token);
+      if ((tokenRes as any).refresh_token) {
+        setUserRefreshToken(id, (tokenRes as any).refresh_token);
+      }
+    }
     const client = createClient({ jid, password: form.password, wsUrl, accountId: id });
     initXmppBridge(client);
     try {
@@ -177,10 +190,10 @@ export default function LoginPage() {
             if (!r.ok) throw new Error("SSO code exchange failed");
             return r.json();
           })
-          .then((data: { access_token: string; refresh_token?: string; jid: string }) => {
+          .then((data: { access_token: string; refresh_token?: string; jid: string; account_id?: string }) => {
             const jid = normalizeAccountJid(data.jid);
             const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
-            const id = existing?.id ?? crypto.randomUUID();
+            const id = data.account_id ?? existing?.id ?? crypto.randomUUID();
             useAccountStore.getState().addAccount({
               id, jid,
               domain: jid.split("@")[1] ?? "",
@@ -214,7 +227,7 @@ export default function LoginPage() {
       const data = await r.json();
       const jid = normalizeAccountJid(data.jid);
       const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
-      const id = existing?.id ?? crypto.randomUUID();
+      const id = data.account_id ?? existing?.id ?? crypto.randomUUID();
       useAccountStore.getState().addAccount({
         id, jid,
         domain: jid.split("@")[1] ?? "",
