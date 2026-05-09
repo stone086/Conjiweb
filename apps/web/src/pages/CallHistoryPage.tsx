@@ -69,7 +69,7 @@ export default function CallHistoryPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-900">
-      <div className="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+      <div className="px-5 py-4 border-b border-subtle flex items-center gap-2">
         <Phone size={18} className="text-accent-soft" />
         <h1 className="text-base font-semibold text-surface-50">{t("call.history")}</h1>
       </div>
@@ -94,7 +94,7 @@ export default function CallHistoryPage() {
             return (
               <div
                 key={log.id}
-                className="w-full px-5 py-3.5 hover:bg-white/5 transition-colors flex items-center gap-3 border-b border-white/5"
+                className="w-full px-5 py-3.5 hover-surface transition-colors flex items-center gap-3 border-b border-subtle"
               >
                 <button
                   onClick={() => void handleRedial(log)}

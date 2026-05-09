@@ -34,6 +34,29 @@ async def log_call(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    # Reject implausible timestamps. Without this, a malicious or buggy
+    # client could fill the call log with year-2099 entries that pin to the
+    # top of "history" forever, or year-1970 entries that hide records.
+    from datetime import timedelta, timezone
+    now = datetime.now(timezone.utc)
+    started_at = record.started_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    if abs((now - started_at).total_seconds()) > 86400 * 7:
+        raise HTTPException(status_code=400, detail="started_at must be within ±7 days")
+    ended_at = record.ended_at
+    if ended_at is not None:
+        if ended_at.tzinfo is None:
+            ended_at = ended_at.replace(tzinfo=timezone.utc)
+        if ended_at < started_at:
+            raise HTTPException(status_code=400, detail="ended_at must be >= started_at")
+        if (ended_at - started_at).total_seconds() > 86400:
+            raise HTTPException(status_code=400, detail="Call duration > 24h is not allowed")
+    # Clamp the persisted duration_seconds to a sane range too
+    duration = record.duration_seconds
+    if duration is not None and (duration < 0 or duration > 86400):
+        raise HTTPException(status_code=400, detail="duration_seconds out of range")
+
     log = CallLog(
         id=gen_uuid(),
         account_id=user["account_id"],
@@ -41,9 +64,9 @@ async def log_call(
         direction=record.direction,
         media_types=record.media_types,
         status=record.status,
-        duration_seconds=record.duration_seconds,
-        started_at=record.started_at,
-        ended_at=record.ended_at,
+        duration_seconds=duration,
+        started_at=started_at,
+        ended_at=ended_at,
     )
     db.add(log)
     await db.commit()
@@ -63,7 +86,7 @@ async def log_call(
 @router.get("/calls/history", response_model=List[CallLogOut])
 async def call_history(
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=100_000),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):

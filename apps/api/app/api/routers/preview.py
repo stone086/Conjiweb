@@ -15,10 +15,11 @@ from urllib.parse import urlparse
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
@@ -87,7 +88,11 @@ async def _looks_safe(url: str) -> bool:
 
 
 def _meta_value(html: str, *names: str) -> Optional[str]:
-    """Extract content from <meta property=... content=...> for any of names."""
+    """Extract content from <meta property=... content=...> for any of names.
+
+    Returned value is capped at 1024 chars — a malicious target page could
+    return a 200KB og:title that bloats Redis and the client cache.
+    """
     for name in names:
         # property="og:title" content="..." or content="..." property="..."
         for pattern in (
@@ -99,19 +104,30 @@ def _meta_value(html: str, *names: str) -> Optional[str]:
                 # The content group depends on which pattern matched
                 groups = m.groups()
                 # Find the one that's not the name itself
-                return next((g for g in groups if g != name), None)
+                value = next((g for g in groups if g != name), None)
+                if value is not None:
+                    return value[:1024]
     return None
 
 
 def _extract_title(html: str) -> Optional[str]:
     m = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
-    return m.group(1).strip() if m else None
+    return m.group(1).strip()[:1024] if m else None
 
 
 @router.get("/preview", response_model=LinkPreview)
-async def link_preview(url: str = Query(..., min_length=1, max_length=2000)):
+@limiter.limit("60/minute")
+async def link_preview(
+    request: Request,
+    url: str = Query(..., min_length=1, max_length=2000),
+):
     """
     Fetch a URL and return Open Graph metadata for rendering a preview card.
+
+    Rate-limited per client IP to prevent abuse:
+      - DoS-by-fetch: amplifying load on target sites via our server
+      - SSRF probing: even with `_looks_safe`, brute-forcing IP space
+      - Crawl tarpit: forcing us to dial slow/dead servers in parallel
     """
     if not await _looks_safe(url):
         raise HTTPException(400, "URL not allowed")
@@ -136,15 +152,35 @@ async def link_preview(url: str = Query(..., min_length=1, max_length=2000)):
     except Exception:
         redis_client = None
 
-    # Fetch the URL
+    # Fetch the URL with manual redirect handling. We validate every hop
+    # against _looks_safe to prevent SSRF via:
+    #   - DNS rebinding (httpx re-resolves on connect after our pre-check)
+    #   - HTTP redirects (a public URL can 302 to http://169.254.169.254/...)
+    # Cap at 5 redirects.
     try:
         async with httpx.AsyncClient(
             timeout=8.0,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": "ConjiwebBot/1.0 (link preview)"},
             limits=httpx.Limits(max_connections=5),
         ) as client:
-            resp = await client.get(url)
+            current_url = url
+            resp = None
+            for hop in range(6):
+                if not await _looks_safe(current_url):
+                    raise HTTPException(400, "Redirect target rejected")
+                resp = await client.get(current_url)
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    location = resp.headers.get("location", "")
+                    if not location:
+                        break
+                    # Resolve relative redirects against the current URL
+                    from urllib.parse import urljoin
+                    current_url = urljoin(current_url, location)
+                    continue
+                break
+            if resp is None:
+                raise HTTPException(502, "No response")
             if resp.status_code >= 400:
                 raise HTTPException(502, f"Target returned {resp.status_code}")
             ctype = resp.headers.get("content-type", "").lower()
@@ -161,15 +197,25 @@ async def link_preview(url: str = Query(..., min_length=1, max_length=2000)):
                     image=_meta_value(html, "og:image", "twitter:image"),
                     site_name=_meta_value(html, "og:site_name"),
                 )
-                # Resolve relative image URLs
-                if preview.image and not preview.image.startswith(("http://", "https://")):
-                    parsed = urlparse(url)
-                    if preview.image.startswith("//"):
-                        preview.image = f"{parsed.scheme}:{preview.image}"
-                    elif preview.image.startswith("/"):
-                        preview.image = f"{parsed.scheme}://{parsed.netloc}{preview.image}"
-                    else:
-                        preview.image = f"{parsed.scheme}://{parsed.netloc}/{preview.image}"
+                # Resolve relative image URLs and harden against XSS:
+                # Reject data:/javascript:/vbscript:/file: schemes — these would
+                # let an attacker inject <img src="javascript:..."> or
+                # <img src="data:image/svg+xml,<svg onload=...>"> via OG tags.
+                if preview.image:
+                    img = preview.image.strip()
+                    if not img.startswith(("http://", "https://")):
+                        parsed = urlparse(url)
+                        if img.startswith("//"):
+                            img = f"{parsed.scheme}:{img}"
+                        elif img.startswith("/"):
+                            img = f"{parsed.scheme}://{parsed.netloc}{img}"
+                        else:
+                            # Reject any other scheme (data:, javascript:, file:, ...)
+                            img = ""
+                    # Final scheme check after resolution
+                    if img and not img.lower().startswith(("http://", "https://")):
+                        img = ""
+                    preview.image = img or None
                 # Favicon
                 preview.favicon = f"{urlparse(url).scheme}://{urlparse(url).netloc}/favicon.ico"
     except httpx.TimeoutException:

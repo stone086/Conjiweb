@@ -1,18 +1,22 @@
 import asyncio
 import socket
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
 from app.models import AuditLog, Account, Message, Attachment
 from app.core.config import settings
 from app.core.version import get_app_version
+from app.utils.security import get_current_admin
 from app.api.routers.metrics import web_vitals_summary as get_web_vitals_summary
 from minio import Minio
 import redis.asyncio as redis
 
-router = APIRouter()
+# All endpoints in this router require an admin JWT.
+# Without this, anyone could enumerate audit logs (IPs, failed login attempts),
+# pull system stats, probe service health, etc.
+router = APIRouter(dependencies=[Depends(get_current_admin)])
 APP_VERSION = get_app_version()
 
 
@@ -41,7 +45,11 @@ async def system_status(db: AsyncSession = Depends(get_db)):
     summary="Audit logs",
     description="Return paginated audit log entries.",
 )
-async def get_audit_logs(limit: int = 50, offset: int = 0, db: AsyncSession = Depends(get_db)):
+async def get_audit_logs(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0, le=1_000_000),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
     )

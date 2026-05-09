@@ -32,11 +32,11 @@ export default function MainLayout() {
 
       <div
         className={clsx(
-          "w-72 flex-shrink-0 flex-col border-r border-white/5 bg-surface-900/50",
+          "w-72 flex-shrink-0 flex-col border-r border-subtle bg-surface-900/50",
           shouldHideLeftPanelOnMobile ? "hidden md:flex" : "flex"
         )}
       >
-        <div className="flex border-b border-white/5 flex-shrink-0">
+        <div className="flex border-b border-subtle flex-shrink-0">
           {(["chats", "contacts", "groups"] as LeftTab[]).map((tab) => (
             <button
               key={tab}

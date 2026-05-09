@@ -1,6 +1,6 @@
 {
   "name": "conjiweb-web",
-  "version": "1.6.0",
+  "version": "2.3.4",
   "type": "module",
   "private": true,
   "scripts": {
@@ -16,7 +16,7 @@
     "@converse/headless": "^10.1.6",
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.4",
     "@tanstack/react-query": "^5.59.0",
-    "axios": "^1.7.7",
+    "axios": "1.16.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dexie": "^4.0.10",
@@ -41,12 +41,22 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",
     "vite": "^5.4.18",
     "vite-plugin-pwa": "^0.20.5",
-    "vitest": "^2.1.2",
-    "jsdom": "^25.0.1"
+    "vitest": "^2.1.2"
+  },
+  "conjiweb_security_notes": {
+    "last_audit": "2026-05-08",
+    "axios_pin_reason": "CVE-2025-62718 proxy SSRF (fixed 1.15.0); March 2026 npm supply chain compromise of 1.14.1/0.30.4 — exact-pin defends against future registry attacks",
+    "lockfile_policy": "Always commit package-lock.json; CI uses 'npm ci' not 'npm install'",
+    "overrides": "Force patched @xmldom/xmldom and dompurify versions for transitive strophe.js/@converse security advisories; verify XMPP and rich text flows in staging."
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.9.10",
+    "dompurify": "3.4.2"
   }
 }

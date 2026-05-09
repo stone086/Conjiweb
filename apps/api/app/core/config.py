@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
 
+
+    # Observability
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"  # json or text
+    METRICS_ENABLED: bool = True
+
+    # Performance diagnostics. These are safe to leave enabled in staging;
+    # production can disable query counting if the extra event hook overhead is
+    # not desired. No SQL parameters are logged.
+    PERF_QUERY_COUNT_ENABLED: bool = True
+    PERF_QUERY_WARN_THRESHOLD: int = 10
+    PERF_SLOW_SQL_MS: int = 250
+
     # SSO / OIDC
     OIDC_ENABLED: bool = False
     OIDC_ISSUER: str = ""
@@ -38,6 +51,12 @@ class Settings(BaseSettings):
     OIDC_CLIENT_SECRET: str = ""
     OIDC_REDIRECT_URI: str = ""
     OIDC_LABEL: str = "Single Sign-On"
+    # Refuse logins where the IdP hasn't verified the user's email.
+    # Most production IdPs (Auth0, Okta, Keycloak with email-verify flow,
+    # Azure AD) set email_verified=true. If yours doesn't, set this to
+    # false explicitly — but understand the impact: a user who registered
+    # with someone else's email at the IdP can log in as that email.
+    OIDC_REQUIRE_EMAIL_VERIFIED: bool = True
     AUTO_PROVISION_OIDC: bool = False
 
     # SSO / LDAP
@@ -55,9 +74,20 @@ class Settings(BaseSettings):
     # SFU (Selective Forwarding Unit for group calls)
     SFU_URL: str = ""
 
-    # Admin credentials
+    # Admin credentials.
+    # Either ADMIN_PASS (plaintext, legacy) OR ADMIN_PASS_HASH (preferred).
+    # ADMIN_PASS_HASH is an argon2 or bcrypt encoded hash. When both are set,
+    # ADMIN_PASS_HASH wins.
+    # Generate with: python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-password'))"
     ADMIN_USER: str = "admin"
     ADMIN_PASS: str = ""
+    ADMIN_PASS_HASH: str = ""
+
+    # JWT lifetime overrides for the new short-lived access + refresh-token model.
+    # Shorter access token reduces the window for stolen-token replay; refresh
+    # tokens can be revoked centrally via Redis (see app/utils/security.py).
+    ACCESS_TOKEN_EXPIRE_MINUTES_ACCESS: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 14
 
     # Push shared secret (for server-to-server push triggers)
     PUSH_SHARED_SECRET: str = ""

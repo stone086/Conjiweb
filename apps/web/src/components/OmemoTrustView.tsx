@@ -1,103 +1,100 @@
 /**
- * OmemoTrustView.tsx - Blind Trust Before Verification (BTBV) UI.
+ * OmemoTrustView.tsx - OMEMO device trust UI.
  *
- * For each peer with whom we have OMEMO sessions, show:
- *   - List of their devices with identity-key fingerprints
- *   - Trust state for each (auto-trusted / verified / untrusted)
- *   - "Verify" button → shows QR code of our fingerprint, scans theirs
- *   - "Untrust" button → removes session, blocks future encryption
- *
- * This protects against silent device additions: if a peer logs in on
- * a new device after first contact, the new device shows up as
- * "untrusted" until manually approved.
+ * v1.7.0 adds a single trust-state model shared by the UI and the service
+ * layer. The view shows the user's own fingerprint, an XMPP-style QR payload,
+ * peer device records, and an explicit warning when a known device changes its
+ * identity fingerprint.
  */
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
-import { Shield, ShieldCheck, ShieldAlert, ShieldOff, QrCode, X } from "lucide-react";
+import { AlertTriangle, Shield, ShieldCheck, ShieldAlert, ShieldOff, QrCode, X } from "lucide-react";
 import { getIdentityFingerprint } from "@/services/omemo";
+import {
+  listPeerDeviceTrustRecords,
+  updatePeerDeviceTrustState,
+  type DeviceRecord,
+  type DeviceTrustState,
+} from "@/services/omemoTrust";
 import { useAccountStore } from "@/stores/accountStore";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 
-type TrustState = "trusted" | "verified" | "untrusted";
+type UiDeviceRecord = DeviceRecord & { displayFingerprint: string };
 
-interface DeviceTrust {
-  deviceId: number;
-  fingerprint: string;
-  trust: TrustState;
+function compactFingerprint(value: string) {
+  return value.replace(/\s+/g, "").toLowerCase();
 }
 
-const TRUST_KEY = (accountId: string, peerJid: string, deviceId: number) =>
-  `conjiweb-omemo-trust:${accountId}:${peerJid}:${deviceId}`;
-
-export function getDeviceTrust(accountId: string, peerJid: string, deviceId: number): TrustState {
-  const v = localStorage.getItem(TRUST_KEY(accountId, peerJid, deviceId));
-  return (v as TrustState) || "trusted"; // BTBV: trust on first contact
+function xmppFingerprintQrPayload(jid: string, deviceId: number | undefined, fingerprint: string) {
+  const compact = compactFingerprint(fingerprint);
+  if (!jid || !compact) return "";
+  if (deviceId) {
+    return `xmpp:${encodeURIComponent(jid)}?omemo-sid-${deviceId}=${encodeURIComponent(compact)}`;
+  }
+  return JSON.stringify({
+    type: "conjiweb.omemo-fingerprint",
+    version: 1,
+    jid,
+    fingerprint: compact,
+  });
 }
 
-export function setDeviceTrust(accountId: string, peerJid: string, deviceId: number, state: TrustState) {
-  localStorage.setItem(TRUST_KEY(accountId, peerJid, deviceId), state);
+function trustIcon(state: DeviceTrustState, keyChanged?: boolean) {
+  if (keyChanged) return <AlertTriangle size={14} className="text-warn mt-0.5" />;
+  if (state === "verified") return <ShieldCheck size={14} className="text-success mt-0.5" />;
+  if (state === "untrusted") return <ShieldOff size={14} className="text-warn mt-0.5" />;
+  return <ShieldAlert size={14} className="text-warn/60 mt-0.5" />;
 }
 
 export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; onClose: () => void }) {
   const { t } = useLanguage();
   const accountId = useAccountStore((s) => s.activeAccountId);
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === s.activeAccountId));
-  const [devices, setDevices] = useState<DeviceTrust[]>([]);
+  const [devices, setDevices] = useState<UiDeviceRecord[]>([]);
   const [ownFingerprint, setOwnFingerprint] = useState("");
+  const [ownDeviceId, setOwnDeviceId] = useState<number | undefined>();
   const [showQr, setShowQr] = useState(false);
-  const qrPayload = useMemo(() => JSON.stringify({
-    type: "conjiweb.omemo-fingerprint",
-    version: 1,
-    jid: account?.jid ?? "",
-    fingerprint: ownFingerprint.replace(/\s+/g, ""),
-  }), [account?.jid, ownFingerprint]);
+
+  const qrPayload = useMemo(() => xmppFingerprintQrPayload(account?.jid ?? "", ownDeviceId, ownFingerprint), [account?.jid, ownDeviceId, ownFingerprint]);
 
   useEffect(() => {
     if (!accountId) return;
+    let cancelled = false;
     (async () => {
       const own = await getIdentityFingerprint(accountId);
-      setOwnFingerprint(own);
-
-      // For each known device of the peer, get fingerprint + trust state.
-      // In a complete implementation we'd iterate the libsignal session store.
-      // For now we read trust entries from localStorage.
-      const knownDevices: DeviceTrust[] = [];
-      for (let key = 0; key < localStorage.length; key++) {
-        const k = localStorage.key(key);
-        if (!k || !k.startsWith(`conjiweb-omemo-trust:${accountId}:${peerJid}:`)) continue;
-        const deviceId = parseInt(k.split(":").pop() ?? "0", 10);
-        if (!Number.isFinite(deviceId)) continue;
-        const fp = await getIdentityFingerprint(accountId, peerJid).catch(() => "");
-        knownDevices.push({
-          deviceId,
-          fingerprint: fp || "(not yet established)",
-          trust: getDeviceTrust(accountId, peerJid, deviceId),
-        });
+      const ownDeviceRaw = localStorage.getItem(`conjiweb-e2ee-device:${accountId}`);
+      const ownDevice = Number(ownDeviceRaw);
+      const peerRecords = await listPeerDeviceTrustRecords(accountId, peerJid);
+      const hydrated = peerRecords.map((record) => ({
+        ...record,
+        displayFingerprint: record.fingerprint || "(not yet established)",
+      }));
+      if (!cancelled) {
+        setOwnFingerprint(own);
+        setOwnDeviceId(Number.isFinite(ownDevice) && ownDevice > 0 ? ownDevice : undefined);
+        setDevices(hydrated);
       }
-      setDevices(knownDevices);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [accountId, peerJid]);
 
-  const handleVerify = (deviceId: number) => {
+  const updateTrust = async (deviceId: number, state: DeviceTrustState) => {
     if (!accountId) return;
-    setDeviceTrust(accountId, peerJid, deviceId, "verified");
-    setDevices((d) => d.map((dev) => dev.deviceId === deviceId ? { ...dev, trust: "verified" } : dev));
-    toast.success(t("omemo.deviceVerified"));
-  };
-
-  const handleUntrust = (deviceId: number) => {
-    if (!accountId) return;
-    setDeviceTrust(accountId, peerJid, deviceId, "untrusted");
-    setDevices((d) => d.map((dev) => dev.deviceId === deviceId ? { ...dev, trust: "untrusted" } : dev));
-    toast(t("omemo.deviceUntrusted"));
+    const updated = await updatePeerDeviceTrustState(accountId, peerJid, deviceId, state);
+    setDevices((items) => items.map((dev) => dev.deviceId === deviceId
+      ? { ...dev, ...(updated ?? {}), trustState: state, keyChanged: state === "verified" ? false : dev.keyChanged }
+      : dev));
+    if (state === "verified") toast.success(t("omemo.deviceVerified"));
+    if (state === "untrusted") toast(t("omemo.deviceUntrusted"));
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-surface-900 border border-white/10 shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-surface-900 border-default shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-subtle">
           <div className="flex items-center gap-2">
             <Shield size={16} className="text-accent-soft" />
             <h2 className="text-sm font-semibold text-surface-50">
@@ -109,11 +106,10 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
           </button>
         </div>
 
-        {/* Own fingerprint */}
-        <div className="px-4 py-3 border-b border-white/5">
+        <div className="px-4 py-3 border-b border-subtle">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-surface-200">
-              {t("omemo.yourFingerprint")}
+              {t("omemo.yourFingerprint")}{ownDeviceId ? ` · Device #${ownDeviceId}` : ""}
             </p>
             <button
               onClick={() => setShowQr(!showQr)}
@@ -123,10 +119,10 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
               {showQr ? t("omemo.hideQr") : t("omemo.showQr")}
             </button>
           </div>
-          <p className="font-mono text-xs text-surface-50/80 break-all bg-black/20 px-2 py-1.5 rounded">
+          <p className="font-mono text-xs text-surface-50/80 whitespace-pre-wrap break-all inset-surface px-2 py-1.5 rounded">
             {ownFingerprint || t("omemo.fingerprintLoading")}
           </p>
-          {showQr && (
+          {showQr && qrPayload && (
             <div className="mt-3 flex flex-col items-center">
               <FingerprintQr data={qrPayload} />
               <p className="text-[10px] text-surface-200/40 mt-2">
@@ -136,7 +132,12 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
           )}
         </div>
 
-        {/* Peer devices */}
+        <div className="px-4 py-3 border-b border-subtle bg-warn/5">
+          <p className="text-xs text-surface-200/70 leading-relaxed">
+            {t("omemo.keyChangeWarning")}
+          </p>
+        </div>
+
         <div className="flex-1">
           <p className="text-xs font-medium text-surface-200 px-4 pt-3 pb-2">
             {t("omemo.peerDevices")} ({devices.length})
@@ -148,31 +149,34 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
           ) : (
             <div className="flex flex-col">
               {devices.map((dev) => (
-                <div key={dev.deviceId} className="flex items-start gap-3 px-4 py-3 border-t border-white/5">
-                  {dev.trust === "verified" ? <ShieldCheck size={14} className="text-success mt-0.5" /> :
-                   dev.trust === "untrusted" ? <ShieldOff size={14} className="text-warn mt-0.5" /> :
-                   <ShieldAlert size={14} className="text-warn/60 mt-0.5" />}
+                <div key={dev.deviceId} className="flex items-start gap-3 px-4 py-3 border-t border-subtle">
+                  {trustIcon(dev.trustState, dev.keyChanged)}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-surface-50">Device #{dev.deviceId}</p>
-                    <p className="font-mono text-[10px] text-surface-200/50 break-all mt-0.5">
-                      {dev.fingerprint}
+                    <p className="font-mono text-[10px] text-surface-200/50 whitespace-pre-wrap break-all mt-0.5">
+                      {dev.displayFingerprint}
                     </p>
+                    {dev.keyChanged && dev.previousFingerprint && (
+                      <p className="text-[10px] text-warn mt-1">
+                        {t("omemo.keyChanged")}: {dev.previousFingerprint}
+                      </p>
+                    )}
                     <p className="text-[10px] text-surface-200/40 mt-1">
-                      {t(`omemo.trust.${dev.trust}`)}
+                      {t(`omemo.trust.${dev.trustState}`)}
                     </p>
                   </div>
                   <div className="flex flex-col gap-1">
-                    {dev.trust !== "verified" && (
+                    {dev.trustState !== "verified" && (
                       <button
-                        onClick={() => handleVerify(dev.deviceId)}
+                        onClick={() => updateTrust(dev.deviceId, "verified")}
                         className="text-[10px] px-2 py-0.5 rounded bg-success/20 text-success hover:bg-success/30"
                       >
                         {t("omemo.verify")}
                       </button>
                     )}
-                    {dev.trust !== "untrusted" && (
+                    {dev.trustState !== "untrusted" && (
                       <button
-                        onClick={() => handleUntrust(dev.deviceId)}
+                        onClick={() => updateTrust(dev.deviceId, "untrusted")}
                         className="text-[10px] px-2 py-0.5 rounded bg-warn/20 text-warn hover:bg-warn/30"
                       >
                         {t("omemo.untrust")}

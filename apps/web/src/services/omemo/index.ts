@@ -3,6 +3,24 @@
  *
  * This is the integration point between the XMPP layer and the OMEMO crypto layer.
  *
+ * Interop status (XEP-0384 v0.3 namespace `eu.siacs.conversations.axolotl`):
+ *   - Outbound message structure: <body fallback> + <encryption xmlns="urn:xmpp:eme:0"
+ *     name="OMEMO"/> + <store xmlns="urn:xmpp:hints"/> + <encrypted ...>
+ *     This is what Conversations, Gajim, Movim recognize as OMEMO; receivers
+ *     show "🔒 OMEMO" indicator and the encrypted body, never the fallback hint.
+ *   - Inbound: when <encrypted> is present we ALWAYS discard the body (which is
+ *     just the fallback hint) before any decrypt attempt. So even if decrypt
+ *     fails the user never sees "your client doesn't seem to support OMEMO".
+ *   - Sender's own other devices: each outbound message is encrypted for the
+ *     sender's own devicelist as well as the peer's, per XEP-0384 §4.2, so
+ *     that another logged-in client of the same account can decrypt sent items.
+ *   - 1:1 only: MUC OMEMO is NOT implemented. Group chats fall back to plain
+ *     XMPP unless the user explicitly opted in for non-OMEMO-aware peers.
+ *   - Decrypt fallback: libsignal SessionCipher first; if that fails (no
+ *     session, missing prekey, etc.), tries the legacy custom-protocol path
+ *     in services/e2ee.ts. Failures emit `[OMEMO] omemo-decrypt-fail` to
+ *     console with structured context (sender devid, namespace, reason).
+ *
  * To enable real OMEMO end-to-end encryption with Conversations / Gajim:
  *
  *   1. After XMPP login, call initOmemo(accountId, xmppClient).

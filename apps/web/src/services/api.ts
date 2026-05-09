@@ -1,8 +1,9 @@
 import axios from "axios";
 import { useAccountStore } from "@/stores/accountStore";
-
 export const ADMIN_SESSION_EXPIRED_EVENT = "conjiweb:admin-session-expired";
 const USER_TOKEN_KEY_PREFIX = "conjiweb-user-token:";
+const USER_REFRESH_KEY_PREFIX = "conjiweb-user-refresh:";
+const ADMIN_REFRESH_KEY = "admin_refresh_token";
 
 export function getUserToken(accountId?: string | null): string | null {
   if (!accountId) return null;
@@ -15,6 +16,58 @@ export function setUserToken(accountId: string, token: string) {
 
 export function clearUserToken(accountId: string) {
   sessionStorage.removeItem(`${USER_TOKEN_KEY_PREFIX}${accountId}`);
+  sessionStorage.removeItem(`${USER_REFRESH_KEY_PREFIX}${accountId}`);
+}
+
+export function getUserRefreshToken(accountId?: string | null): string | null {
+  if (!accountId) return null;
+  return sessionStorage.getItem(`${USER_REFRESH_KEY_PREFIX}${accountId}`);
+}
+
+export function setUserRefreshToken(accountId: string, token: string) {
+  sessionStorage.setItem(`${USER_REFRESH_KEY_PREFIX}${accountId}`, token);
+}
+
+export function getAdminRefreshToken(): string | null {
+  return sessionStorage.getItem(ADMIN_REFRESH_KEY);
+}
+
+export function setAdminRefreshToken(token: string) {
+  sessionStorage.setItem(ADMIN_REFRESH_KEY, token);
+}
+
+export function clearAdminRefreshToken() {
+  sessionStorage.removeItem(ADMIN_REFRESH_KEY);
+}
+
+/**
+ * Append the user's bearer token as `?t=<token>` to a `/files/...` download URL,
+ * since browsers can't send Authorization headers from <img>/<audio>/<video> tags.
+ *
+ * Nginx /files/ requires auth_request → /api/attachments/auth-check, which
+ * accepts the token via either `Authorization: Bearer ...` header (used by
+ * fetch/axios) or `?t=...` query param (used by media tags). Without this
+ * helper, media URLs fail with 401.
+ *
+ * Returns the URL unchanged if it isn't a /files/ URL or no token is found.
+ */
+export function signedFilesUrl(rawUrl: string, accountId?: string | null): string {
+  if (!rawUrl) return rawUrl;
+  // Only sign URLs that look like our /files/ MinIO proxy
+  let pathname = rawUrl;
+  try {
+    const u = new URL(rawUrl, window.location.origin);
+    pathname = u.pathname;
+    if (!pathname.startsWith("/files/")) return rawUrl;
+  } catch {
+    if (!rawUrl.startsWith("/files/")) return rawUrl;
+  }
+  const token = getUserToken(accountId);
+  if (!token) return rawUrl;
+  // Don't double-sign
+  if (rawUrl.includes("t=") && /[?&]t=/.test(rawUrl)) return rawUrl;
+  const sep = rawUrl.includes("?") ? "&" : "?";
+  return `${rawUrl}${sep}t=${encodeURIComponent(token)}`;
 }
 
 function normalizeApiUrl(raw?: string): string {
@@ -23,18 +76,23 @@ function normalizeApiUrl(raw?: string): string {
   const value = raw.trim().replace(/\/+$/, "");
   if (!value) return fallback;
 
+  // Absolute URL: ensure path ends with /api
   if (/^https?:\/\//i.test(value)) {
     try {
       const u = new URL(value);
       const path = (u.pathname || "/").replace(/\/+$/, "");
-      if (path === "" || path === "/") u.pathname = "/api";
-      else if (!path.endsWith("/api")) u.pathname = `${path}/api`;
+      if (path === "" || path === "/") {
+        u.pathname = "/api";
+      } else if (!path.endsWith("/api")) {
+        u.pathname = `${path}/api`;
+      }
       return u.toString().replace(/\/+$/, "");
     } catch {
       return fallback;
     }
   }
 
+  // Relative path: ensure /api suffix
   if (value.startsWith("/")) {
     if (value === "/api" || value.endsWith("/api")) return value;
     return `${value}/api`.replace(/\/{2,}/g, "/");
@@ -49,73 +107,152 @@ export const api = axios.create({
   baseURL: API_URL,
 });
 
-function isPublicAuthRequest(url?: string): boolean {
-  if (!url) return false;
-  const path = url.toLowerCase();
-  return (
-    path.includes("/auth/config")
-    || path.includes("/auth/register")
-    || path.includes("/auth/user-token")
-    || path.includes("/sso/providers")
-    || path.includes("/sso/oidc/login")
-    || path.includes("/sso/oidc/exchange")
-    || path.includes("/sso/ldap/login")
-  );
-}
-
 api.interceptors.request.use((config) => {
   const store = useAccountStore.getState();
+
   let accountId =
     (typeof config.headers?.["X-Conjiweb-Account-Id"] === "string"
       ? config.headers["X-Conjiweb-Account-Id"]
-      : undefined) ?? store.activeAccountId;
+      : undefined) ??
+    store.activeAccountId;
+
+  // 🔥 兜底：没有 activeAccountId 时用第一个账号
   if (!accountId && store.accounts?.length > 0) {
     accountId = store.accounts[0].id;
   }
 
-  const token = getUserToken(accountId) ?? sessionStorage.getItem("admin_token");
-  const skipAuth = isPublicAuthRequest(config.url);
-  if (!skipAuth && token) {
+  console.debug("[API] using accountId:", accountId);
+
+  const token =
+    getUserToken(accountId) ?? sessionStorage.getItem("admin_token");
+
+  if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-  } else if (config.headers && "Authorization" in config.headers) {
-    delete (config.headers as any).Authorization;
+    console.debug("[API] token attached ✔");
+  } else {
+    console.warn("[API] NO TOKEN ❌", accountId);
   }
 
   if (config.headers && "X-Conjiweb-Account-Id" in config.headers) {
     delete config.headers["X-Conjiweb-Account-Id"];
   }
 
-  const isFormData = typeof FormData !== "undefined" && config.data instanceof FormData;
+  // Keep JSON default for normal requests, but never force it for FormData uploads.
+  const isFormData =
+    typeof FormData !== "undefined" && config.data instanceof FormData;
   if (!isFormData) {
     const hasExplicitContentType =
       Boolean(config.headers?.["Content-Type"]) || Boolean((config.headers as any)?.["content-type"]);
     if (!hasExplicitContentType) {
       (config.headers as any)["Content-Type"] = "application/json";
     }
-  } else {
-    if (config.headers && "Content-Type" in config.headers) {
-      delete (config.headers as any)["Content-Type"];
-    }
-    if (config.headers && "content-type" in (config.headers as any)) {
-      delete (config.headers as any)["content-type"];
-    }
   }
 
   return config;
 });
 
+// In-flight refresh tracking — prevent the thundering-herd of N concurrent
+// requests all triggering N concurrent refresh calls when a token expires.
+// Map<accountId-or-"admin", Promise<string>> resolves to the new access token.
+const inflightRefresh = new Map<string, Promise<string>>();
+
+async function refreshUserToken(accountId: string): Promise<string> {
+  const existing = inflightRefresh.get(accountId);
+  if (existing) return existing;
+  const refreshTok = getUserRefreshToken(accountId);
+  if (!refreshTok) throw new Error("no-refresh-token");
+  const promise = axios
+    .post(`${API_URL}/auth/refresh`, { refresh_token: refreshTok })
+    .then((r) => {
+      const newAccess: string = r.data.access_token;
+      const newRefresh: string = r.data.refresh_token;
+      setUserToken(accountId, newAccess);
+      // Server rotates refresh tokens — store the new one
+      if (newRefresh) setUserRefreshToken(accountId, newRefresh);
+      return newAccess;
+    })
+    .finally(() => {
+      inflightRefresh.delete(accountId);
+    });
+  inflightRefresh.set(accountId, promise);
+  return promise;
+}
+
+async function refreshAdminToken(): Promise<string> {
+  const existing = inflightRefresh.get("admin");
+  if (existing) return existing;
+  const refreshTok = getAdminRefreshToken();
+  if (!refreshTok) throw new Error("no-refresh-token");
+  const promise = axios
+    .post(`${API_URL}/auth/refresh`, { refresh_token: refreshTok })
+    .then((r) => {
+      const newAccess: string = r.data.access_token;
+      const newRefresh: string = r.data.refresh_token;
+      sessionStorage.setItem("admin_token", newAccess);
+      if (newRefresh) setAdminRefreshToken(newRefresh);
+      return newAccess;
+    })
+    .finally(() => {
+      inflightRefresh.delete("admin");
+    });
+  inflightRefresh.set("admin", promise);
+  return promise;
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
-    if (status === 401 && sessionStorage.getItem("admin_token")) {
-      sessionStorage.removeItem("admin_token");
-      window.dispatchEvent(new Event(ADMIN_SESSION_EXPIRED_EVENT));
+    const config = error?.config;
+
+    // Avoid recursion: don't try to refresh when the failure IS the refresh call,
+    // and don't retry the same request more than once.
+    if (status !== 401 || !config || config.__isRetry || config.url?.includes("/auth/refresh")) {
+      // Final 401 that we can't recover from — surface session-expired UX
+      if (status === 401 && sessionStorage.getItem("admin_token")) {
+        sessionStorage.removeItem("admin_token");
+        clearAdminRefreshToken();
+        window.dispatchEvent(new Event(ADMIN_SESSION_EXPIRED_EVENT));
+      }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    // Decide which refresh path to use based on which token was attached
+    const store = useAccountStore.getState();
+    const accountId = store.activeAccountId ?? store.accounts[0]?.id ?? null;
+    const hadUserToken = accountId && getUserToken(accountId);
+    const hadAdminToken = sessionStorage.getItem("admin_token");
+
+    let newToken: string | null = null;
+    try {
+      if (hadUserToken && accountId) {
+        newToken = await refreshUserToken(accountId);
+      } else if (hadAdminToken) {
+        newToken = await refreshAdminToken();
+      } else {
+        return Promise.reject(error);
+      }
+    } catch {
+      // Refresh failed — drop tokens, signal session expired, give up
+      if (hadAdminToken) {
+        sessionStorage.removeItem("admin_token");
+        clearAdminRefreshToken();
+        window.dispatchEvent(new Event(ADMIN_SESSION_EXPIRED_EVENT));
+      } else if (accountId) {
+        clearUserToken(accountId);
+      }
+      return Promise.reject(error);
+    }
+
+    // Retry the original request once with the fresh token
+    config.__isRetry = true;
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${newToken}`;
+    return api.request(config);
   }
 );
 
+// Accounts
 export const accountsApi = {
   list: () => api.get("/accounts/").then((r) => r.data),
   create: (data: { jid: string; domain: string; display_name?: string }) =>
@@ -135,6 +272,7 @@ export const accountsApi = {
   ) => api.put(`/accounts/${accountId}/preferences`, data).then((r) => r.data),
 };
 
+// Messages
 export const messagesApi = {
   search: (q: string, accountId: string) =>
     api.get("/messages/search", { params: { q, account_id: accountId } }).then((r) => r.data),
@@ -148,17 +286,30 @@ export const messagesApi = {
     }).then((r) => r.data),
 };
 
+// Attachments
 export const attachmentsApi = {
   upload: (file: File, messageId?: string, accountId?: string) => {
     const form = new FormData();
     form.append("file", file, file.name);
     if (messageId) form.append("message_id", messageId);
+
+    // CRITICAL: do NOT set Content-Type manually for FormData uploads.
+    // The browser must set it automatically as
+    //   "multipart/form-data; boundary=----WebKitFormBoundary..."
+    // Setting it manually omits the boundary, the server fails to parse the
+    // body (returning 400 or in some configs 401 from the auth middleware
+    // running before body parse), and the upload appears to fail.
+    //
+    // The axios request interceptor will still add Authorization: Bearer <token>
+    // because we are not setting that header here.
     const headers: Record<string, string> = {};
     if (accountId) headers["X-Conjiweb-Account-Id"] = accountId;
+
     return api.post("/attachments/upload", form, { headers }).then((r) => r.data);
   },
 };
 
+// Plugins
 export const pluginsApi = {
   list: () =>
     api.get("/plugins/").then((r) => {
@@ -172,6 +323,7 @@ export const pluginsApi = {
   disable: (id: string) => api.post(`/plugins/${id}/disable`).then((r) => r.data),
 };
 
+// AI
 export const aiApi = {
   summarize: (messages: string[], conversationId?: string) =>
     api.post("/ai/summarize", { messages, conversation_id: conversationId }).then((r) => r.data),
@@ -181,6 +333,7 @@ export const aiApi = {
     api.post("/ai/translate", null, { params: { text, target_lang: targetLang } }).then((r) => r.data),
 };
 
+// Admin
 export const adminApi = {
   status: () => api.get("/admin/status").then((r) => r.data),
   serviceHealth: () => api.get("/admin/service-health").then((r) => r.data),
@@ -190,6 +343,7 @@ export const adminApi = {
     api.post("/auth/admin/login", { username, password }).then((r) => r.data),
 };
 
+// Auth
 export const authApi = {
   config: () =>
     api.get("/auth/config").then((r) => r.data as {
@@ -200,5 +354,19 @@ export const authApi = {
   register: (data: { jid: string; password: string }) =>
     api.post("/auth/register", data).then((r) => r.data),
   getUserToken: (jid: string, password: string) =>
-    api.post("/auth/user-token", { jid, password }).then((r) => r.data),
+    api.post("/auth/user-token", { jid, password }).then((r) => r.data as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      account_id: string;
+      jid: string;
+    }),
+  refresh: (refresh_token: string) =>
+    api.post("/auth/refresh", { refresh_token }).then((r) => r.data as {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+    }),
+  logout: (refresh_token?: string) =>
+    api.post("/auth/logout", refresh_token ? { refresh_token } : {}).then((r) => r.data),
 };

@@ -45,21 +45,6 @@ const SUB_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const lastSubscriptionRequestAt = new Map<string, number>();
 const avatarFetchInFlight = new Set<string>();
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const OMEMO_FALLBACK_BODY = "This message is OMEMO encrypted";
-
-type OmemoDecryptFailureReason =
-  | "no-local-device-id"
-  | "missing-recipient-key"
-  | "libsignal-decrypt-failed"
-  | "legacy-decrypt-failed"
-  | "ciphertext-decrypt-failed";
-
-function logOmemoDecryptFailure(
-  reason: OmemoDecryptFailureReason,
-  context: Record<string, unknown>
-) {
-  console.warn("[OMEMO] decrypt failed", { reason, ...context });
-}
 
 function normalizePresence(show?: string): "available" | "away" | "dnd" | "xa" | "unavailable" {
   const value = (show ?? "").toLowerCase();
@@ -431,7 +416,14 @@ export function initXmppBridge(client: XmppClient) {
     }
     const incomingEncrypted = Boolean(incomingOmemo) || (typeof incomingBody === "string" && isEncryptedPayload(incomingBody));
     let decryptFailed = false;
+    let decryptFailReason = "";
     if (incomingOmemo) {
+      // The body coming from xmppAdapter is the OMEMO fallback hint (per XEP-0384).
+      // We must NEVER display this as the message — discard it now, before any
+      // decrypt attempt, so even if everything below fails the user never sees
+      // "I sent you an OMEMO encrypted message but your client doesn't seem to support that".
+      incomingBody = "";
+
       // BTBV: detect new peer device and notify user
       try {
         const senderDevId = incomingOmemo.sid;
@@ -465,16 +457,20 @@ export function initXmppBridge(client: XmppClient) {
       // Try the standard libsignal-based decryption first (for messages
       // from Conversations / Gajim / Movim using XEP-0384 v0.8+).
       let decrypted: string | null = null;
-      let failureReason: OmemoDecryptFailureReason | null = null;
+      let libsignalErr: unknown = null;
       try {
         const store = new OmemoStore(accountId);
         const localDeviceId = await store.getLocalRegistrationId();
         if (!localDeviceId) {
-          failureReason = "no-local-device-id";
-        } else if (incomingOmemo.namespace?.includes("axolotl")) {
+          decryptFailReason = "no-local-device";
+        } else if (!incomingOmemo.namespace?.includes("axolotl")) {
+          decryptFailReason = `unknown-namespace:${incomingOmemo.namespace}`;
+        } else {
           // Convert legacy envelope format to new EncryptedEnvelope
           const ourKey = incomingOmemo.keys.find((k: any) => k.rid === localDeviceId);
-          if (ourKey) {
+          if (!ourKey) {
+            decryptFailReason = `no-key-for-our-device(localDevId=${localDeviceId},availableRids=${incomingOmemo.keys.map((k: any) => k.rid).join(",")})`;
+          } else {
             const newEnvelope = {
               sid: incomingOmemo.sid,
               iv: base64ToArrayBuffer(incomingOmemo.iv),
@@ -486,50 +482,50 @@ export function initXmppBridge(client: XmppClient) {
               })),
             };
             decrypted = await decryptEnvelope(accountId, localDeviceId, from, newEnvelope);
-          } else {
-            failureReason = "missing-recipient-key";
           }
         }
-      } catch {
-        // libsignal decrypt failed - fall through to legacy
-        failureReason = "libsignal-decrypt-failed";
+      } catch (e) {
+        libsignalErr = e;
       }
       // Fall back to legacy custom-protocol decryption
       if (decrypted == null) {
-        decrypted = await decryptOmemoEnvelopeFromPeer(accountId, from, incomingOmemo);
+        try {
+          decrypted = await decryptOmemoEnvelopeFromPeer(accountId, from, incomingOmemo);
+        } catch (e) {
+          // Both paths failed — record both error reasons for diagnostics
+          if (!decryptFailReason) {
+            decryptFailReason = `legacy-decrypt-error:${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
       }
       if (decrypted == null) {
-        incomingBody = "[Encrypted message - unable to decrypt]";
-        decryptFailed = true;
-        logOmemoDecryptFailure(failureReason ?? "legacy-decrypt-failed", {
-          accountId,
+        // Structured log so admins can grep "omemo-decrypt-fail" and see why
+        // eslint-disable-next-line no-console
+        console.warn("[OMEMO] omemo-decrypt-fail", {
           from,
-          messageId: message.id,
+          accountId,
+          senderDevId: incomingOmemo.sid,
           namespace: incomingOmemo.namespace,
-          sid: incomingOmemo.sid,
+          reason: decryptFailReason || "unknown",
+          libsignalErr: libsignalErr instanceof Error ? libsignalErr.message : libsignalErr,
         });
+        // User-facing message — clearly distinguish "no key for us" vs other failures
+        if (decryptFailReason.startsWith("no-key-for-our-device")) {
+          incomingBody = "🔒 Encrypted message — sender doesn't know your device key yet. Send them any message so they can sync.";
+        } else if (decryptFailReason.startsWith("no-local-device")) {
+          incomingBody = "🔒 Encrypted message — your local OMEMO key is missing. Re-login may help.";
+        } else {
+          incomingBody = "🔒 Encrypted message — unable to decrypt. Verify both devices' OMEMO trust.";
+        }
+        decryptFailed = true;
       } else {
         incomingBody = decrypted;
       }
-    } else if (typeof incomingBody === "string" && incomingBody.trim() === OMEMO_FALLBACK_BODY) {
-      incomingBody = "[Encrypted message - unable to decrypt]";
-      decryptFailed = true;
-      logOmemoDecryptFailure("legacy-decrypt-failed", {
-        accountId,
-        from,
-        messageId: message.id,
-        fallbackOnly: true,
-      });
     } else if (incomingEncrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, from, incomingBody);
       if (decrypted == null) {
-        incomingBody = "[Encrypted message - unable to decrypt]";
+        incomingBody = "🔒 Encrypted message — unable to decrypt";
         decryptFailed = true;
-        logOmemoDecryptFailure("ciphertext-decrypt-failed", {
-          accountId,
-          from,
-          messageId: message.id,
-        });
       } else {
         incomingBody = decrypted;
       }
@@ -680,37 +676,14 @@ export function initXmppBridge(client: XmppClient) {
       if (decrypted == null) {
         body = "[Encrypted message - unable to decrypt]";
         decryptFailed = true;
-        logOmemoDecryptFailure("legacy-decrypt-failed", {
-          accountId,
-          from: peerJid,
-          messageId: message.id,
-          source: "mam",
-          sid: incomingOmemo.sid,
-          namespace: incomingOmemo.namespace,
-        });
       } else {
         body = decrypted;
       }
-    } else if (typeof body === "string" && body.trim() === OMEMO_FALLBACK_BODY) {
-      body = "[Encrypted message - unable to decrypt]";
-      decryptFailed = true;
-      logOmemoDecryptFailure("legacy-decrypt-failed", {
-        accountId,
-        from: peerJid,
-        messageId: message.id,
-        source: "mam-fallback-only",
-      });
     } else if (encrypted) {
       const decrypted = await decryptBodyFromPeer(accountId, peerJid, body);
       if (decrypted == null) {
         body = "[Encrypted message - unable to decrypt]";
         decryptFailed = true;
-        logOmemoDecryptFailure("ciphertext-decrypt-failed", {
-          accountId,
-          from: peerJid,
-          messageId: message.id,
-          source: "mam",
-        });
       } else {
         body = decrypted;
       }
@@ -848,7 +821,7 @@ export function initXmppBridge(client: XmppClient) {
   client.on("room.member", (data: any) => {
     const roomJid = normalizeBareJid(data.roomJid as string);
     if (!roomJid) return;
-    const members = useGroupStore.getState().members[roomJid] ?? [];
+    const members = useGroupStore.getState().members[`${accountId}::${roomJid}`] ?? [];
     const jid = normalizeBareJid(data.jid as string);
     const nextMember = {
       jid,
@@ -859,32 +832,34 @@ export function initXmppBridge(client: XmppClient) {
     };
     const without = members.filter((m) => m.jid !== jid);
     if (nextMember.presence === "unavailable") {
-      useGroupStore.getState().setMembers(roomJid, without);
+      useGroupStore.getState().setMembers(accountId, roomJid, without);
       return;
     }
-    useGroupStore.getState().setMembers(roomJid, [...without, nextMember]);
+    useGroupStore.getState().setMembers(accountId, roomJid, [...without, nextMember]);
   });
 
   client.on("room.subject", (data: any) => {
     const roomJid = normalizeBareJid(data.roomJid as string);
     if (!roomJid) return;
-    useGroupStore.getState().updateRoomSubject(roomJid, String(data.subject ?? ""));
+    useGroupStore.getState().updateRoomSubject(accountId, roomJid, String(data.subject ?? ""));
   });
 
   client.on("room.invite", (data: any) => {
     const roomJid = normalizeBareJid(data.roomJid as string);
     if (!roomJid) return;
-    const existing = useGroupStore.getState().rooms[roomJid];
+    const groupStore = useGroupStore.getState();
+    const existing = groupStore.getRoom(accountId, roomJid);
     const roomName = existing?.name ?? roomJid.split("@")[0];
     const nickname = client.config.jid.split("@")[0];
-    useGroupStore.getState().upsertRoom({
+    groupStore.upsertRoom({
+      accountId,
       jid: roomJid,
       name: roomName,
       nickname: existing?.nickname ?? nickname,
       description: existing?.description,
       memberCount: existing?.memberCount,
       isPublic: existing?.isPublic ?? false,
-      joined: existing?.joined ?? false,
+      joinState: existing?.joinState ?? "idle",
       subject: existing?.subject,
     });
     const inviterJid = normalizeBareJid((data.inviterJid as string) || "");
@@ -895,6 +870,98 @@ export function initXmppBridge(client: XmppClient) {
       body: `${inviterJid || "Someone"} invited you to ${roomJid}${reason ? `: ${reason}` : ""}`,
       accountId,
     });
+  });
+
+  // Server-confirmed join — flip joinState to "joined"
+  client.on("room.joined", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    const groupStore = useGroupStore.getState();
+    const existing = groupStore.getRoom(accountId, roomJid);
+    if (existing) {
+      groupStore.setJoinState(accountId, roomJid, "joined");
+    } else {
+      // Joined a room not previously in store (e.g. from external link)
+      groupStore.upsertRoom({
+        accountId,
+        jid: roomJid,
+        name: roomJid.split("@")[0],
+        nickname: data.nickname ?? client.config.jid.split("@")[0],
+        isPublic: false,
+        joinState: "joined",
+      });
+    }
+  });
+
+  // Server rejected the join (room doesn't exist, banned, password wrong, etc)
+  client.on("room.join.failed", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    const reason = `${data.condition ?? "unknown"}${data.code ? ` (${data.code})` : ""}`;
+    useGroupStore.getState().setJoinState(accountId, roomJid, "error", { lastError: reason });
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Could not join group",
+      body: `${roomJid}: ${reason}`,
+      accountId,
+    });
+  });
+
+  // Server kicked / banned / shut down — flip joinState and notify user
+  client.on("room.removed", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    const reason = String(data.reason ?? "removed");
+    useGroupStore.getState().setJoinState(accountId, roomJid, "kicked", {
+      lastRemovalReason: reason,
+    });
+    const reasonText = data.reasonText ? `: ${data.reasonText}` : "";
+    const actor = data.actor ? ` by ${data.actor}` : "";
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Removed from group",
+      body: `${roomJid} (${reason}${actor}${reasonText})`,
+      accountId,
+    });
+  });
+
+  // Room was destroyed by its owner
+  client.on("room.destroyed", (data: any) => {
+    const roomJid = normalizeBareJid(data.roomJid as string);
+    if (!roomJid) return;
+    useGroupStore.getState().setJoinState(accountId, roomJid, "destroyed", {
+      lastRemovalReason: "room-destroyed",
+    });
+    const altJid = data.altJid ? ` Replacement: ${data.altJid}` : "";
+    const reasonText = data.reasonText ? `: ${data.reasonText}` : "";
+    useNotificationStore.getState().addNotification({
+      type: "system",
+      title: "Group was destroyed",
+      body: `${roomJid}${reasonText}${altJid}`,
+      accountId,
+    });
+  });
+
+  // After (re)connect, replay all rooms we believe we're a member of so the
+  // server resumes our presence. Without this, "几分钟掉线" reconnect
+  // would leave the user out of all their groups even though the UI shows
+  // joined state.
+  client.on("connection.changed", (data: any) => {
+    if (data.status !== "connected") return;
+    const groupStore = useGroupStore.getState();
+    const joinedRooms = groupStore.getJoinedRooms(accountId);
+    if (joinedRooms.length === 0) return;
+    // eslint-disable-next-line no-console
+    console.info(`[XMPP MUC] auto-rejoining ${joinedRooms.length} room(s) for ${accountId}`);
+    for (const room of joinedRooms) {
+      // Mark as "joining" so UI shows pending state until server confirms
+      groupStore.setJoinState(accountId, room.jid, "joining");
+      client.joinRoom(room.jid, room.nickname).catch((err) => {
+        // The "room.join.failed" event will set state to "error" with details.
+        // eslint-disable-next-line no-console
+        console.warn(`[XMPP MUC] auto-rejoin failed room=${room.jid}`, err);
+      });
+    }
   });
 
   // KILLER-04: Push local mutations to PEP cross-device sync (debounced)
@@ -1071,7 +1138,7 @@ export async function tryLibsignalEncrypt(
     const NS_DEVICELIST = "eu.siacs.conversations.axolotl.devicelist";
     const NS_BUNDLES = "eu.siacs.conversations.axolotl.bundles";
 
-    const deviceListEl = await (client as any).fetchPepNode(peerJid, NS_DEVICELIST);
+    const deviceListEl = await client.fetchPepNode(peerJid, NS_DEVICELIST);
     if (!deviceListEl) return null;
 
     const deviceIds: number[] = [];
@@ -1081,75 +1148,122 @@ export async function tryLibsignalEncrypt(
     });
     if (deviceIds.length === 0) return null;
 
-    const ensureSessions = async (targetJid: string, targetDeviceIds: number[]) => {
-      for (const deviceId of targetDeviceIds) {
-        const sessionExists = await store.loadSession(`${targetJid}.${deviceId}`);
-        if (sessionExists) continue;
+    // 2. For each device, fetch its bundle and ensure session
+    for (const deviceId of deviceIds) {
+      const sessionExists = await store.loadSession(`${peerJid}.${deviceId}`);
+      if (sessionExists) continue;
 
-        const bundleEl = await (client as any).fetchPepNode(targetJid, `${NS_BUNDLES}:${deviceId}`);
-        if (!bundleEl) continue;
+      const bundleEl = await client.fetchPepNode(peerJid, `${NS_BUNDLES}:${deviceId}`);
+      if (!bundleEl) continue;
 
-        const identityKey = base64ToArrayBuffer(
-          bundleEl.querySelector("identityKey")?.textContent?.trim() ?? ""
-        );
-        const signedPreKeyEl = bundleEl.querySelector("signedPreKeyPublic");
-        const signedPreKeyId = parseInt(signedPreKeyEl?.getAttribute("signedPreKeyId") ?? "0", 10);
-        const signedPreKey = base64ToArrayBuffer(signedPreKeyEl?.textContent?.trim() ?? "");
-        const signedPreKeySignature = base64ToArrayBuffer(
-          bundleEl.querySelector("signedPreKeySignature")?.textContent?.trim() ?? ""
-        );
-        const preKeyEls = bundleEl.querySelectorAll("preKeyPublic");
-        let preKey: { keyId: number; publicKey: ArrayBuffer } | undefined;
-        if (preKeyEls.length > 0) {
-          const picked = preKeyEls[Math.floor(Math.random() * preKeyEls.length)] as Element;
-          preKey = {
-            keyId: parseInt(picked.getAttribute("preKeyId") ?? "0", 10),
-            publicKey: base64ToArrayBuffer(picked.textContent?.trim() ?? ""),
-          };
-        }
-
-        try {
-          await establishSession(accountId, targetJid, {
-            deviceId,
-            identityKey,
-            signedPreKeyId,
-            signedPreKey,
-            signedPreKeySignature,
-            preKey,
-          });
-        } catch {
-          // Skip this device if session establishment fails
-        }
+      const identityKey = base64ToArrayBuffer(
+        bundleEl.querySelector("identityKey")?.textContent?.trim() ?? ""
+      );
+      const signedPreKeyEl = bundleEl.querySelector("signedPreKeyPublic");
+      const signedPreKeyId = parseInt(signedPreKeyEl?.getAttribute("signedPreKeyId") ?? "0", 10);
+      const signedPreKey = base64ToArrayBuffer(signedPreKeyEl?.textContent?.trim() ?? "");
+      const signedPreKeySignature = base64ToArrayBuffer(
+        bundleEl.querySelector("signedPreKeySignature")?.textContent?.trim() ?? ""
+      );
+      // Pick a random one-time prekey
+      const preKeyEls = bundleEl.querySelectorAll("preKeyPublic");
+      let preKey: { keyId: number; publicKey: ArrayBuffer } | undefined;
+      if (preKeyEls.length > 0) {
+        const picked = preKeyEls[Math.floor(Math.random() * preKeyEls.length)] as Element;
+        preKey = {
+          keyId: parseInt(picked.getAttribute("preKeyId") ?? "0", 10),
+          publicKey: base64ToArrayBuffer(picked.textContent?.trim() ?? ""),
+        };
       }
-    };
 
-    // 2. For each peer device, fetch bundle and ensure session
-    await ensureSessions(peerJid, deviceIds);
+      try {
+        await establishSession(accountId, peerJid, {
+          deviceId,
+          identityKey,
+          signedPreKeyId,
+          signedPreKey,
+          signedPreKeySignature,
+          preKey,
+        });
+      } catch {
+        // Skip this device if session establishment fails
+      }
+    }
 
-    // 3. Also include our own published devices for self-decrypt / multi-device sync
-    const ownDeviceIdsRaw = await (client as any).fetchPepNode(client.config.jid, NS_DEVICELIST);
-    const ownDeviceIds: number[] = [];
-    ownDeviceIdsRaw?.querySelectorAll("device").forEach((dev: Element) => {
-      const id = parseInt(dev.getAttribute("id") ?? "", 10);
-      if (Number.isFinite(id) && id !== ownDeviceId) ownDeviceIds.push(id);
-    });
-    await ensureSessions(client.config.jid, ownDeviceIds);
+    // 3. Also discover OUR OWN other devices and establish sessions for them.
+    //    XEP-0384 §4.2: a sender MUST encrypt the message key for every device
+    //    of the recipient AND for every other device of the sender, otherwise
+    //    the sender's other clients can't show the sent message.
+    const ownJid = client.config?.jid?.split("/")[0]?.toLowerCase() ?? "";
+    const allDevices: { peerJid: string; deviceId: number }[] = [];
 
-    // 4. Encrypt for peer + own devices (excluding our sender device id)
-    const peerDevices = deviceIds.map((id) => ({ peerJid, deviceId: id }));
-    const ownTargetDevices = ownDeviceIds.map((id) => ({ peerJid: client.config.jid, deviceId: id }));
-    const allDevices = [...peerDevices, ...ownTargetDevices];
-    if (allDevices.length === 0) return null;
+    // Add peer devices
+    for (const id of deviceIds) {
+      allDevices.push({ peerJid, deviceId: id });
+    }
 
+    // Add own other devices (skip our own current device)
+    if (ownJid && ownJid !== peerJid.toLowerCase()) {
+      try {
+        const ownDeviceListEl = await client.fetchPepNode(ownJid, NS_DEVICELIST);
+        if (ownDeviceListEl) {
+          const ownDeviceIds: number[] = [];
+          ownDeviceListEl.querySelectorAll("device").forEach((dev: Element) => {
+            const id = parseInt(dev.getAttribute("id") ?? "", 10);
+            if (Number.isFinite(id) && id !== ownDeviceId) ownDeviceIds.push(id);
+          });
+
+          for (const otherId of ownDeviceIds) {
+            const sessExists = await store.loadSession(`${ownJid}.${otherId}`);
+            if (!sessExists) {
+              const ownBundleEl = await client.fetchPepNode(ownJid, `${NS_BUNDLES}:${otherId}`);
+              if (!ownBundleEl) continue;
+              try {
+                const identityKey = base64ToArrayBuffer(
+                  ownBundleEl.querySelector("identityKey")?.textContent?.trim() ?? ""
+                );
+                const spkEl = ownBundleEl.querySelector("signedPreKeyPublic");
+                const signedPreKeyId = parseInt(spkEl?.getAttribute("signedPreKeyId") ?? "0", 10);
+                const signedPreKey = base64ToArrayBuffer(spkEl?.textContent?.trim() ?? "");
+                const signedPreKeySignature = base64ToArrayBuffer(
+                  ownBundleEl.querySelector("signedPreKeySignature")?.textContent?.trim() ?? ""
+                );
+                const pkEls = ownBundleEl.querySelectorAll("preKeyPublic");
+                let preKey: { keyId: number; publicKey: ArrayBuffer } | undefined;
+                if (pkEls.length > 0) {
+                  const picked = pkEls[Math.floor(Math.random() * pkEls.length)] as Element;
+                  preKey = {
+                    keyId: parseInt(picked.getAttribute("preKeyId") ?? "0", 10),
+                    publicKey: base64ToArrayBuffer(picked.textContent?.trim() ?? ""),
+                  };
+                }
+                await establishSession(accountId, ownJid, {
+                  deviceId: otherId,
+                  identityKey, signedPreKeyId, signedPreKey, signedPreKeySignature, preKey,
+                });
+              } catch {
+                continue;
+              }
+            }
+            allDevices.push({ peerJid: ownJid, deviceId: otherId });
+          }
+        }
+      } catch {
+        // Own devicelist fetch failed — continue with peer-only encryption
+        // (own other devices won't see this message, but peer will)
+      }
+    }
+
+    // 4. Encrypt for all devices (peer + own other)
     const newEnvelope = await encryptForDevices(accountId, ownDeviceId, plaintext, allDevices);
 
-    // 5. Convert new envelope shape to legacy shape (so existing sendOmemoMessage works)
+    // 4. Convert new envelope shape to legacy shape (so existing sendOmemoMessage works)
     return {
       namespace: "eu.siacs.conversations.axolotl",
       sid: newEnvelope.sid,
       iv: arrayBufferToBase64(newEnvelope.iv),
       payload: arrayBufferToBase64(newEnvelope.payload),
-      keys: newEnvelope.keys.map((k: { rid: number; body: ArrayBuffer; isPreKey: boolean }) => ({
+      keys: newEnvelope.keys.map((k) => ({
         rid: k.rid,
         value: arrayBufferToBase64(k.body),
         prekey: k.isPreKey,

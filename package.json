@@ -1,7 +1,7 @@
 {
   "name": "conjiweb-monorepo",
   "description": "Root workspace for Conjiweb development. Delegates to apps/web for frontend build.",
-  "version": "1.6.0",
+  "version": "2.3.4",
   "private": true,
   "scripts": {
     "install:web": "npm --prefix apps/web install",

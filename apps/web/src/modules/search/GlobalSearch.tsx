@@ -37,7 +37,10 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const contacts = useRosterStore((s) => (activeAccountId ? s.listContacts(activeAccountId) : []));
-  const rooms = useGroupStore((s) => Object.values(s.rooms));
+  const allRooms = useGroupStore((s) => Object.values(s.rooms));
+  const rooms = activeAccountId
+    ? allRooms.filter((r) => r.accountId === activeAccountId)
+    : [];
   const conversations = useChatStore((s) => Object.values(s.conversations));
 
   const doSearch = useCallback(
@@ -149,10 +152,10 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-surface-950/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-xl bg-surface-900 rounded-2xl border border-white/10 shadow-2xl overflow-hidden animate-slide-in"
+        className="w-full max-w-xl bg-surface-900 rounded-2xl border-default shadow-2xl overflow-hidden animate-slide-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-subtle">
           <Search size={16} className="text-surface-200/40 flex-shrink-0" />
           <input
             ref={inputRef}
@@ -173,7 +176,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
             <div className="p-3">
               <p className="text-[10px] text-surface-200/30 uppercase tracking-wide px-2 mb-1">{t("search.recent")}</p>
               {recent.map((r) => (
-                <button key={r} onClick={() => { setQuery(r); doSearch(r); }} className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 text-left">
+                <button key={r} onClick={() => { setQuery(r); doSearch(r); }} className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover-surface text-left">
                   <Clock size={13} className="text-surface-200/30" />
                   <span className="text-sm text-surface-200/70">{r}</span>
                 </button>
@@ -197,7 +200,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
                   <div key={type}>
                     <p className="text-[10px] text-surface-200/30 uppercase tracking-wide px-2 py-1">{labels[type]}</p>
                     {group.map((result) => (
-                      <button key={result.id} onClick={() => handleSelect(result)} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-white/5 text-left">
+                      <button key={result.id} onClick={() => handleSelect(result)} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover-surface text-left">
                         <span className="flex-shrink-0">{icons[result.type]}</span>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-surface-50 truncate">{result.title}</p>
@@ -220,7 +223,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="px-4 py-2 border-t border-white/5 flex gap-3 text-[10px] text-surface-200/25">
+        <div className="px-4 py-2 border-t border-subtle flex gap-3 text-[10px] text-surface-200/25">
           <button
             onClick={() => {
               if (!query.trim()) return;

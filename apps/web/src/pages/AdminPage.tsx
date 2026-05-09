@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ADMIN_SESSION_EXPIRED_EVENT, adminApi } from "@/services/api";
+import { ADMIN_SESSION_EXPIRED_EVENT, adminApi, authApi, setAdminRefreshToken, getAdminRefreshToken, clearAdminRefreshToken } from "@/services/api";
 import { Shield, Activity, Database, Server, Users, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
@@ -51,6 +51,11 @@ export default function AdminPage() {
     try {
       const res = await adminApi.login(creds.username, creds.password);
       sessionStorage.setItem("admin_token", res.access_token);
+      // Persist refresh token so the axios interceptor can renew when the
+      // 30-minute access token expires, instead of dropping the admin out.
+      if ((res as any).refresh_token) {
+        setAdminRefreshToken((res as any).refresh_token);
+      }
       setAuthed(true);
       toast.success(t("admin.loginGranted"));
     } catch {
@@ -163,7 +168,7 @@ export default function AdminPage() {
             ) : (
               <div className="flex flex-col gap-2">
                 {auditLogs.map((log: any) => (
-                  <div key={log.id} className="rounded-lg border border-white/10 px-3 py-2">
+                  <div key={log.id} className="rounded-lg border-default px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm text-surface-50">{log.action}</span>
                       <span className="text-[11px] text-surface-200/40">{log.created_at ?? "-"}</span>
@@ -179,7 +184,21 @@ export default function AdminPage() {
         </section>
 
         <button
-          onClick={() => { sessionStorage.removeItem("admin_token"); setAuthed(false); }}
+          onClick={async () => {
+            // Revoke server-side first so a stolen token can't be reused.
+            // We pass the refresh token to invalidate it too. The bearer
+            // access token is taken from the Authorization header by the
+            // server (axios interceptor adds it from sessionStorage).
+            const refreshTok = getAdminRefreshToken();
+            try {
+              await authApi.logout(refreshTok ?? undefined);
+            } catch {
+              // Already-expired tokens still get cleaned up locally below.
+            }
+            sessionStorage.removeItem("admin_token");
+            clearAdminRefreshToken();
+            setAuthed(false);
+          }}
           className="btn-ghost text-xs text-danger self-start flex items-center gap-1.5"
         >
           <Shield size={12} /> {t("admin.logout")}

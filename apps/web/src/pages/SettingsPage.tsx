@@ -16,11 +16,13 @@ import { applyHistoryRetention, clearAllHistoryNow, getStoredHistoryRetentionDay
 import { getOmemoFingerprintForJid } from "@/services/omemoFingerprint";
 import { getOmemoEnabled, onOmemoEnabledChange } from "@/services/omemoSettings";
 import { useNotificationStore } from "@/stores/notificationStore";
-import { accountsApi, authApi, setUserToken } from "@/services/api";
+import { accountsApi, authApi, setUserToken, setUserRefreshToken, getUserRefreshToken, clearUserToken } from "@/services/api";
 import { clearLocalAccountData } from "@/services/localDb";
 import Avatar from "@/components/Avatar";
 import { apiSocket } from "@/services/apiSocket";
 import { isPushSubscribed, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/services/push";
+import { revokeAllAesgcmBlobs } from "@/services/aesgcmMedia";
+import { markIntentionalDisconnect, unsuperviseConnection } from "@/services/connectionSupervisor";
 
 /**
  * Same-origin wsUrl helper - matches LoginPage.tsx logic.
@@ -90,7 +92,7 @@ function ShareQr({
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-3 flex gap-3">
+    <div className="rounded-lg border-default bg-surface-800/40 p-3 flex gap-3">
       <div className="w-24 h-24 shrink-0 rounded-md bg-white p-1.5 flex items-center justify-center">
         {dataUrl ? (
           <img src={dataUrl} alt={title} className="w-full h-full" />
@@ -165,7 +167,12 @@ function AccountCard({ account }: { account: XmppAccount }) {
       await client.connect();
       accountsApi.create({ jid: account.jid, domain: account.jid.split("@")[1] ?? "localhost" }).catch(() => {});
       const tokenRes = await authApi.getUserToken(account.jid, runtimePassword).catch(() => null);
-      if (tokenRes?.access_token) setUserToken(account.id, tokenRes.access_token);
+      if (tokenRes?.access_token) {
+        setUserToken(account.id, tokenRes.access_token);
+        if ((tokenRes as any).refresh_token) {
+          setUserRefreshToken(account.id, (tokenRes as any).refresh_token);
+        }
+      }
       toast.success(`${t("toast.connected")}: ${account.jid}`);
     } catch (e: any) {
       toast.error(e.message ?? t("toast.connectionFailed"));
@@ -175,16 +182,31 @@ function AccountCard({ account }: { account: XmppAccount }) {
   };
 
   const disconnect = () => {
+    // Tell the connection supervisor not to auto-reconnect this account.
+    markIntentionalDisconnect(account.id);
     destroyClient(account.id);
     setConnected(account.id, false);
     toast(t("toast.disconnected"));
   };
 
   const removeAccountWithData = async () => {
+    // Revoke tokens server-side BEFORE we drop them locally — otherwise
+    // a stolen access token from sessionStorage remains valid for up to
+    // 30 minutes and a stolen refresh token for 14 days.
+    const refreshTok = getUserRefreshToken(account.id);
+    try {
+      await authApi.logout(refreshTok ?? undefined);
+    } catch {
+      // Already invalid/expired or server unreachable — local cleanup still proceeds
+    }
+    clearUserToken(account.id);
+
     disconnect();
     apiSocket.disconnect();
+    unsuperviseConnection(account.id);  // detach supervisor entirely
     clearChatAccountData(account.id);
     clearRosterAccountData(account.id);
+    revokeAllAesgcmBlobs();  // Free decrypted blob URLs for media in this account
     await clearLocalAccountData(account.id).catch(() => {});
     removeAccount(account.id);
   };
@@ -222,8 +244,8 @@ function AccountCard({ account }: { account: XmppAccount }) {
             className={clsx(
               "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all",
               account.presence === p.value
-                ? "border-white/20 bg-white/10 text-surface-50"
-                : "border-white/5 text-surface-200/40 hover:border-white/10 hover:text-surface-200"
+                ? "border-default bg-surface-800/60 text-surface-50"
+                : "border-subtle text-surface-200/40 hover:border-default hover:text-surface-200"
             )}
           >
             <span className={clsx("w-2 h-2 rounded-full", p.color)} />
@@ -271,7 +293,7 @@ function AccountCard({ account }: { account: XmppAccount }) {
         {!account.connected ? (
           <button onClick={connect} disabled={connecting} className="btn-primary text-xs py-1.5 flex items-center gap-1.5">
             {connecting
-              ? <span className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
+              ? <span className="w-3 h-3 border border-default border-t-white rounded-full animate-spin" />
               : <Wifi size={12} />
             }
             {t("account.connect")}
@@ -432,7 +454,12 @@ export default function SettingsPage() {
       await client.connect();
       accountsApi.create({ jid, domain: jid.split("@")[1] ?? "localhost" }).catch(() => {});
       const tokenRes = await authApi.getUserToken(jid, form.password).catch(() => null);
-      if (tokenRes?.access_token) setUserToken(id, tokenRes.access_token);
+      if (tokenRes?.access_token) {
+        setUserToken(id, tokenRes.access_token);
+        if ((tokenRes as any).refresh_token) {
+          setUserRefreshToken(id, (tokenRes as any).refresh_token);
+        }
+      }
       apiSocket.connect(id);
     } catch (error: any) {
       toast.error(error?.message ?? t("toast.connectionFailed"));
@@ -664,7 +691,7 @@ export default function SettingsPage() {
                 const fingerprint = omemoFingerprints[acc.id] ?? "-";
                 const copied = copiedAccountId === acc.id;
                 return (
-                  <div key={acc.id} className="rounded-lg border border-white/10 bg-white/5 p-3 flex flex-col gap-2">
+                  <div key={acc.id} className="rounded-lg border-default bg-surface-800/40 p-3 flex flex-col gap-2">
                     <div className="text-xs text-surface-200/70">{acc.jid}</div>
                     <div className="font-mono text-xs tracking-wide text-surface-50 break-all">{fingerprint}</div>
                     <div className="flex justify-end">

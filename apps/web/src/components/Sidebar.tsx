@@ -55,7 +55,7 @@ export default function Sidebar() {
 
   return (
     <aside className="w-16 flex-shrink-0 flex flex-col items-center py-4 gap-2
-                      bg-surface-950 border-r border-white/5">
+                      bg-surface-950 border-r border-subtle">
       {/* Logo */}
       <div className="mb-3 w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center
                       border border-accent/30 text-accent font-bold text-sm select-none">
@@ -87,7 +87,7 @@ export default function Sidebar() {
         {/* Add account */}
         <NavLink
           to="/settings?add=1"
-          className="w-9 h-9 rounded-xl border border-dashed border-white/20
+          className="w-9 h-9 rounded-xl border border-dashed border-default
                      flex items-center justify-center text-surface-200/40
                      hover:border-accent/50 hover:text-accent transition-all duration-150"
           title={t("nav.addAccount")}
@@ -111,7 +111,7 @@ export default function Sidebar() {
                 "w-full flex items-center justify-center py-2.5 rounded-lg transition-all duration-150",
                 isActive
                   ? "bg-accent/15 text-accent-soft"
-                  : "text-surface-200/50 hover:bg-white/5 hover:text-surface-200"
+                  : "text-surface-200/50 hover-surface hover:text-surface-200"
               )
             }
           >

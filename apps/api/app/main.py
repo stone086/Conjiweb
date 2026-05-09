@@ -1,5 +1,4 @@
 import logging
-import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -32,29 +31,30 @@ from app.api.routers import (
 from app.core.config import settings
 from app.core.database import Base, engine
 from app.core.rate_limit import limiter
+from app.core.logging import configure_logging
+from app.core.observability import metrics_registry, normalize_route
+from app.core.performance import finish_query_counting, start_query_counting
 from app.core.version import get_app_version
 from app.utils.security import get_current_admin
 
 
 # ---------------------------------------------------------------------------
-# Logging setup — structured logs to stderr (systemd journal will pick up)
+# Logging setup — JSON logs by default for journal/Loki/ELK ingestion.
 # ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s | %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    stream=sys.stderr,
+configure_logging(
+    level=settings.LOG_LEVEL,
+    json_logs=(settings.LOG_FORMAT.lower() != "text"),
 )
 logger = logging.getLogger("conjiweb")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"Conjiweb API starting (version {get_app_version()})")
+    logger.info("api_starting", extra={"version": get_app_version()})
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    logger.info("Conjiweb API shutting down")
+    logger.info("api_shutting_down")
     await engine.dispose()
 
 
@@ -97,13 +97,38 @@ async def request_logging_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
     request.state.request_id = request_id
     start = time.perf_counter()
+    query_token = start_query_counting(
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+    )
     try:
         response = await call_next(request)
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - start) * 1000
+        query_state = finish_query_counting(query_token)
+        if query_state is not None:
+            metrics_registry.inc(
+                "conjiweb_events_total",
+                event="db_queries",
+                route=normalize_route(request.url.path),
+                amount=float(query_state.count),
+            )
+        metrics_registry.observe_http(
+            method=request.method,
+            path=request.url.path,
+            status_code=500,
+            elapsed_seconds=elapsed_ms / 1000,
+        )
         logger.error(
-            f"request_failed id={request_id} method={request.method} path={request.url.path} "
-            f"error={type(exc).__name__}: {exc} elapsed_ms={elapsed_ms:.1f}",
+            "request_failed",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "error_type": type(exc).__name__,
+                "elapsed_ms": round(elapsed_ms, 1),
+            },
             exc_info=True,
         )
         return JSONResponse(
@@ -112,17 +137,60 @@ async def request_logging_middleware(request: Request, call_next):
             headers={"X-Request-ID": request_id},
         )
     elapsed_ms = (time.perf_counter() - start) * 1000
+    query_state = finish_query_counting(query_token)
+    if query_state is not None:
+        route = normalize_route(request.url.path)
+        metrics_registry.inc(
+            "conjiweb_events_total",
+            event="db_queries",
+            route=route,
+            amount=float(query_state.count),
+        )
+        if query_state.count > settings.PERF_QUERY_WARN_THRESHOLD:
+            metrics_registry.inc("conjiweb_events_total", event="n_plus_one_suspected", route=route)
+            logger.warning(
+                "n_plus_one_suspected",
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "route": route,
+                    "query_count": query_state.count,
+                    "slow_query_count": query_state.slow_count,
+                    "total_sql_ms": round(query_state.total_sql_ms, 1),
+                    "max_sql_ms": round(query_state.max_sql_ms, 1),
+                    "threshold": settings.PERF_QUERY_WARN_THRESHOLD,
+                },
+            )
     response.headers["X-Request-ID"] = request_id
+    metrics_registry.observe_http(
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        elapsed_seconds=elapsed_ms / 1000,
+    )
     # Only log slow requests or errors at INFO; debug for normal traffic
     if response.status_code >= 500 or elapsed_ms > 1000:
         logger.warning(
-            f"slow_or_error id={request_id} method={request.method} path={request.url.path} "
-            f"status={response.status_code} elapsed_ms={elapsed_ms:.1f}"
+            "slow_or_error",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "elapsed_ms": round(elapsed_ms, 1),
+            },
         )
     elif response.status_code >= 400:
         logger.info(
-            f"request_4xx id={request_id} method={request.method} path={request.url.path} "
-            f"status={response.status_code} elapsed_ms={elapsed_ms:.1f}"
+            "request_4xx",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "elapsed_ms": round(elapsed_ms, 1),
+            },
         )
     return response
 

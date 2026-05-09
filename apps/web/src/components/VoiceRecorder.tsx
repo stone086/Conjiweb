@@ -11,6 +11,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { Mic, X, Send, Square } from "lucide-react";
+import { attachmentsApi } from "@/services/api";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 
@@ -143,7 +144,7 @@ export default function VoiceRecorder({ onSend, onCancel }: VoiceRecorderProps) 
       <button
         type="button"
         onClick={startRecording}
-        className="p-2.5 rounded-xl hover:bg-white/5 text-surface-200/60 hover:text-accent-soft transition-colors"
+        className="p-2.5 rounded-xl hover-surface text-surface-200/60 hover:text-accent-soft transition-colors"
         title={t("voice.record")}
         aria-label={t("voice.record")}
       >

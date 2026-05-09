@@ -4,7 +4,7 @@ import { useChatStore, Conversation } from "@/stores/chatStore";
 import { useRosterStore } from "@/stores/rosterStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useGroupStore, MucMember } from "@/stores/groupStore";
-import { aiApi } from "@/services/api";
+import { aiApi, signedFilesUrl } from "@/services/api";
 import { X, Bot, Users, FileText, Info, Crown, Shield, Loader, Star, Merge } from "lucide-react";
 import { useMetaContactStore } from "@/services/metaContacts";
 import { clsx } from "clsx";
@@ -85,7 +85,7 @@ function AiSummaryTab({ conversationId }: { conversationId: string }) {
       </div>
 
       <div>
-        <button onClick={getSmartReplies} className="btn-ghost w-full flex items-center justify-center gap-2 text-sm border border-white/10">
+        <button onClick={getSmartReplies} className="btn-ghost w-full flex items-center justify-center gap-2 text-sm border-default">
           <Bot size={14} /> {t("right.smartReplySuggestions")}
         </button>
         {suggestions.length > 0 && (
@@ -94,7 +94,7 @@ function AiSummaryTab({ conversationId }: { conversationId: string }) {
               <button
                 key={s}
                 onClick={() => setComposerDraft(conversationId, s)}
-                className="w-full text-left text-xs px-3 py-2 rounded-lg bg-surface-800/50 hover:bg-surface-800 border border-white/5 text-surface-200/80"
+                className="w-full text-left text-xs px-3 py-2 rounded-lg bg-surface-800/50 hover:bg-surface-800 border-default text-surface-200/80"
               >
                 {s}
               </button>
@@ -110,7 +110,10 @@ function AiSummaryTab({ conversationId }: { conversationId: string }) {
 
 function MembersTab({ roomJid }: { roomJid: string }) {
   const { t } = useLanguage();
-  const members = useGroupStore((s) => s.members[roomJid] ?? []);
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const members = useGroupStore((s) =>
+    activeAccountId ? (s.members[`${activeAccountId}::${roomJid}`] ?? []) : [],
+  );
 
   const roleLabel: Record<MucMember["affiliation"], string> = {
     owner: t("right.owner"),
@@ -131,7 +134,7 @@ function MembersTab({ roomJid }: { roomJid: string }) {
   return (
     <div className="flex flex-col gap-1 p-2">
       {members.map((m) => (
-        <div key={m.jid} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/4">
+        <div key={m.jid} className="flex items-center gap-3 px-2 py-2 rounded-lg hover-surface">
           <Avatar name={m.nickname} size="xs" />
           <div className="flex-1 min-w-0">
             <p className="text-sm text-surface-50 truncate">{m.nickname}</p>
@@ -151,7 +154,9 @@ function InfoTab({ conversation }: { conversation: Conversation }) {
   const contact = useRosterStore((s) =>
     activeAccountId ? s.getContact(activeAccountId, conversation.peerJid) : undefined
   );
-  const room = useGroupStore((s) => s.rooms[conversation.peerJid]);
+  const room = useGroupStore((s) =>
+    activeAccountId ? s.getRoom(activeAccountId, conversation.peerJid) : undefined,
+  );
 
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -235,7 +240,7 @@ function MergeContactButton({ accountId, jid, displayName }: { accountId: string
     <div>
       <button
         onClick={() => setShowInput(!showInput)}
-        className="glass rounded-lg p-3 flex items-center gap-2 hover:bg-white/5 text-left w-full"
+        className="glass rounded-lg p-3 flex items-center gap-2 hover-surface text-left w-full"
       >
         <Merge size={14} className="text-accent-soft" />
         <span className="text-sm text-surface-200">
@@ -251,7 +256,7 @@ function MergeContactButton({ accountId, jid, displayName }: { accountId: string
             value={mergeJid}
             onChange={(e) => setMergeJid(e.target.value)}
             placeholder="alice@other-server.com"
-            className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-surface-50 placeholder:text-surface-200/30"
+            className="flex-1 bg-surface-800/40 border-default rounded px-2 py-1 text-xs text-surface-50 placeholder:text-surface-200/30"
             onKeyDown={(e) => e.key === "Enter" && handleMerge()}
           />
           <button onClick={handleMerge} className="text-xs text-primary hover:text-primary/80">
@@ -270,7 +275,7 @@ function OmemoTrustButton({ peerJid }: { peerJid: string }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="glass rounded-lg p-3 flex items-center gap-2 hover:bg-white/5 text-left"
+        className="glass rounded-lg p-3 flex items-center gap-2 hover-surface text-left"
       >
         <Shield size={14} className="text-accent-soft" />
         <span className="text-sm text-surface-200">{t("omemo.trustTitle")}</span>
@@ -328,13 +333,13 @@ function ContactNotesEditor({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder={t("right.notesPlaceholder")}
-            className="w-full text-sm bg-black/20 border border-white/5 rounded p-2 resize-none text-surface-50"
+            className="w-full text-sm inset-surface border-default rounded p-2 resize-none text-surface-50"
             rows={3}
             autoFocus
           />
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setNotes(initialNotes); setEditing(false); }}
-                    className="text-xs px-2 py-1 rounded hover:bg-white/5 text-surface-200/60">
+                    className="text-xs px-2 py-1 rounded hover-surface text-surface-200/60">
               {t("common.cancel")}
             </button>
             <button onClick={saveNotes} className="btn-primary text-xs px-3 py-1">
@@ -351,7 +356,7 @@ function ContactNotesEditor({
         </button>
       )}
 
-      <div className="border-t border-white/5 pt-2 mt-1">
+      <div className="border-t border-subtle pt-2 mt-1">
         <p className="text-xs text-surface-200/40 mb-1">{t("right.tags")}</p>
         <div className="flex flex-wrap gap-1 mb-2">
           {tags.map((tag) => (
@@ -373,9 +378,9 @@ function ContactNotesEditor({
             onChange={(e) => setNewTag(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addTag()}
             placeholder={t("right.addTagPlaceholder")}
-            className="flex-1 text-xs bg-black/20 border border-white/5 rounded px-2 py-1 text-surface-50"
+            className="flex-1 text-xs inset-surface border-default rounded px-2 py-1 text-surface-50"
           />
-          <button onClick={addTag} className="text-xs px-2 py-1 rounded hover:bg-white/5 text-surface-200/60">
+          <button onClick={addTag} className="text-xs px-2 py-1 rounded hover-surface text-surface-200/60">
             +
           </button>
         </div>
@@ -385,7 +390,9 @@ function ContactNotesEditor({
 }
 
 function FilesTab({ conversationId }: { conversationId: string }) {
+  const { t } = useLanguage();
   const messages = useChatStore((s) => s.messages[conversationId] ?? []);
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const files = messages
     .flatMap((m) => m.attachments ?? [])
     .filter((a) => Boolean(a.downloadUrl));
@@ -398,7 +405,7 @@ function FilesTab({ conversationId }: { conversationId: string }) {
     return (
       <div className="p-4 text-center text-sm text-surface-200/30 mt-4">
         <FileText size={20} className="mx-auto mb-2 opacity-30" />
-        No files shared yet.
+        {t("right.noFiles")}
       </div>
     );
   }
@@ -408,10 +415,10 @@ function FilesTab({ conversationId }: { conversationId: string }) {
       {unique.map((f) => (
         <a
           key={f.id}
-          href={f.downloadUrl}
+          href={signedFilesUrl(f.downloadUrl, activeAccountId)}
           target="_blank"
-          rel="noreferrer"
-          className="glass rounded-lg p-3 flex items-center gap-3 hover:bg-white/5"
+          rel="noopener noreferrer"
+          className="glass rounded-lg p-3 flex items-center gap-3 hover-surface"
         >
           <FileText size={14} className="text-surface-200/50 flex-shrink-0" />
           <div className="flex-1 min-w-0">
@@ -479,15 +486,15 @@ export default function RightPanel({ conversationId, onClose }: RightPanelProps)
   ];
 
   return (
-    <div className="w-72 flex-shrink-0 flex flex-col border-l border-white/5 bg-surface-900/30 h-full">
-      <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
+    <div className="w-72 flex-shrink-0 flex flex-col border-l border-subtle bg-surface-900/30 h-full">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-subtle">
         <span className="text-sm font-semibold text-surface-50 truncate">{conversation.title ?? conversation.peerJid}</span>
-        <button onClick={onClose} className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-surface-200" aria-label="Close panel">
+        <button onClick={onClose} className="p-1.5 rounded hover-surface text-surface-200/40 hover:text-surface-200" aria-label="Close panel">
           <X size={14} />
         </button>
       </div>
 
-      <div className="flex border-b border-white/5">
+      <div className="flex border-b border-subtle">
         {tabs.map((tab) => (
           <button
             key={tab.id}

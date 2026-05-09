@@ -79,11 +79,11 @@ export default function VirtualMessageList({
           <div className="px-4 animate-fade-in" data-mid={msg.id}>
             {showDate && (
               <div className="flex items-center gap-3 py-2 my-1">
-                <div className="flex-1 h-px bg-white/5" />
+                <div className="flex-1 h-px bg-surface-800/40" />
                 <span className="text-[10px] text-surface-200/30 px-2 py-0.5 rounded-full bg-surface-900">
                   {dateLabel(msg.timestamp, todayLabel, yesterdayLabel)}
                 </span>
-                <div className="flex-1 h-px bg-white/5" />
+                <div className="flex-1 h-px bg-surface-800/40" />
               </div>
             )}
             {showUnreadDivider && (

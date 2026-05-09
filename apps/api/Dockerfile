@@ -64,3 +64,34 @@ CMD ["uvicorn", "app.main:app", \
      "--workers", "3", \
      "--proxy-headers", \
      "--forwarded-allow-ips", "*"]
+
+# ============================================================================
+# Recommended runtime flags (for whoever orchestrates this image — Compose,
+# Kubernetes, plain `docker run`):
+#
+#   docker run \
+#     --read-only \                       # rootfs immutable; only writable
+#                                         # paths are explicit volumes/tmpfs
+#     --tmpfs /tmp:size=64M,noexec,nosuid \
+#     --cap-drop=ALL \                    # CAP_NET_BIND_SERVICE not needed
+#                                         # (we listen on 8000, unprivileged)
+#     --security-opt=no-new-privileges:true \
+#     --security-opt=seccomp=default \    # Docker's default seccomp profile
+#                                         # blocks ~44 syscalls (ptrace,
+#                                         # init_module, mount, reboot, etc.)
+#     --pids-limit=512 \                  # backstop fork-bomb / runaway
+#     --memory=1g --memory-swap=1g \      # bound RAM
+#     --user 1001:1001 \                  # already enforced via USER above
+#                                         # but explicit at run-time is safer
+#     --network conjiweb-internal \       # isolated network — only DB, Redis,
+#                                         # MinIO, and reverse proxy reachable
+#     conjiweb-api:1.6.0
+#
+# For Kubernetes, equivalent securityContext:
+#   readOnlyRootFilesystem: true
+#   runAsNonRoot: true
+#   runAsUser: 1001
+#   allowPrivilegeEscalation: false
+#   capabilities: { drop: [ALL] }
+#   seccompProfile: { type: RuntimeDefault }
+# ============================================================================

@@ -98,21 +98,25 @@ async def index_message(
     description="Search messages by keyword within one account scope.",
 )
 async def search_messages(
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=200),
     account_id: Optional[str] = None,
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
     actor: dict[str, str | None] = Depends(get_message_actor),
     db: AsyncSession = Depends(get_db),
 ):
     if not account_id:
         raise HTTPException(status_code=400, detail="account_id is required")
     require_account_access(account_id, actor)
-    safe_limit = max(1, min(limit, 100))
+    safe_limit = limit  # already bounded by Query(ge=1, le=100)
+    # Escape LIKE wildcards so user input matches literally — without this,
+    # a user searching for "50%" would return everything containing "50"
+    # followed by anything. Use \\ as the escape char.
+    escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     stmt = (
         select(Message)
         .join(Conversation, Conversation.id == Message.conversation_id)
         .where(
-            Message.body.ilike(f"%{q}%"),
+            Message.body.ilike(f"%{escaped_q}%", escape="\\"),
             Conversation.account_id == account_id,
         )
         .order_by(Message.created_at.desc())
@@ -130,8 +134,8 @@ async def search_messages(
 )
 async def get_conversation_messages(
     conversation_id: str,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=100_000),
     actor: dict[str, str | None] = Depends(get_message_actor),
     db: AsyncSession = Depends(get_db),
 ):

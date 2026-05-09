@@ -63,6 +63,7 @@ APT_FRONTEND_READY=0
 PYTHON_BIN=""
 POSTGRES_VERSION=""
 UPGRADE_SYSTEM="${UPGRADE_SYSTEM:-0}"
+CONFIGURE_ONLY=0
 
 ensure_service_users() {
   if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -90,6 +91,8 @@ Optional:
   --ssh-port  SSH port(s) to keep open in UFW, supports comma/space list (default: auto-detect)
   --upgrade-system
               Run apt-get upgrade before installing dependencies (default: skip)
+  --configure
+              Run the interactive .env wizard, validate, then exit
   --run-local Internal mode. Do not set manually.
   --help      Show this help
 EOF
@@ -112,6 +115,7 @@ parse_bootstrap_args() {
       --target) TARGET_DIR="${2:-}"; shift 2 ;;
       --ssh-port) SSH_PORT="${2:-}"; shift 2 ;;
       --upgrade-system) UPGRADE_SYSTEM=1; shift ;;
+      --configure) CONFIGURE_ONLY=1; RUN_LOCAL=1; shift ;;
       --run-local) RUN_LOCAL=1; shift ;;
       --help|-h) bootstrap_usage; exit 0 ;;
       *) error "Unknown option: $1" ;;
@@ -200,12 +204,17 @@ bootstrap_if_needed() {
 
 load_config() {
   if [ ! -f ".env" ]; then
-    error ".env file not found. Run: cp .env.example .env and fill required values."
+    if [[ -t 0 && -x "scripts/env_wizard.sh" ]]; then
+      warn ".env file not found; starting interactive configuration wizard."
+      bash scripts/env_wizard.sh
+    else
+      error ".env file not found. Run: bash scripts/env_wizard.sh"
+    fi
   fi
   # Normalize CRLF to LF to avoid hidden '\r' in secrets.
   sed -i 's/\r$//' .env
-  # Safe .env loader: supports spaces without requiring shell quoting.
-  # Avoids "command not found" when values like "Single Sign-On" are unquoted.
+  # Safe .env loader: supports values with spaces without requiring shell quoting.
+  # Do not use `source .env`; .env is data, not shell code.
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     [[ -z "${line//[[:space:]]/}" ]] && continue
@@ -214,10 +223,8 @@ load_config() {
 
     key="${line%%=*}"
     val="${line#*=}"
-    key="$(echo -n "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-
-    # Keep inline '#' as part of value (common in secrets), only trim outer spaces.
-    val="$(echo -n "$val" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+    key="$(printf '%s' "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+    val="$(printf '%s' "$val" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
 
     # Strip one layer of surrounding quotes.
     if [[ "$val" =~ ^\".*\"$ ]]; then
@@ -226,7 +233,7 @@ load_config() {
       val="${val:1:${#val}-2}"
     fi
 
-    # Export only valid env keys.
+    # Export only valid environment variable names.
     if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
       export "$key=$val"
     fi
@@ -235,7 +242,8 @@ load_config() {
   DOMAIN="${DOMAIN:-}"
   PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-${DOMAIN}}"
   EMAIL="${EMAIL:-}"
-  DB_PASS="${DB_PASS:-$(openssl rand -hex 16)}"
+  DB_PASS="${DB_PASS:-${POSTGRES_PASSWORD:-$(openssl rand -hex 24)}}"
+  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-${DB_PASS}}"
   REDIS_PASS="${REDIS_PASS:-$(openssl rand -hex 16)}"
   MINIO_ROOT_USER="${MINIO_ROOT_USER:-minioadmin}"
   MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
@@ -243,7 +251,18 @@ load_config() {
   XMPP_DOMAIN="${XMPP_DOMAIN:-localhost}"
   XMPP_ADMIN_PASS="${XMPP_ADMIN_PASS:-$(openssl rand -hex 12)}"
   ADMIN_USER="${ADMIN_USER:-admin}"
-  ADMIN_PASS="${ADMIN_PASS:-$(openssl rand -hex 12)}"
+  # Admin password handling — prefer hashed storage so a leaked .env doesn't
+  # immediately surrender admin access. Operator can still pass ADMIN_PASS or
+  # ADMIN_PASS_HASH explicitly via env; otherwise we generate a random
+  # password, print it once for the operator to copy, and persist only the
+  # argon2 hash to .env.
+  ADMIN_PASS="${ADMIN_PASS:-}"
+  ADMIN_PASS_HASH="${ADMIN_PASS_HASH:-}"
+  if [[ -z "${ADMIN_PASS}" && -z "${ADMIN_PASS_HASH}" ]]; then
+    ADMIN_PASS_GENERATED="$(openssl rand -hex 12)"
+    ADMIN_PASS="${ADMIN_PASS_GENERATED}"
+    ADMIN_PASS_PRINT_AT_END=1
+  fi
   AI_API_KEY="${AI_API_KEY:-}"
   AI_BASE_URL="${AI_BASE_URL:-}"
   AI_MODEL="${AI_MODEL:-}"
@@ -252,11 +271,15 @@ load_config() {
   DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW:-20}"
   DB_POOL_TIMEOUT="${DB_POOL_TIMEOUT:-30}"
   DB_POOL_RECYCLE="${DB_POOL_RECYCLE:-1800}"
+  TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 32)}"
+  LDAP_URL="${LDAP_URL:-${LDAP_SERVER:-}}"
+  PROMETHEUS_ALLOW_CIDR="${PROMETHEUS_ALLOW_CIDR:-}"
 
   # Strip accidental CR characters from sourced values.
   DOMAIN="${DOMAIN//$'\r'/}"
   EMAIL="${EMAIL//$'\r'/}"
   DB_PASS="${DB_PASS//$'\r'/}"
+  POSTGRES_PASSWORD="${POSTGRES_PASSWORD//$'\r'/}"
   REDIS_PASS="${REDIS_PASS//$'\r'/}"
   MINIO_ROOT_USER="${MINIO_ROOT_USER//$'\r'/}"
   MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD//$'\r'/}"
@@ -275,6 +298,9 @@ load_config() {
   DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW//$'\r'/}"
   DB_POOL_TIMEOUT="${DB_POOL_TIMEOUT//$'\r'/}"
   DB_POOL_RECYCLE="${DB_POOL_RECYCLE//$'\r'/}"
+  TURN_SECRET="${TURN_SECRET//$'\r'/}"
+  LDAP_URL="${LDAP_URL//$'\r'/}"
+  PROMETHEUS_ALLOW_CIDR="${PROMETHEUS_ALLOW_CIDR//$'\r'/}"
 
   DB_PASS_SQL_ESCAPED="${DB_PASS//\'/\'\'}"
   DB_PASS_URLENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${DB_PASS}")"
@@ -292,6 +318,11 @@ load_config() {
 
   # Persist generated secrets back to .env.
   sed -i "s|^DB_PASS=.*|DB_PASS=${DB_PASS}|" .env
+  if grep -qE '^POSTGRES_PASSWORD=' .env; then
+    sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
+  else
+    echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" >> .env
+  fi
   sed -i "s|^REDIS_PASS=.*|REDIS_PASS=${REDIS_PASS}|" .env
   sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}|" .env
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET_KEY}|" .env
@@ -299,6 +330,11 @@ load_config() {
     sed -i "s|^XMPP_ADMIN_PASS=.*|XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}|" .env
   else
     echo "XMPP_ADMIN_PASS=${XMPP_ADMIN_PASS}" >> .env
+  fi
+  if grep -qE '^TURN_SECRET=' .env; then
+    sed -i "s|^TURN_SECRET=.*|TURN_SECRET=${TURN_SECRET}|" .env
+  else
+    echo "TURN_SECRET=${TURN_SECRET}" >> .env
   fi
   if grep -qE '^BACKUP_REMOTE=' .env; then
     sed -i "s|^BACKUP_REMOTE=.*|BACKUP_REMOTE=${BACKUP_REMOTE}|" .env
@@ -315,10 +351,31 @@ load_config() {
   else
     echo "ADMIN_USER=${ADMIN_USER}" >> .env
   fi
-  if grep -qE '^ADMIN_PASS=' .env; then
-    sed -i "s|^ADMIN_PASS=.*|ADMIN_PASS=${ADMIN_PASS}|" .env
+
+  # Compute the argon2 hash of the chosen plaintext password (if we have one)
+  # and persist it. We never write the plaintext to .env. If the operator
+  # provided ADMIN_PASS_HASH directly, use it as-is.
+  if [[ -z "${ADMIN_PASS_HASH}" && -n "${ADMIN_PASS}" ]]; then
+    if [[ -x "${INSTALL_DIR}/api/.venv/bin/python" ]]; then
+      ADMIN_PASS_HASH="$("${INSTALL_DIR}/api/.venv/bin/python" -c \
+        "from argon2 import PasswordHasher; import sys; print(PasswordHasher().hash(sys.argv[1]))" \
+        "${ADMIN_PASS}" 2>/dev/null || true)"
+    fi
+    # Fallback to system python with passlib if venv isn't ready yet
+    if [[ -z "${ADMIN_PASS_HASH}" ]] && command -v python3 >/dev/null 2>&1; then
+      ADMIN_PASS_HASH="$(python3 -c \
+        "from argon2 import PasswordHasher; import sys; print(PasswordHasher().hash(sys.argv[1]))" \
+        "${ADMIN_PASS}" 2>/dev/null || true)"
+    fi
+  fi
+
+  # Remove any legacy plaintext ADMIN_PASS that may be in .env from older installs.
+  # Hash is what we actually use; keeping plaintext alongside is a security smell.
+  sed -i '/^ADMIN_PASS=/d' .env
+  if grep -qE '^ADMIN_PASS_HASH=' .env; then
+    sed -i "s|^ADMIN_PASS_HASH=.*|ADMIN_PASS_HASH=${ADMIN_PASS_HASH}|" .env
   else
-    echo "ADMIN_PASS=${ADMIN_PASS}" >> .env
+    echo "ADMIN_PASS_HASH=${ADMIN_PASS_HASH}" >> .env
   fi
   if grep -qE '^AI_API_KEY=' .env; then
     sed -i "s|^AI_API_KEY=.*|AI_API_KEY=${AI_API_KEY}|" .env
@@ -340,6 +397,20 @@ load_config() {
   else
     echo "ALERT_EMAIL=${ALERT_EMAIL}" >> .env
   fi
+  if [[ -n "${LDAP_URL}" ]]; then
+    if grep -qE '^LDAP_URL=' .env; then
+      sed -i "s|^LDAP_URL=.*|LDAP_URL=${LDAP_URL}|" .env
+    else
+      echo "LDAP_URL=${LDAP_URL}" >> .env
+    fi
+  fi
+  if [[ -n "${PROMETHEUS_ALLOW_CIDR}" ]]; then
+    if grep -qE '^PROMETHEUS_ALLOW_CIDR=' .env; then
+      sed -i "s|^PROMETHEUS_ALLOW_CIDR=.*|PROMETHEUS_ALLOW_CIDR=${PROMETHEUS_ALLOW_CIDR}|" .env
+    else
+      echo "PROMETHEUS_ALLOW_CIDR=${PROMETHEUS_ALLOW_CIDR}" >> .env
+    fi
+  fi
   if grep -qE '^DB_POOL_SIZE=' .env; then
     sed -i "s|^DB_POOL_SIZE=.*|DB_POOL_SIZE=${DB_POOL_SIZE}|" .env
   else
@@ -359,6 +430,9 @@ load_config() {
     sed -i "s|^DB_POOL_RECYCLE=.*|DB_POOL_RECYCLE=${DB_POOL_RECYCLE}|" .env
   else
     echo "DB_POOL_RECYCLE=${DB_POOL_RECYCLE}" >> .env
+  fi
+  if [[ -x "scripts/env_validate.sh" ]]; then
+    bash scripts/env_validate.sh --strict --env .env
   fi
   chmod 600 .env
 }
@@ -527,6 +601,26 @@ install_prosody() {
 
   cp configs/prosody/prosody.cfg.lua /etc/prosody/prosody.cfg.lua
   sed -i "s|XMPP_DOMAIN|${XMPP_DOMAIN}|g" /etc/prosody/prosody.cfg.lua
+
+  # Restrict CORS to the actual frontend origin instead of "*". DOMAIN here is
+  # the public hostname of the web app; if you front-end Conjiweb on a
+  # different host, set CONJIWEB_FRONTEND_ORIGIN before running install.sh.
+  XMPP_FRONTEND_ORIGIN="${CONJIWEB_FRONTEND_ORIGIN:-https://${DOMAIN}}"
+  sed -i "s|XMPP_FRONTEND_ORIGIN|${XMPP_FRONTEND_ORIGIN}|g" /etc/prosody/prosody.cfg.lua
+
+  # Generate DH params for TLS forward secrecy. 2048-bit takes ~10s, only
+  # done on first install. Without these, the `ssl.dhparam` directive in
+  # prosody.cfg.lua references a file that doesn't exist and Prosody
+  # falls back to compiled-in defaults (small / shared / weak).
+  mkdir -p /etc/prosody/certs
+  if [ ! -f /etc/prosody/certs/dh-2048.pem ]; then
+    info "Generating DH parameters for Prosody TLS (one-time, ~10s)..."
+    openssl dhparam -out /etc/prosody/certs/dh-2048.pem 2048 >/dev/null 2>&1 \
+      || warn "openssl dhparam failed; Prosody will use compiled-in DH params"
+    chown prosody:prosody /etc/prosody/certs/dh-2048.pem 2>/dev/null || true
+    chmod 640 /etc/prosody/certs/dh-2048.pem 2>/dev/null || true
+  fi
+
   # Inject TURN secret if coturn was installed
   if [ -n "${TURN_SECRET:-}" ]; then
     sed -i "s|TURN_SECRET_PLACEHOLDER|${TURN_SECRET}|g" /etc/prosody/prosody.cfg.lua
@@ -569,7 +663,9 @@ install_coturn() {
   step "Install coturn STUN/TURN server (for Jingle audio/video calls)"
   apt install -y -qq coturn
 
-  TURN_SECRET="$(openssl rand -hex 32)"
+  TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 32)}"
+  LDAP_URL="${LDAP_URL:-${LDAP_SERVER:-}}"
+  PROMETHEUS_ALLOW_CIDR="${PROMETHEUS_ALLOW_CIDR:-}"
 
   cat > /etc/turnserver.conf <<EOF
 # Conjiweb coturn config (auto-generated)
@@ -602,11 +698,10 @@ log-file=/var/log/coturn.log
 verbose
 EOF
 
-  # Save TURN secret to api/.env so Prosody mod_external_services can use it.
-  # On fresh installs, api dir may not exist yet at this stage.
-  mkdir -p "${INSTALL_DIR}/api"
-  touch "${INSTALL_DIR}/api/.env"
-  echo "TURN_SECRET=${TURN_SECRET}" >> "${INSTALL_DIR}/api/.env"
+  # TURN_SECRET is generated in load_config, persisted to .env, injected into
+  # Prosody during install_prosody, and written to the API EnvironmentFile during
+  # deploy_api. Do not append here: deploy_api owns ${INSTALL_DIR}/api/.env and
+  # duplicates can make systemd EnvironmentFile resolution ambiguous.
 
   systemctl enable coturn
   systemctl restart coturn
@@ -640,6 +735,38 @@ ExecStart=/usr/local/bin/minio server /data/minio --console-address "127.0.0.1:9
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
+
+# Sandbox hardening — same rationale as conjiweb-api: an RCE in MinIO
+# (Go binary; not impossible) without sandboxing means immediate access
+# to any other tenant on the same host. /data/minio is the only writable
+# path; everything else read-only.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ReadWritePaths=/data/minio
+
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# MinIO is Go and uses some calls that simple SystemCallFilter=@system-service
+# would block (it manages its own goroutine threading). Stick to a coarse
+# exclusion list rather than an allowlist.
+SystemCallFilter=~@privileged @debug @mount @reboot @swap @raw-io
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target
@@ -709,7 +836,7 @@ deploy_api() {
     apt-get install -y -q libldap2-dev libsasl2-dev >/dev/null 2>&1 || true
   fi
 
-  .venv/bin/pip install -q -r requirements.txt
+  .venv/bin/pip install -q --require-hashes -r requirements.txt
 
   # Generate VAPID keypair for Web Push (PWA notifications)
   if [ -z "${VAPID_PRIVATE_KEY:-}" ]; then
@@ -722,6 +849,11 @@ deploy_api() {
     rm -f "$VAPID_PEM_FILE"
   fi
   PUSH_SHARED_SECRET="${PUSH_SHARED_SECRET:-$(openssl rand -hex 24)}"
+
+  if [[ -z "${ADMIN_PASS_HASH:-}" && -n "${ADMIN_PASS:-}" ]]; then
+    ADMIN_PASS_HASH="$(.venv/bin/python -c "from argon2 import PasswordHasher; import sys; print(PasswordHasher().hash(sys.argv[1]))" "${ADMIN_PASS}")"
+  fi
+  [[ -n "${ADMIN_PASS_HASH:-}" ]] || error "ADMIN_PASS_HASH is empty. Run scripts/env_wizard.sh or set ADMIN_PASS_HASH in .env."
 
   cat > "${INSTALL_DIR}/api/.env" << EOF
 DATABASE_URL=postgresql+asyncpg://${APP_USER}:${DB_PASS_URLENCODED}@127.0.0.1:5432/${APP_USER}
@@ -737,7 +869,7 @@ XMPP_DOMAIN=${XMPP_DOMAIN}
 XMPP_REGISTRATION_ENABLED=true
 PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
 ADMIN_USER=${ADMIN_USER}
-ADMIN_PASS=${ADMIN_PASS}
+ADMIN_PASS_HASH=${ADMIN_PASS_HASH}
 AI_API_KEY=${AI_API_KEY}
 AI_BASE_URL=${AI_BASE_URL}
 AI_MODEL=${AI_MODEL}
@@ -750,6 +882,29 @@ VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
 VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
 VAPID_EMAIL=admin@${DOMAIN}
 PUSH_SHARED_SECRET=${PUSH_SHARED_SECRET}
+TURN_SECRET=${TURN_SECRET}
+FRONTEND_URL=${FRONTEND_URL:-https://${DOMAIN}}
+OIDC_ENABLED=${OIDC_ENABLED:-false}
+OIDC_ISSUER=${OIDC_ISSUER:-}
+OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-https://${DOMAIN}/sso/oidc/callback}
+OIDC_LABEL="${OIDC_LABEL:-Single Sign-On}"
+OIDC_REQUIRE_EMAIL_VERIFIED=${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
+AUTO_PROVISION_OIDC=${AUTO_PROVISION_OIDC:-false}
+LDAP_ENABLED=${LDAP_ENABLED:-false}
+LDAP_SERVER=${LDAP_SERVER:-${LDAP_URL:-}}
+LDAP_URL=${LDAP_URL:-${LDAP_SERVER:-}}
+LDAP_BIND_DN_TEMPLATE="${LDAP_BIND_DN_TEMPLATE:-uid={username},ou=People,dc=example,dc=com}"
+LDAP_LABEL="${LDAP_LABEL:-Corporate Login}"
+AUTO_PROVISION_LDAP=${AUTO_PROVISION_LDAP:-false}
+LOG_LEVEL=${LOG_LEVEL:-INFO}
+LOG_FORMAT=${LOG_FORMAT:-json}
+METRICS_ENABLED=${METRICS_ENABLED:-true}
+PERF_QUERY_COUNT_ENABLED=${PERF_QUERY_COUNT_ENABLED:-true}
+PERF_QUERY_WARN_THRESHOLD=${PERF_QUERY_WARN_THRESHOLD:-10}
+PERF_SLOW_SQL_MS=${PERF_SLOW_SQL_MS:-250}
+SFU_URL=${SFU_URL:-}
 EOF
   chmod 600 "${INSTALL_DIR}/api/.env"
   chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/api/.env"
@@ -798,9 +953,88 @@ ExecStart=${INSTALL_DIR}/api/.venv/bin/uvicorn app.main:app \\
 Restart=always
 RestartSec=5
 
+# ==========================================================================
+# Sandbox hardening — defense-in-depth against RCE-style exploits.
+#
+# If an attacker manages remote code execution inside the FastAPI worker
+# (via a future 0-day in some dependency, an unpatched route handler, etc.),
+# without these directives they would inherit the full conjiweb user's
+# privileges: read .env (DB password, JWT secret, MinIO root credentials,
+# AI provider key), bind any socket, ptrace siblings, read /proc, write
+# anywhere the user can write.
+#
+# Each directive below is annotated with what it blocks. We test on every
+# release to make sure these don't break legitimate functionality (e.g.,
+# we DO need access to /tmp for SpooledTemporaryFile during multipart
+# uploads, hence PrivateTmp=yes which gives us our OWN /tmp).
+# ==========================================================================
+
+# Filesystem isolation
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+# We need to write to: install_dir (for runtime cache), /var/log/conjiweb
+# (for app log), and the standard journald socket (handled outside FS).
+# Everything else on the FS is read-only.
+ReadWritePaths=${INSTALL_DIR} /var/log/conjiweb
+
+# Capability drop — server-side Python doesn't need any caps.
+# CAP_NET_BIND_SERVICE not needed (we bind 127.0.0.1:8000, an unprivileged port).
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Network restriction — uvicorn binds AF_INET (IPv4) only. We don't use
+# AF_PACKET, AF_NETLINK, AF_UNIX (except for journald which is allowed
+# implicitly), and definitely not the more exotic ones.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=127.0.0.0/8
+IPAddressAllow=::1/128
+# Allow outbound to any IP for AI provider, OIDC IdP, push services, etc.
+# (Without this, IPAddressDeny=any would block all egress including localhost.
+#  We allow loopback explicitly above; for outbound HTTPS we need any-IP egress.)
+IPAddressAllow=any
+
+# Process / namespace isolation
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+# System call filtering — block the obviously-not-needed call families.
+# @system-service is systemd's curated allowlist of calls a typical service
+# legitimately uses; @privileged, @raw-io, @reboot, @swap, @debug, @mount,
+# @cpu-emulation, @obsolete are all explicitly removed.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @debug @mount @cpu-emulation @obsolete @reboot @swap @raw-io @keyring
+SystemCallErrorNumber=EPERM
+
+# Resource limits — backstop against memory-exhaustion bugs
+LimitNOFILE=65536
+LimitNPROC=512
+TasksMax=1024
+
 [Install]
 WantedBy=multi-user.target
 EOF
+
+  # Ensure the log directory exists with appropriate permissions
+  mkdir -p /var/log/conjiweb
+  chown ${APP_USER}:${APP_USER} /var/log/conjiweb
+  chmod 750 /var/log/conjiweb
 
   systemctl daemon-reload
   systemctl enable conjiweb-api
@@ -826,8 +1060,12 @@ EOF
   if [[ -f package-lock.json ]]; then
     npm ci --silent
   else
-    warn "package-lock.json not found, using npm install instead of npm ci"
-    npm install --silent --no-audit --no-fund
+    # NEVER fall back to `npm install` in production. Without a lockfile,
+    # npm resolves caret-pinned ranges (e.g., axios "^1.15.0") to whatever
+    # the latest matching version is at install time — exactly the path
+    # that the March 2026 axios 1.14.1 supply chain compromise exploited.
+    # Force the operator to commit/copy a vetted lockfile before retrying.
+    error "package-lock.json missing — refusing to run 'npm install' without a lockfile (supply-chain risk). Commit/copy a vetted package-lock.json and retry."
   fi
   npm run build
 
@@ -892,8 +1130,30 @@ setup_ssl() {
   cp configs/nginx/conjiweb.conf /etc/nginx/sites-available/conjiweb
   sed -i "s|DOMAIN|${DOMAIN}|g" /etc/nginx/sites-available/conjiweb
   sed -i "s|INSTALL_DIR|${INSTALL_DIR}|g" /etc/nginx/sites-available/conjiweb
+  if [[ -n "${PROMETHEUS_ALLOW_CIDR:-}" ]]; then
+    sed -i "/location = \/api\/metrics {/,/deny all;/ s|deny all;|allow ${PROMETHEUS_ALLOW_CIDR};\n        deny all;|" /etc/nginx/sites-available/conjiweb
+  fi
   cat > /etc/nginx/conf.d/conjiweb-rate-limit.conf << 'EOF'
+# Conjiweb rate-limit and connection-limit zones.
+# Referenced by /etc/nginx/sites-available/conjiweb. If you change zone
+# names here, update the conf to match.
+#
+# Sizes:
+#   - 10m of zone state stores ~160k unique source IPs (each entry is 64
+#     bytes for the binary IP + counters). Plenty for any single host.
+#
+# Rates:
+#   - api_auth (30r/m):  tight on credential endpoints. A real user fixing
+#                        a typo retries within burst=10; brute force gets 429.
+#   - api_general (300r/m): loose on data endpoints. A typical chat session
+#                        does ~20 requests on initial load, then tapers.
+#                        300/min is comfortable for legit use, hard for
+#                        scrapers/spammers.
+#   - conn_per_ip:       slowloris defense — caps concurrent connections
+#                        per IP. Tied to limit_conn directive in the vhost.
 limit_req_zone $binary_remote_addr zone=api_auth:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=api_general:10m rate=300r/m;
+limit_conn_zone $binary_remote_addr zone=conn_per_ip:10m;
 EOF
 
   nginx -t && systemctl reload nginx
@@ -1175,6 +1435,21 @@ if [ ! -f "\$BACKUP_ENCRYPTION_KEY_FILE" ]; then
   echo "Generated new backup encryption key at \$BACKUP_ENCRYPTION_KEY_FILE — back this up off-site!"
 fi
 
+# Detect whether the installed openssl supports AES-256-GCM with -pbkdf2.
+# Older openssl 1.0.x doesn't support GCM via the enc CLI. We prefer GCM
+# (AEAD = ciphertext is integrity-protected; tampered backups fail to
+# decrypt rather than producing corrupted SQL on restore). Fall back to
+# CBC + an external SHA-256 sidecar for older systems.
+USE_GCM=0
+if openssl enc -aes-256-gcm -pbkdf2 -iter 1 -in /dev/null -pass pass:test -out /dev/null 2>/dev/null; then
+  USE_GCM=1
+fi
+
+# PBKDF2 iteration count: OWASP 2023 recommends >=600,000 for SHA-256.
+# Bumped from 100,000 (the figure quoted in older guides) to follow current
+# guidance. Restore-side accepts the higher iteration count when present.
+PBKDF2_ITER=600000
+
 alert() {
   local msg="\$1"
   echo "[BACKUP ERROR] \$msg" >&2
@@ -1190,17 +1465,24 @@ if [ "\$AVAILABLE_KB" -lt 1048576 ]; then
   exit 1
 fi
 
-# Backup PostgreSQL — encrypted with AES-256
+if [ "\$USE_GCM" = "1" ]; then
+  CIPHER="aes-256-gcm"
+else
+  CIPHER="aes-256-cbc"
+fi
+
+# ---- PostgreSQL dump ----
 DB_FILE="\${BACKUP_DIR}/db_\${DATE}.sql.gz.enc"
 if ! sudo -u postgres pg_dump "\$DB_NAME" | gzip | \
-     openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
+     openssl enc -\${CIPHER} -pbkdf2 -iter \$PBKDF2_ITER -salt \
                  -pass file:"\$BACKUP_ENCRYPTION_KEY_FILE" -out "\$DB_FILE"; then
   alert "PostgreSQL dump failed for \$DB_NAME"
   exit 1
 fi
 
-# Verify the encrypted file decrypts cleanly
-if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+# Verify the encrypted file decrypts cleanly. With GCM this also catches
+# tampering (auth-tag mismatch). With CBC it only catches gzip corruption.
+if ! openssl enc -d -\${CIPHER} -pbkdf2 -iter \$PBKDF2_ITER \
                  -pass file:"\$BACKUP_ENCRYPTION_KEY_FILE" \
                  -in "\$DB_FILE" 2>/dev/null | gzip -t; then
   alert "Backup verification failed: \$DB_FILE"
@@ -1208,17 +1490,49 @@ if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
   exit 1
 fi
 
-# Backup MinIO data — encrypted; use --warning=no-file-changed to tolerate concurrent writes
+# Always write a SHA-256 sidecar. Two reasons:
+#   1. Backwards-compat: old backups used CBC (no AEAD), so a sidecar is the
+#      ONLY way to detect tampering for those.
+#   2. Defense-in-depth even on GCM: an attacker who replaces both the .enc
+#      file AND the .sha256 with a different valid encrypted dump
+#      (made with a stolen key) won't match the original — admin sees
+#      the discrepancy in the off-site mirror.
+sha256sum "\$DB_FILE" > "\$DB_FILE.sha256"
+chmod 600 "\$DB_FILE" "\$DB_FILE.sha256"
+
+# Record the cipher used in a metadata file alongside, so restore knows
+# which decrypt invocation to attempt without trial-and-error.
+cat > "\$DB_FILE.meta" << META
+cipher=\$CIPHER
+pbkdf2_iter=\$PBKDF2_ITER
+created=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+dump_size=\$(stat -c %s "\$DB_FILE")
+META
+chmod 600 "\$DB_FILE.meta"
+
+# ---- MinIO dump ----
 MINIO_FILE="\${BACKUP_DIR}/minio_\${DATE}.tar.gz.enc"
 if ! tar czf - --warning=no-file-changed -C / data/minio 2>/dev/null | \
-     openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
+     openssl enc -\${CIPHER} -pbkdf2 -iter \$PBKDF2_ITER -salt \
                  -pass file:"\$BACKUP_ENCRYPTION_KEY_FILE" -out "\$MINIO_FILE"; then
   alert "MinIO backup failed"
   # Don't exit — DB backup already succeeded
+else
+  sha256sum "\$MINIO_FILE" > "\$MINIO_FILE.sha256"
+  chmod 600 "\$MINIO_FILE" "\$MINIO_FILE.sha256"
+  cat > "\$MINIO_FILE.meta" << META
+cipher=\$CIPHER
+pbkdf2_iter=\$PBKDF2_ITER
+created=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+dump_size=\$(stat -c %s "\$MINIO_FILE")
+META
+  chmod 600 "\$MINIO_FILE.meta"
 fi
 
-# Retain backups for 7 days
+# Retain backups for 7 days (also clean up the sidecars)
 find "\$BACKUP_DIR" -name "*.enc" -mtime +7 -delete
+find "\$BACKUP_DIR" -name "*.sha256" -mtime +7 -delete
+find "\$BACKUP_DIR" -name "*.meta" -mtime +7 -delete
 
 # Remote sync — alert on failure (but don't block local backup)
 if [ -n "\$BACKUP_REMOTE" ] && command -v rclone >/dev/null 2>&1; then
@@ -1229,7 +1543,7 @@ if [ -n "\$BACKUP_REMOTE" ] && command -v rclone >/dev/null 2>&1; then
   fi
 fi
 
-echo "backup completed: \${DATE}"
+echo "backup completed: \${DATE} (cipher=\$CIPHER iter=\$PBKDF2_ITER)"
 BACKUP
   chmod +x /usr/local/bin/conjiweb-backup.sh
 
@@ -1259,8 +1573,24 @@ setup_monitoring_alert() {
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ -f /opt/conjiweb-src/.env ]]; then
-  # shellcheck disable=SC1091
-  source /opt/conjiweb-src/.env
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *"="* ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="$(printf '%s' "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+    val="$(printf '%s' "$val" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+    if [[ "$val" =~ ^\".*\"$ ]]; then
+      val="${val:1:${#val}-2}"
+    elif [[ "$val" =~ ^\'.*\'$ ]]; then
+      val="${val:1:${#val}-2}"
+    fi
+    if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      export "$key=$val"
+    fi
+  done < /opt/conjiweb-src/.env
 fi
 services=(postgresql redis-server prosody conjiweb-api nginx)
 ALERT_EMAIL="${ALERT_EMAIL:-}"
@@ -1366,6 +1696,16 @@ print_summary() {
   echo -e "  Database: ${DB_PASS}"
   echo -e "  Redis: ${REDIS_PASS}"
   echo -e "  MinIO: ${MINIO_ROOT_PASSWORD}"
+  if [[ "${ADMIN_PASS_PRINT_AT_END:-0}" = "1" ]]; then
+    echo ""
+    echo -e "  ${RED}=== Web admin password (shown ONCE) ===${NC}"
+    echo -e "  ${YELLOW}URL:${NC} https://${DOMAIN}/admin"
+    echo -e "  ${YELLOW}User:${NC} ${ADMIN_USER}"
+    echo -e "  ${YELLOW}Pass:${NC} ${ADMIN_PASS}"
+    echo -e "  ${RED}This password is NOT stored in .env (only the argon2 hash is).${NC}"
+    echo -e "  ${RED}Copy it now — there is no way to retrieve it later.${NC}"
+    echo -e "  ${RED}Lost it? Re-run the installer to set a new one.${NC}"
+  fi
   echo ""
 }
 
@@ -1385,6 +1725,12 @@ main() {
 
   echo ""
 
+  if [[ "${CONFIGURE_ONLY}" = "1" ]]; then
+    bash scripts/env_wizard.sh
+    success "Configuration completed. Review .env, then run: sudo bash install.sh --run-local"
+    exit 0
+  fi
+
   load_config
   setup_quick_check
   check_system
@@ -1394,18 +1740,21 @@ main() {
   ensure_service_users
   install_postgres
   install_redis
-  # Pre-generate PUSH_SHARED_SECRET so prosody and api both get the same value
+  # Pre-generate shared secrets so prosody, coturn and api all get the same values.
   PUSH_SHARED_SECRET="${PUSH_SHARED_SECRET:-$(openssl rand -hex 24)}"
-  export PUSH_SHARED_SECRET
+  TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 32)}"
+  LDAP_URL="${LDAP_URL:-${LDAP_SERVER:-}}"
+  PROMETHEUS_ALLOW_CIDR="${PROMETHEUS_ALLOW_CIDR:-}"
+  export PUSH_SHARED_SECRET TURN_SECRET
 
   install_prosody
-  install_coturn
   install_minio
   install_nodejs
   deploy_api
   deploy_frontend
   install_nginx
   setup_ssl
+  install_coturn
   setup_firewall
   setup_fail2ban
   setup_backup

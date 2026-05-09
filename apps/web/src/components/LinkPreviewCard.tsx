@@ -6,6 +6,8 @@
  */
 import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
+import { safeHref, safeImageSrc } from "@/utils/urlSafety";
+import { useLanguage } from "@/utils/i18n";
 
 interface LinkPreview {
   url: string;
@@ -19,6 +21,7 @@ interface LinkPreview {
 const cache = new Map<string, LinkPreview | null>();
 
 export default function LinkPreviewCard({ url }: { url: string }) {
+  const { t } = useLanguage();
   const [preview, setPreview] = useState<LinkPreview | null | "loading">(
     cache.has(url) ? cache.get(url)! : "loading"
   );
@@ -56,8 +59,8 @@ export default function LinkPreviewCard({ url }: { url: string }) {
 
   if (preview === "loading") {
     return (
-      <div className="mt-2 px-3 py-2 rounded-lg border border-white/5 bg-black/20 text-xs text-surface-200/40">
-        Loading preview...
+      <div className="mt-2 px-3 py-2 rounded-lg border-default inset-surface text-xs text-surface-200/40">
+        {t("preview.loading")}
       </div>
     );
   }
@@ -65,16 +68,25 @@ export default function LinkPreviewCard({ url }: { url: string }) {
     return null;
   }
 
+  // Defense in depth: even though the backend validates URLs in `_looks_safe`,
+  // re-check at the render boundary so a server-side bug or future endpoint
+  // change can't silently introduce a javascript:/data: XSS.
+  const safePreviewHref = safeHref(preview.url);
+  const safePreviewImage = safeImageSrc(preview.image);
+  const safeFavicon = safeImageSrc(preview.favicon);
+
+  if (!safePreviewHref) return null;
+
   return (
     <a
-      href={preview.url}
+      href={safePreviewHref}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-2 flex flex-col rounded-lg border border-white/5 overflow-hidden hover:bg-white/5 transition-colors"
+      className="mt-2 flex flex-col rounded-lg border-default overflow-hidden hover-surface transition-colors"
     >
-      {preview.image && (
+      {safePreviewImage && (
         <img
-          src={preview.image}
+          src={safePreviewImage}
           alt=""
           loading="lazy"
           className="w-full max-h-48 object-cover"
@@ -84,9 +96,9 @@ export default function LinkPreviewCard({ url }: { url: string }) {
       <div className="px-3 py-2 flex flex-col gap-1">
         {preview.site_name && (
           <p className="text-[10px] text-surface-200/50 uppercase tracking-wider flex items-center gap-1">
-            {preview.favicon && (
+            {safeFavicon && (
               <img
-                src={preview.favicon}
+                src={safeFavicon}
                 alt=""
                 className="w-3 h-3"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}

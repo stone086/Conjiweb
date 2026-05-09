@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { normalizeAccountJid, setAccountPassword, useAccountStore } from "@/stores/accountStore";
 import { createClient } from "@/services/xmppAdapter";
 import { initXmppBridge } from "@/services/xmppBridge";
-import { accountsApi, authApi, setUserToken } from "@/services/api";
+import { markIntentionalDisconnect } from "@/services/connectionSupervisor";
+import { accountsApi, authApi, setUserToken, setUserRefreshToken } from "@/services/api";
 import { apiSocket } from "@/services/apiSocket";
 import { requestNotificationPermission } from "@/stores/notificationStore";
 import toast from "react-hot-toast";
@@ -93,26 +94,41 @@ export default function LoginPage() {
     initXmppBridge(client);
     try {
       await withTimeout(client.connect(), 20000, t("login.connectionFailed"));
-      try {
-        const tokenRes = await authApi.getUserToken(jid, form.password);
-        if (tokenRes?.access_token) {
-          setUserToken(id, tokenRes.access_token);
-          sessionStorage.setItem(
-            `conjiweb-user-token:${id}`,
-            tokenRes.access_token
-          );
-          localStorage.setItem("token", tokenRes.access_token);
+      // XMPP login is the source of truth here. The REST token is optional and
+      // may legitimately fail with 401 on older deployments where
+      // /api/auth/user-token is disabled or not yet provisioned for the XMPP
+      // account. Do not break a successful XMPP login just because this
+      // fallback token endpoint rejects the credentials.
+      const tokenRes = await authApi.getUserToken(jid, form.password).catch((tokenErr) => {
+        console.warn("REST user token fallback failed; continuing with XMPP session", tokenErr);
+        return null;
+      });
+      if (tokenRes?.access_token) {
+        setUserToken(id, tokenRes.access_token);
+        // Persist refresh token so the axios interceptor can auto-renew
+        // the 30-min access token without forcing the user to re-login.
+        if ((tokenRes as any).refresh_token) {
+          setUserRefreshToken(id, (tokenRes as any).refresh_token);
         }
-      } catch (tokenErr) {
-        // Keep login usable when API token endpoint is unavailable on this server.
-        // XMPP connection has already succeeded at this point.
-        console.warn("[API] user-token unavailable, continue with XMPP session", tokenErr);
+
+        sessionStorage.setItem(
+          `conjiweb-user-token:${id}`,
+          tokenRes.access_token
+        );
+        // (Removed: localStorage.setItem("token", access_token) — dead write
+        //  with no reader anywhere in the app, but lived in localStorage so
+        //  it survived browser restarts and made an XSS payload's job easier.)
       }
       await requestNotificationPermission();
       toast.success(`${t("login.connectedAs")}: ${jid}`);
       // apiSocket.connect(id);
       navigate("/");
     } catch (err: any) {
+      // Mark as intentional so the supervisor (if it was attached) doesn't
+      // immediately retry an account that just failed initial auth.
+      try {
+        markIntentionalDisconnect(id);
+      } catch {}
       client.disconnect();
       if (createdAccount) {
         useAccountStore.getState().removeAccount(id);
@@ -161,7 +177,7 @@ export default function LoginPage() {
             if (!r.ok) throw new Error("SSO code exchange failed");
             return r.json();
           })
-          .then((data: { access_token: string; jid: string }) => {
+          .then((data: { access_token: string; refresh_token?: string; jid: string }) => {
             const jid = normalizeAccountJid(data.jid);
             const existing = useAccountStore.getState().accounts.find((a) => normalizeAccountJid(a.jid) === jid);
             const id = existing?.id ?? crypto.randomUUID();
@@ -171,6 +187,7 @@ export default function LoginPage() {
               displayName: jid.split("@")[0],
             });
             setUserToken(id, data.access_token);
+            if (data.refresh_token) setUserRefreshToken(id, data.refresh_token);
             toast.success("SSO login successful");
             window.history.replaceState(null, "", "/");
             navigate("/");
@@ -204,8 +221,8 @@ export default function LoginPage() {
         displayName: ldapUser,
       });
       setUserToken(id, data.access_token);
-
-      localStorage.setItem("token", data.access_token);
+      if (data.refresh_token) setUserRefreshToken(id, data.refresh_token);
+      // (Removed: localStorage.setItem("token", ...) — dead write, see above)
 
       sessionStorage.setItem(
         `conjiweb-user-token:${id}`,
@@ -313,7 +330,7 @@ export default function LoginPage() {
             </div>
             <div className="mt-2 grid grid-cols-2 gap-3">
               <button type="submit" disabled={loading || registering} className="btn-primary flex items-center justify-center gap-2">
-                {loading ? (<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t("login.connecting")}</>) : (<><Wifi size={16} />{t("login.connect")}</>)}
+                {loading ? (<><span className="w-4 h-4 border-2 border-default border-t-white rounded-full animate-spin" />{t("login.connecting")}</>) : (<><Wifi size={16} />{t("login.connect")}</>)}
               </button>
               <button
                 type="button"
@@ -327,13 +344,13 @@ export default function LoginPage() {
             </div>
           </form>
           {ssoProviders && (
-            <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="mt-4 pt-4 border-t border-subtle">
               <p className="text-xs text-surface-200/40 text-center mb-3">{t("login.ssoDivider")}</p>
               <div className="flex flex-col gap-2">
                 {ssoProviders.oidc && (
                   <a
                     href="/sso/oidc/login"
-                    className="btn-secondary text-sm text-center py-2 hover:bg-white/10"
+                    className="btn-secondary text-sm text-center py-2 hover-surface"
                   >
                     {ssoProviders.oidc_label}
                   </a>
@@ -342,7 +359,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setLdapMode(!ldapMode)}
-                    className="btn-secondary text-sm py-2 hover:bg-white/10"
+                    className="btn-secondary text-sm py-2 hover-surface"
                   >
                     {ssoProviders.ldap_label}
                   </button>

@@ -69,6 +69,21 @@ const enUS = {
     "common.close": "Close",
     "common.yes": "Yes",
     "common.no": "No",
+    "common.remove": "Remove",
+    "common.removed": "Removed",
+    "call.hangup": "Hang up",
+    "app.offline": "You are offline",
+    "media.decrypting": "Decrypting {fileName}…",
+    "media.decryptFailed": "Failed to decrypt: {message}",
+    "media.rawFile": "{fileName} (raw)",
+    "media.audioUnsupported": "Your browser does not support audio playback.",
+    "media.videoUnsupported": "Your browser does not support video playback.",
+    "preview.loading": "Loading preview...",
+    "right.noFiles": "No files shared yet.",
+    "group.visibilityPublic": "Public room",
+    "group.visibilityPrivate": "Private room (invite only)",
+    "chat.edit": "Edit",
+    "chat.delete": "Delete",
     "voice.record": "Record voice message",
     "voice.cancel": "Cancel recording",
     "voice.send": "Send voice message",
@@ -96,8 +111,12 @@ const enUS = {
     "omemo.sendPlaintextConfirm": "This contact has no OMEMO keys available. Send this message without end-to-end encryption?",
     "omemo.sentPlaintext": "Sent without end-to-end encryption",
     "omemo.trust.trusted": "Trusted (BTBV)",
+    "omemo.trust.blind_trust": "Trusted on first use",
+    "omemo.trust.unverified": "Unverified",
     "omemo.trust.verified": "Verified",
     "omemo.trust.untrusted": "Untrusted",
+    "omemo.keyChangeWarning": "Verify fingerprints before sharing sensitive information. A changed fingerprint may indicate a new device or a security risk.",
+    "omemo.keyChanged": "Fingerprint changed from",
     "call.screenShare": "Share screen",
     "call.startRecording": "Record call",
     "call.stopRecording": "Stop recording",
@@ -281,9 +300,9 @@ const enUS = {
     "search.navigate": "Navigate",
     "search.select": "Select",
     "search.close": "Close",
+    "search.askAi": "Ask AI",
     "search.noAnswer": "No answer",
     "search.aiUnavailable": "AI is currently unavailable",
-    "search.askAi": "Ask AI",
 
     "error.title": "Something went wrong",
     "error.retry": "Try again",
@@ -320,6 +339,8 @@ const enUS = {
 
     "group.leftRoom": "Left room",
     "group.joined": "Joined",
+    "group.joining": "Joining...",
+    "group.joinFailed": "Could not join the room",
     "group.members": "members",
     "group.leave": "Leave room",
     "group.invite": "Invite",
@@ -456,6 +477,21 @@ const zhCN: Record<MessageKey, string> = {
     "common.close": "关闭",
     "common.yes": "是",
     "common.no": "否",
+    "common.remove": "移除",
+    "common.removed": "已移除",
+    "call.hangup": "挂断",
+    "app.offline": "你已离线",
+    "media.decrypting": "正在解密 {fileName}…",
+    "media.decryptFailed": "解密失败：{message}",
+    "media.rawFile": "{fileName}（原始文件）",
+    "media.audioUnsupported": "你的浏览器不支持音频播放。",
+    "media.videoUnsupported": "你的浏览器不支持视频播放。",
+    "preview.loading": "正在加载预览...",
+    "right.noFiles": "还没有共享文件。",
+    "group.visibilityPublic": "公开群",
+    "group.visibilityPrivate": "私密群（仅邀请）",
+    "chat.edit": "编辑",
+    "chat.delete": "删除",
     "voice.record": "录制语音消息",
     "voice.cancel": "取消录制",
     "voice.send": "发送语音消息",
@@ -483,8 +519,12 @@ const zhCN: Record<MessageKey, string> = {
     "omemo.sendPlaintextConfirm": "这个联系人没有可用的 OMEMO 密钥。要不使用端到端加密发送这条消息吗？",
     "omemo.sentPlaintext": "已不使用端到端加密发送",
     "omemo.trust.trusted": "已信任（首次）",
+    "omemo.trust.blind_trust": "首次使用已信任",
+    "omemo.trust.unverified": "未验证",
     "omemo.trust.verified": "已验证",
     "omemo.trust.untrusted": "不信任",
+    "omemo.keyChangeWarning": "分享敏感信息前请先核对指纹。指纹变化可能表示对方新增设备，也可能是安全风险。",
+    "omemo.keyChanged": "指纹已变化，原指纹",
     "call.screenShare": "共享屏幕",
     "call.startRecording": "录制通话",
     "call.stopRecording": "停止录制",
@@ -707,6 +747,8 @@ const zhCN: Record<MessageKey, string> = {
 
     "group.leftRoom": "已退出群组",
     "group.joined": "已加入",
+    "group.joining": "正在加入...",
+    "group.joinFailed": "无法加入群组",
     "group.members": "成员",
     "group.leave": "退出群组",
     "group.invite": "邀请",
@@ -793,6 +835,17 @@ export function setLanguage(lang: Language) {
   window.dispatchEvent(new CustomEvent(LANGUAGE_EVENT, { detail: lang }));
 }
 
+export function formatMessage(template: string, values: Record<string, string | number | boolean | null | undefined> = {}): string {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {
+    const value = values[key];
+    return value === null || value === undefined ? match : String(value);
+  });
+}
+
+export function getMessagesForLanguage(lang: Language): Record<MessageKey, string> {
+  return messages[lang] ?? messages["en-US"];
+}
+
 export function useLanguage() {
   const [lang, setLangState] = useState<Language>(getStoredLanguage());
 
@@ -814,7 +867,10 @@ export function useLanguage() {
 
   const t = useMemo(() => {
     const table = messages[lang] ?? messages["en-US"];
-    return (key: string) => table[key as MessageKey] ?? key;
+    return (key: string, values?: Record<string, string | number | boolean | null | undefined>) => {
+      const template = table[key as MessageKey] ?? key;
+      return values ? formatMessage(template, values) : template;
+    };
   }, [lang]);
 
   return { lang, t, setLanguage };

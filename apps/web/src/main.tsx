@@ -50,9 +50,17 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Toaster
             position="top-right"
             toastOptions={{
-              style: { background: "#1a1a2e", color: "#e0e0f0", border: "1px solid rgba(255,255,255,0.08)", fontSize: "13px" },
-              success: { iconTheme: { primary: "#22c55e", secondary: "#0f0f1a" } },
-              error:   { iconTheme: { primary: "#ef4444", secondary: "#0f0f1a" } },
+              // Use our theme tokens so toasts adapt to dark/light/system mode.
+              // CSS vars are populated by globals.css — they shift on .light root.
+              style: {
+                background: "rgb(var(--popover-surface))",
+                color: "rgb(var(--surface-50))",
+                border: "1px solid rgb(var(--popover-border))",
+                fontSize: "13px",
+                boxShadow: "0 8px 24px -4px rgb(0 0 0 / 0.20), 0 4px 8px -2px rgb(0 0 0 / 0.10)",
+              },
+              success: { iconTheme: { primary: "rgb(var(--success))", secondary: "rgb(var(--popover-surface))" } },
+              error:   { iconTheme: { primary: "rgb(var(--danger))", secondary: "rgb(var(--popover-surface))" } },
             }}
           />
         </BrowserRouter>

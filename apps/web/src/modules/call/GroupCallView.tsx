@@ -133,7 +133,7 @@ export default function GroupCallView({ groupCall, onClose, onAddParticipant }: 
       {/* Add participant dialog */}
       {showAddDialog && (
         <div className="fixed inset-0 z-[51] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-surface-900 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
+          <div className="w-full max-w-sm bg-surface-900 border-default rounded-xl p-4 flex flex-col gap-3">
             <h3 className="text-sm font-semibold text-surface-50">{t("call.addParticipant")}</h3>
             <input
               type="text"

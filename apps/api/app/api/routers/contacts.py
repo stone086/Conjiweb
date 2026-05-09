@@ -1,13 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.core.database import get_db
 from app.models import Contact
+from app.utils.security import bearer_scheme, decode_token
+from fastapi.security import HTTPAuthorizationCredentials
 import uuid
 
 router = APIRouter()
+
+
+def _actor(credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)) -> dict[str, str | None]:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    role = payload.get("role")
+    if role not in ("admin", "user"):
+        raise HTTPException(status_code=403, detail="Contact access denied")
+    return {"role": role, "sub": payload.get("sub"), "account_id": payload.get("account_id")}
+
+
+def _require_account_access(account_id: str, actor: dict[str, str | None]) -> None:
+    if actor.get("role") == "admin":
+        return
+    if actor.get("account_id") != account_id:
+        raise HTTPException(status_code=403, detail="Contact access denied")
 
 
 class ContactUpsert(BaseModel):
@@ -36,7 +56,12 @@ class ContactResponse(BaseModel):
     summary="List contacts",
     description="Return all contacts for the given account id.",
 )
-async def list_contacts(account_id: str, db: AsyncSession = Depends(get_db)):
+async def list_contacts(
+    account_id: str,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_account_access(account_id, actor)
     result = await db.execute(
         select(Contact).where(Contact.account_id == account_id)
     )
@@ -49,7 +74,12 @@ async def list_contacts(account_id: str, db: AsyncSession = Depends(get_db)):
     summary="Create or update contact",
     description="Upsert one contact by account id and JID.",
 )
-async def upsert_contact(data: ContactUpsert, db: AsyncSession = Depends(get_db)):
+async def upsert_contact(
+    data: ContactUpsert,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_account_access(data.account_id, actor)
     result = await db.execute(
         select(Contact).where(Contact.account_id == data.account_id, Contact.jid == data.jid)
     )
@@ -58,20 +88,46 @@ async def upsert_contact(data: ContactUpsert, db: AsyncSession = Depends(get_db)
         contact.nickname = data.nickname or contact.nickname
         contact.group_name = data.group_name or contact.group_name
         contact.avatar_url = data.avatar_url or contact.avatar_url
-    else:
-        contact = Contact(
-            id=str(uuid.uuid4()),
-            account_id=data.account_id,
-            jid=data.jid,
-            nickname=data.nickname,
-            group_name=data.group_name,
-            avatar_url=data.avatar_url,
-            is_blocked=False,
+        await db.commit()
+        await db.refresh(contact)
+        return contact
+
+    contact = Contact(
+        id=str(uuid.uuid4()),
+        account_id=data.account_id,
+        jid=data.jid,
+        nickname=data.nickname,
+        group_name=data.group_name,
+        avatar_url=data.avatar_url,
+        is_blocked=False,
+    )
+    db.add(contact)
+    try:
+        await db.commit()
+        await db.refresh(contact)
+        return contact
+    except IntegrityError:
+        # Concurrent upsert race: another request just inserted the same
+        # (account, jid) pair. Roll back and merge our changes into theirs.
+        await db.rollback()
+        result = await db.execute(
+            select(Contact).where(
+                Contact.account_id == data.account_id, Contact.jid == data.jid
+            )
         )
-        db.add(contact)
-    await db.commit()
-    await db.refresh(contact)
-    return contact
+        existing = result.scalar_one_or_none()
+        if not existing:
+            raise HTTPException(status_code=409, detail="Conflict updating contact")
+        # Apply our updates on top of the row that won the race.
+        if data.nickname:
+            existing.nickname = data.nickname
+        if data.group_name:
+            existing.group_name = data.group_name
+        if data.avatar_url:
+            existing.avatar_url = data.avatar_url
+        await db.commit()
+        await db.refresh(existing)
+        return existing
 
 
 @router.patch(
@@ -79,11 +135,17 @@ async def upsert_contact(data: ContactUpsert, db: AsyncSession = Depends(get_db)
     summary="Update blocked status",
     description="Set or clear contact blocked flag.",
 )
-async def block_contact(contact_id: str, blocked: bool, db: AsyncSession = Depends(get_db)):
+async def block_contact(
+    contact_id: str,
+    blocked: bool,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(Contact).where(Contact.id == contact_id))
     contact = result.scalar_one_or_none()
     if not contact:
         raise HTTPException(404, "Contact not found")
+    _require_account_access(contact.account_id, actor)
     contact.is_blocked = blocked
     await db.commit()
     return {"ok": True}
@@ -94,7 +156,17 @@ async def block_contact(contact_id: str, blocked: bool, db: AsyncSession = Depen
     summary="Delete contact",
     description="Delete one contact record by id.",
 )
-async def delete_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_contact(
+    contact_id: str,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    # Look up first so we can verify ownership before deleting
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        return {"ok": True}  # idempotent delete
+    _require_account_access(contact.account_id, actor)
     await db.execute(delete(Contact).where(Contact.id == contact_id))
     await db.commit()
     return {"ok": True}

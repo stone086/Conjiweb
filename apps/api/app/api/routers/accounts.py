@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -6,9 +6,42 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.core.database import get_db
 from app.models import Account, AccountPreference
+from app.services.audit import write_audit, get_client_ip
+from app.utils.security import bearer_scheme, decode_token
+from fastapi.security import HTTPAuthorizationCredentials
 import uuid
 
 router = APIRouter()
+
+
+def _actor(credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)) -> dict[str, str | None]:
+    """Resolve the calling actor.
+
+    Required on every accounts endpoint — without this anyone could:
+      - POST /accounts/    create infinite junk accounts (DoS)
+      - GET /accounts/     enumerate every JID on the server (info disclosure)
+      - DELETE /accounts/{id}  wipe any account
+      - PUT /accounts/{id}/preferences  modify any account's settings
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    role = payload.get("role")
+    if role not in ("admin", "user"):
+        raise HTTPException(status_code=403, detail="Account access denied")
+    return {
+        "role": role,
+        "sub": payload.get("sub"),
+        "account_id": payload.get("account_id"),
+    }
+
+
+def _require_account_access(account_id: str, actor: dict[str, str | None]) -> None:
+    """Admins → any account. Users → only their own account_id."""
+    if actor.get("role") == "admin":
+        return
+    if actor.get("account_id") != account_id:
+        raise HTTPException(status_code=403, detail="Account access denied")
 
 
 class AccountCreate(BaseModel):
@@ -46,11 +79,23 @@ class AccountPreferenceUpdate(BaseModel):
 @router.get(
     "/",
     response_model=List[AccountResponse],
-    summary="List enabled accounts",
-    description="Return all enabled local accounts.",
+    summary="List accounts",
+    description="Admins see all accounts; users see only their own.",
 )
-async def list_accounts(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Account).where(Account.is_enabled == True))
+async def list_accounts(
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    if actor.get("role") == "admin":
+        result = await db.execute(select(Account).where(Account.is_enabled == True))
+        return result.scalars().all()
+    # Regular users only see their own account
+    own_id = actor.get("account_id")
+    if not own_id:
+        return []
+    result = await db.execute(
+        select(Account).where(Account.id == own_id, Account.is_enabled == True)
+    )
     return result.scalars().all()
 
 
@@ -58,9 +103,23 @@ async def list_accounts(db: AsyncSession = Depends(get_db)):
     "/",
     response_model=AccountResponse,
     summary="Create account",
-    description="Create a local account record and default preference profile.",
+    description="Create a local account record and default preference profile. "
+                "Caller must be admin OR a user whose token JID matches the new account JID.",
 )
-async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)):
+async def create_account(
+    request: Request,
+    data: AccountCreate,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    # Admins can create any account; users can only create their own JID's account.
+    # Without this check, anyone with any token could spam infinite junk accounts.
+    if actor.get("role") != "admin":
+        token_jid = (actor.get("sub") or "").lower().strip()
+        new_jid = (data.jid or "").lower().strip()
+        if not token_jid or token_jid != new_jid:
+            raise HTTPException(status_code=403, detail="Cannot create accounts for other users")
+
     existing = (
         await db.execute(select(Account).where(Account.jid == data.jid))
     ).scalar_one_or_none()
@@ -87,6 +146,17 @@ async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)
             return existing
         raise
     await db.refresh(account)
+    # Audit account creation. Useful for forensics: an attacker who steals
+    # an admin token and creates new accounts will leave a trace here.
+    await write_audit(
+        db,
+        actor=actor.get("sub") or actor.get("role"),
+        action="account_created",
+        target_type="account",
+        target_id=account.id,
+        detail={"jid": data.jid, "by_role": actor.get("role")},
+        client_ip=get_client_ip(request),
+    )
     return account
 
 
@@ -96,7 +166,12 @@ async def create_account(data: AccountCreate, db: AsyncSession = Depends(get_db)
     summary="Get account",
     description="Fetch one account by id.",
 )
-async def get_account(account_id: str, db: AsyncSession = Depends(get_db)):
+async def get_account(
+    account_id: str,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_account_access(account_id, actor)
     result = await db.execute(select(Account).where(Account.id == account_id))
     account = result.scalar_one_or_none()
     if not account:
@@ -109,13 +184,31 @@ async def get_account(account_id: str, db: AsyncSession = Depends(get_db)):
     summary="Disable account",
     description="Soft-delete an account by setting is_enabled to false.",
 )
-async def delete_account(account_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_account(
+    request: Request,
+    account_id: str,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_account_access(account_id, actor)
     result = await db.execute(select(Account).where(Account.id == account_id))
     account = result.scalar_one_or_none()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     account.is_enabled = False
     await db.commit()
+    # Audit account disable. Without this, mass-disable attacks (admin token
+    # compromise + script disabling all accounts) are silent until users
+    # complain.
+    await write_audit(
+        db,
+        actor=actor.get("sub") or actor.get("role"),
+        action="account_disabled",
+        target_type="account",
+        target_id=account_id,
+        detail={"jid": account.jid, "by_role": actor.get("role")},
+        client_ip=get_client_ip(request),
+    )
     return {"ok": True}
 
 
@@ -125,7 +218,12 @@ async def delete_account(account_id: str, db: AsyncSession = Depends(get_db)):
     summary="Get account preferences",
     description="Return account-level preference settings, creating defaults when missing.",
 )
-async def get_account_preferences(account_id: str, db: AsyncSession = Depends(get_db)):
+async def get_account_preferences(
+    account_id: str,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_account_access(account_id, actor)
     account_result = await db.execute(select(Account).where(Account.id == account_id))
     account = account_result.scalar_one_or_none()
     if not account:
@@ -147,7 +245,13 @@ async def get_account_preferences(account_id: str, db: AsyncSession = Depends(ge
     summary="Update account preferences",
     description="Patch account preference fields and return the saved profile.",
 )
-async def update_account_preferences(account_id: str, data: AccountPreferenceUpdate, db: AsyncSession = Depends(get_db)):
+async def update_account_preferences(
+    account_id: str,
+    data: AccountPreferenceUpdate,
+    actor: dict[str, str | None] = Depends(_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_account_access(account_id, actor)
     account_result = await db.execute(select(Account).where(Account.id == account_id))
     account = account_result.scalar_one_or_none()
     if not account:

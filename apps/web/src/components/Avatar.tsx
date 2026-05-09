@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { clsx } from "clsx";
+import { safeImageSrc } from "@/utils/urlSafety";
 
 interface AvatarProps {
   src?: string;
@@ -72,7 +73,11 @@ function colorFromName(name: string): string {
 
 export default function Avatar({ src, name, size = "md", presence, className }: AvatarProps) {
   const [imgError, setImgError] = useState(false);
-  const showImg = src && !imgError;
+  // Reject avatar URLs that aren't http/https/blob/safe-data — peer-controlled
+  // data from XMPP vCard / PEP avatar could carry javascript:/data:image/svg+xml
+  // payloads that fire on render.
+  const safeSrc = safeImageSrc(src);
+  const showImg = !!safeSrc && !imgError;
   const initials = getInitials(name);
   const bg = colorFromName(name);
 
@@ -87,7 +92,7 @@ export default function Avatar({ src, name, size = "md", presence, className }: 
       >
         {showImg ? (
           <img
-            src={src}
+            src={safeSrc!}
             alt={name}
             className="w-full h-full object-cover"
             onError={() => setImgError(true)}

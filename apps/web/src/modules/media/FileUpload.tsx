@@ -93,10 +93,13 @@ export function FileUploadZone({ onUploaded, onCancel, messageId, accountId }: F
 
       onUploaded(uploaded);
     } catch (e: any) {
+      // Surface real backend message (415 unsupported MIME, 413 too large, etc.)
+      const detail = e?.response?.data?.detail ?? e?.message ?? t("upload.error");
+      const errorMsg = typeof detail === "string" ? detail : t("upload.error");
       setFiles((prev) => prev.map((f, i) =>
-        i === index ? { ...f, status: "error", error: e.message ?? t("upload.error") } : f
+        i === index ? { ...f, status: "error", error: errorMsg } : f
       ));
-      toast.error(t("upload.error"));
+      toast.error(errorMsg);
     }
   };
 
@@ -110,7 +113,7 @@ export function FileUploadZone({ onUploaded, onCancel, messageId, accountId }: F
         "border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200",
         isDragActive
           ? "border-accent bg-accent/10"
-          : "border-white/10 hover:border-white/20 hover:bg-white/2"
+          : "border-default hover:border-default hover:bg-surface-800/20"
       )}>
         <input {...getInputProps()} />
         <Upload size={24} className={clsx("mx-auto mb-2", isDragActive ? "text-accent" : "text-surface-200/30")} />
@@ -147,12 +150,12 @@ export function FileUploadZone({ onUploaded, onCancel, messageId, accountId }: F
                 {item.status === "error" && <AlertCircle size={14} className="text-danger" />}
                 {(item.status === "idle" || item.status === "error") && (
                   <button onClick={() => uploadFile(i)}
-                    className="p-1 rounded hover:bg-white/5 text-accent text-xs">
+                    className="p-1 rounded hover-surface text-accent text-xs">
                     <Upload size={12} />
                   </button>
                 )}
                 <button onClick={() => removeFile(i)}
-                  className="p-1 rounded hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
+                  className="p-1 rounded hover-surface text-surface-200/30 hover:text-surface-200">
                   <X size={12} />
                 </button>
               </div>
@@ -213,7 +216,7 @@ export function FileCard({ name, mimeType, sizeBytes, downloadUrl }: {
       target="_blank"
       rel="noopener noreferrer"
       className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50 hover:bg-surface-800
-                 border border-white/5 hover:border-white/10 transition-all group w-full"
+                 border-default hover:border-default transition-all group w-full"
     >
       <div className="w-8 h-8 rounded-lg bg-surface-700 flex items-center justify-center flex-shrink-0">
         <FileIcon mimeType={mimeType} />

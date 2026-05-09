@@ -7,7 +7,7 @@ import re
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
@@ -69,7 +69,13 @@ async def _chat_completion(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"AI request failed: {exc}")
+        # NEVER include the exception message in the response — httpx errors
+        # embed the request URL, which could leak credentials if AI_BASE_URL
+        # contains them (e.g., https://user:pass@host/v1) or simply leak the
+        # provider/endpoint to malicious callers. Log details server-side
+        # only; return a generic message to the client.
+        logger.warning("ai_request_failed: %s: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=502, detail="AI request failed")
 
 
 # ---------------------------------------------------------------------------
@@ -146,12 +152,18 @@ async def summarize_conversation(
 @limiter.limit("30/minute")
 async def translate_message(
     request: Request,
-    text: str,
-    target_lang: str = "en",
+    text: str = Query(..., min_length=1, max_length=4000),
+    target_lang: str = Query("en", min_length=2, max_length=16),
     actor: dict = Depends(_get_ai_actor),
 ):
     if not text.strip():
         raise HTTPException(status_code=400, detail="text is required")
+    # target_lang goes directly into the prompt; restrict to language-code-like
+    # values so callers can't inject `\n\nIGNORE PREVIOUS INSTRUCTIONS` etc.
+    # (Prompt injection is fundamentally hard to prevent against the message
+    # body itself, but we can at least keep parameter slots clean.)
+    if not re.fullmatch(r"[A-Za-z\-]{2,16}", target_lang):
+        raise HTTPException(status_code=400, detail="Invalid target_lang")
     translated = await _chat_completion(
         system_prompt="You are a translator. Return only the translated text.",
         user_prompt=f"Translate to {target_lang}:\n{text}",
@@ -171,7 +183,7 @@ async def translate_message(
 @limiter.limit("30/minute")
 async def smart_reply(
     request: Request,
-    message: str,
+    message: str = Query(..., min_length=1, max_length=4000),
     actor: dict = Depends(_get_ai_actor),
 ):
     if not message.strip():
@@ -239,7 +251,12 @@ async def ai_assistant(
             reply = data["choices"][0]["message"]["content"].strip()
             return AssistantResponse(reply=reply)
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+        # Log full detail server-side; don't echo the exception to the client
+        # (httpx errors can include the request URL, which leaks the provider
+        # endpoint and may include credentials if AI_BASE_URL was misconfigured
+        # with userinfo).
+        logger.warning("assistant_provider_error: %s: %s", type(e).__name__, e)
+        raise HTTPException(status_code=502, detail="AI provider error")
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +424,8 @@ async def rag_query(
             data = resp.json()
             answer = data["choices"][0]["message"]["content"].strip()
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"AI provider error: {e}")
+        logger.warning("rag_provider_error: %s: %s", type(e).__name__, e)
+        raise HTTPException(502, "AI provider error")
 
     cited_refs = set(re.findall(r"\[M(\d+)\]", answer))
     sources = [source_index[f"M{ref}"] for ref in cited_refs if f"M{ref}" in source_index]

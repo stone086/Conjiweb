@@ -44,7 +44,7 @@ export default function StarredPage() {
                 <Link
                   key={msg.id}
                   to={`/chat/${msg.conversationId}${mid}`}
-                  className="glass rounded-xl p-4 hover:bg-white/5 transition-colors block"
+                  className="glass rounded-xl p-4 hover-surface transition-colors block"
                 >
                   <div className="flex items-start justify-between gap-3 mb-1">
                     <span className="text-xs font-medium text-accent-soft truncate">

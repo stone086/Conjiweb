@@ -1,36 +1,185 @@
-from jose import jwt, JWTError
+"""
+JWT issuance, validation, and revocation.
+
+Each token carries a ``jti`` (JWT ID) so it can be individually revoked
+through the Redis-backed denylist. Two token types are issued:
+
+* **access** — short-lived (default 30 min). Carried in
+  ``Authorization: Bearer ...``. Verified on every request.
+* **refresh** — longer-lived (default 14 days). Used at
+  ``POST /auth/refresh`` to mint a new access token without re-prompting
+  for the password. Marked with ``type=refresh`` so it cannot be used in
+  place of an access token.
+
+Revocation is best-effort: if Redis is unreachable, validation still
+succeeds (we don't want to lock everyone out on a Redis outage), but a
+warning is logged. To force a hard fence (deny on Redis failure), set
+``JWT_DENY_ON_REVOCATION_BACKEND_FAILURE=1`` in env.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import uuid
 from datetime import UTC, datetime, timedelta
-from app.core.config import settings
-from fastapi import HTTPException, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Any
 
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+
+from app.core.config import settings
+
 bearer_scheme = HTTPBearer(auto_error=False)
+logger = logging.getLogger("conjiweb.security")
+
+# Redis client created lazily so missing redis (e.g. tests) doesn't crash import
+_redis_client = None
+_redis_init_failed = False
+
+
+def _get_redis():
+    global _redis_client, _redis_init_failed
+    if _redis_client is not None:
+        return _redis_client
+    if _redis_init_failed:
+        return None
+    try:
+        import redis  # type: ignore[import-not-found]
+        _redis_client = redis.from_url(
+            settings.REDIS_URL,
+            socket_timeout=2,
+            socket_connect_timeout=2,
+            decode_responses=True,
+        )
+        return _redis_client
+    except Exception as e:
+        _redis_init_failed = True
+        logger.warning(f"redis_init_failed: {type(e).__name__}: {e}")
+        return None
+
+
+REVOCATION_KEY_PREFIX = "jwt:revoked:"
+
+
+def _hard_fence_on_redis_failure() -> bool:
+    return os.getenv("JWT_DENY_ON_REVOCATION_BACKEND_FAILURE", "").strip().lower() in (
+        "1", "true", "yes",
+    )
+
+
+def _is_revoked(jti: str) -> bool:
+    """Check if the given jti has been revoked.
+
+    On Redis failure: returns False (allow) by default. Set
+    ``JWT_DENY_ON_REVOCATION_BACKEND_FAILURE=1`` to flip the default to
+    deny — useful in high-security deployments.
+    """
+    r = _get_redis()
+    if r is None:
+        return _hard_fence_on_redis_failure()
+    try:
+        return bool(r.exists(f"{REVOCATION_KEY_PREFIX}{jti}"))
+    except Exception as e:
+        logger.warning(f"revocation_check_failed jti={jti[:8]}... err={type(e).__name__}: {e}")
+        return _hard_fence_on_redis_failure()
+
+
+def revoke_token(jti: str, ttl_seconds: int) -> bool:
+    """Add a jti to the revocation list with TTL matching the token's expiry.
+
+    The TTL prevents the denylist from growing unboundedly: once the
+    underlying token would have expired anyway, the revocation record
+    is no longer needed. Returns True on success, False if the backend is
+    unavailable.
+    """
+    if ttl_seconds <= 0:
+        return False
+    r = _get_redis()
+    if r is None:
+        return False
+    try:
+        r.set(f"{REVOCATION_KEY_PREFIX}{jti}", "1", ex=ttl_seconds)
+        return True
+    except Exception as e:
+        logger.warning(f"revoke_token_failed jti={jti[:8]}... err={type(e).__name__}: {e}")
+        return False
+
+
+def _build_payload(
+    subject: str,
+    role: str,
+    token_type: str,
+    expires_minutes: int,
+    account_id: str | None = None,
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "iat": int(now.timestamp()),
+        "exp": now + timedelta(minutes=expires_minutes),
+        "jti": str(uuid.uuid4()),
+        "role": role,
+        "type": token_type,
+    }
+    if account_id:
+        payload["account_id"] = account_id
+    return payload
 
 
 def create_access_token(
     subject: str,
-    expires_minutes: int = None,
+    expires_minutes: int | None = None,
     role: str = "admin",
     account_id: str | None = None,
 ) -> str:
-    expire = datetime.now(UTC) + timedelta(
-        minutes=expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
-    payload: dict[str, Any] = {"sub": subject, "exp": expire, "role": role}
-    if account_id:
-        payload["account_id"] = account_id
+    """Issue a short-lived access token (30 min default)."""
+    minutes = expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES_ACCESS
+    payload = _build_payload(subject, role, "access", minutes, account_id)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def decode_token(token: str) -> dict[str, Any]:
+def create_refresh_token(
+    subject: str,
+    role: str = "admin",
+    account_id: str | None = None,
+) -> str:
+    """Issue a refresh token (14 days default).
+
+    Refresh tokens are used only at the /auth/refresh endpoint to mint
+    new access tokens. They cannot stand in for an access token because
+    the validators check ``type == "access"``.
+    """
+    minutes = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60
+    payload = _build_payload(subject, role, "refresh", minutes, account_id)
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_token(token: str, expected_type: str = "access") -> dict[str, Any]:
+    """Decode and validate a JWT.
+
+    Validates: signature, expiry (exp), required claims (sub, jti, type),
+    type matches expected, jti not revoked.
+    """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if "sub" not in payload:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
-        return payload
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if "sub" not in payload:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    # Token type — refresh tokens MUST NOT be accepted as access tokens
+    token_type = payload.get("type", "access")  # legacy tokens have no type → treat as access
+    if expected_type and token_type != expected_type:
+        raise HTTPException(status_code=401, detail=f"Token type mismatch (expected {expected_type})")
+
+    # Revocation check — denies tokens that have been explicitly invalidated
+    jti = payload.get("jti")
+    if jti and _is_revoked(jti):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+
+    return payload
 
 
 def get_current_admin(

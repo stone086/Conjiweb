@@ -61,15 +61,30 @@ self.addEventListener("push", (event: PushEvent) => {
     data = { title: "New message", body: event.data.text() };
   }
 
-  const title = (data.title || "Conjiweb").slice(0, 100);
+  // Sanitize all peer-controlled fields. Notification API auto-escapes
+  // title/body for display, but `tag` is opaque text used to dedupe and
+  // surfaces in browser devtools / extension logs — control characters
+  // there could mangle log files. Strip them and bound length.
+  const stripCtrl = (s: string) =>
+    s.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 200);
+  const sanitizedTag = data.tag ? stripCtrl(data.tag) : "conjiweb-msg";
+
+  // conversationId goes into the URL via encodeURIComponent below, but we
+  // also reject obvious junk (slashes, control chars) here so the URL we
+  // construct is sane even before encoding.
+  const cleanConvId = (data.conversationId || "")
+    .replace(/[\u0000-\u001f\u007f\\/]/g, "")
+    .slice(0, 128);
+
+  const title = stripCtrl(data.title || "Conjiweb").slice(0, 100);
   const options: NotificationOptions = {
-    body: (data.body || "").slice(0, 500),
+    body: stripCtrl(data.body || "").slice(0, 500),
     icon: "/icon-192.png",
     badge: "/icon-192.png",
-    tag: data.tag || "conjiweb-msg",
+    tag: sanitizedTag,
     data: {
-      conversationId: data.conversationId,
-      url: data.conversationId ? `/chat/${encodeURIComponent(data.conversationId)}` : "/",
+      conversationId: cleanConvId,
+      url: cleanConvId ? `/chat/${encodeURIComponent(cleanConvId)}` : "/",
     },
   };
 

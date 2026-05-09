@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useChatStore, ChatMessage } from "@/stores/chatStore";
 import { useAccountStore } from "@/stores/accountStore";
@@ -11,6 +11,7 @@ import { FileUploadZone, UploadedFile, ImagePreview, FileCard } from "@/modules/
 import Avatar from "@/components/Avatar";
 import LinkPreviewCard, { extractFirstUrl } from "@/components/LinkPreviewCard";
 import VoiceRecorder from "@/components/VoiceRecorder";
+import AesgcmMedia from "@/components/AesgcmMedia";
 import VirtualMessageList from "@/modules/chat/VirtualMessageList";
 import { cacheMessages, getDraft, getLocalMessages, saveDraft } from "@/services/localDb";
 import { getChatToolbarActions } from "@/plugins/host";
@@ -21,14 +22,14 @@ import { clsx } from "clsx";
 import { Send, Paperclip, X, ChevronDown, CornerUpLeft, Loader, Smile, MoreVertical, Star, Pencil, Forward, Trash2, Lock, Phone, Video, UserPlus, Mic } from "lucide-react";
 import { callManager } from "@/services/jingle";
 import { processSlashCommand } from "@/services/slashCommands";
+import EmojiPicker from "emoji-picker-react";
 import { Theme } from "emoji-picker-react";
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
-import { attachmentsApi } from "@/services/api";
+import { attachmentsApi, signedFilesUrl } from "@/services/api";
 import { encryptOmemoEnvelopeForPeer } from "@/services/e2ee";
 import { tryLibsignalEncrypt } from "@/services/xmppBridge";
 import { getOmemoEnabled } from "@/services/omemoSettings";
-const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
 function parseAesgcmMediaLink(raw?: string): { href: string; fileName: string; isAudio: boolean } | null {
   if (!raw) return null;
@@ -44,21 +45,6 @@ function parseAesgcmMediaLink(raw?: string): { href: string; fileName: string; i
   return { href, fileName, isAudio };
 }
 
-function parseHttpMediaLink(raw?: string): { href: string; fileName: string; isAudio: boolean } | null {
-  if (!raw) return null;
-  const text = raw.trim();
-  if (!/^https?:\/\//i.test(text)) return null;
-  try {
-    const url = new URL(text);
-    const fileName = url.pathname.split("/").pop() || "attachment";
-    const lower = fileName.toLowerCase();
-    const isAudio = [".m4a", ".mp3", ".ogg", ".wav", ".webm"].some((ext) => lower.endsWith(ext));
-    return { href: text, fileName, isAudio };
-  } catch {
-    return null;
-  }
-}
-
 function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; todayLabel: string; yesterdayLabel: string }) {
   const label = isSameDay(date, Date.now())
     ? todayLabel
@@ -67,9 +53,9 @@ function DateDivider({ date, todayLabel, yesterdayLabel }: { date: number; today
       : format(date, "yyyy-MM-dd");
   return (
     <div className="flex items-center gap-3 py-2 my-1">
-      <div className="flex-1 h-px bg-white/5" />
+      <div className="flex-1 h-px bg-surface-800/40" />
       <span className="text-[10px] text-surface-200/30 px-2 py-0.5 rounded-full bg-surface-900">{label}</span>
-      <div className="flex-1 h-px bg-white/5" />
+      <div className="flex-1 h-px bg-surface-800/40" />
     </div>
   );
 }
@@ -89,6 +75,7 @@ function MessageBubble({
   onReact,
   sentLabel,
   readLabel,
+  activeAccountId,
 }: {
   msg: ChatMessage;
   replyPreview?: string;
@@ -104,6 +91,7 @@ function MessageBubble({
   onReact: (m: ChatMessage, emoji: string) => void;
   sentLabel: string;
   readLabel: string;
+  activeAccountId?: string | null;
 }) {
   const { t } = useLanguage();
   const [hovered, setHovered] = useState(false);
@@ -151,7 +139,7 @@ function MessageBubble({
           }}
         >
           {msg.replyToId && (
-            <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-white/30 bg-black/15">
+            <div className="mb-2 px-2 py-1 rounded-md border-l-2 border-default inset-surface">
               <p className="text-[10px] text-surface-200/60">{replySender ?? t("chat.reply")}</p>
               <p className="text-xs text-surface-200/70 line-clamp-2 break-words">
                 {replyPreview ?? t("chat.originalUnavailable")}
@@ -162,44 +150,11 @@ function MessageBubble({
             const aesMedia = parseAesgcmMediaLink(msg.body);
             if (aesMedia) {
               return (
-                <div className="text-sm leading-relaxed break-words">
-                  <p className="text-surface-100/90">
-                    {aesMedia.isAudio ? "Encrypted audio attachment" : "Encrypted file attachment"}
-                  </p>
-                  {aesMedia.isAudio && (
-                    <audio controls preload="metadata" className="mt-2 w-full max-w-xs">
-                      <source src={aesMedia.href} />
-                    </audio>
-                  )}
-                  <a
-                    href={aesMedia.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-accent-soft underline break-all"
-                  >
-                    {aesMedia.fileName}
-                  </a>
-                </div>
-              );
-            }
-            const httpMedia = parseHttpMediaLink(msg.body);
-            if (httpMedia) {
-              return (
-                <div className="text-sm leading-relaxed break-words">
-                  {httpMedia.isAudio && (
-                    <audio controls preload="metadata" className="mb-2 w-full max-w-xs">
-                      <source src={httpMedia.href} />
-                    </audio>
-                  )}
-                  <a
-                    href={httpMedia.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-accent-soft underline break-all"
-                  >
-                    {httpMedia.fileName}
-                  </a>
-                </div>
+                <AesgcmMedia
+                  url={msg.body.trim()}
+                  fileName={aesMedia.fileName}
+                  plainHref={aesMedia.href}
+                />
               );
             }
             return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>;
@@ -209,15 +164,19 @@ function MessageBubble({
             return url ? <LinkPreviewCard url={url} /> : null;
           })()}
           {msg.editedAt && <p className="text-[10px] text-surface-200/40 mt-1 cursor-default" title={`${t("chat.editedAt")} ${formatMsgTimeFull(msg.editedAt)}`}>{t("chat.edited")}</p>}
-          {msg.attachments?.map((att) => (
-            <div key={att.id} className="mt-2">
-              {att.mimeType.startsWith("image/") ? (
-                <ImagePreview src={att.downloadUrl} alt={att.fileName} onClick={() => onOpenImage(att.downloadUrl, att.fileName)} />
-              ) : (
-                <FileCard name={att.fileName} mimeType={att.mimeType} sizeBytes={att.sizeBytes} downloadUrl={att.downloadUrl} />
-              )}
-            </div>
-          ))}
+          {msg.attachments?.map((att) => {
+            // Sign /files/ URLs with the user token so nginx auth_request passes
+            const signedUrl = signedFilesUrl(att.downloadUrl, activeAccountId);
+            return (
+              <div key={att.id} className="mt-2">
+                {att.mimeType.startsWith("image/") ? (
+                  <ImagePreview src={signedUrl} alt={att.fileName} onClick={() => onOpenImage(signedUrl, att.fileName)} />
+                ) : (
+                  <FileCard name={att.fileName} mimeType={att.mimeType} sizeBytes={att.sizeBytes} downloadUrl={signedUrl} />
+                )}
+              </div>
+            );
+          })}
         </div>
         {!!msg.reactions && Object.keys(msg.reactions).length > 0 && (
           <div className="flex gap-1 flex-wrap px-1">
@@ -225,7 +184,7 @@ function MessageBubble({
               <button
                 key={emoji}
                 onClick={() => onReact(msg, emoji)}
-                className="text-[11px] px-1.5 py-0.5 rounded-full border border-white/10 bg-white/5"
+                className="text-[11px] px-1.5 py-0.5 rounded-full border-default bg-surface-800/40"
               >
                 {emoji} {count}
               </button>
@@ -251,32 +210,32 @@ function MessageBubble({
         </div>
       </div>
       <div className={clsx("flex items-center self-center transition-opacity", hovered ? "opacity-100" : "opacity-0")}>
-        <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
+        <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg hover-surface text-surface-200/30 hover:text-surface-200">
           <CornerUpLeft size={13} />
         </button>
         <div className="relative" ref={menuRef}>
-          <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-white/5 text-surface-200/30 hover:text-surface-200">
+          <button onClick={() => setMenuOpen((v) => !v)} className="p-1.5 rounded-lg hover-surface text-surface-200/30 hover:text-surface-200">
             <MoreVertical size={13} />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-7 z-20 w-36 rounded-lg border border-white/10 bg-surface-900 shadow-xl p-1">
-              <button onClick={() => { onToggleStar(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+            <div className="absolute right-0 top-7 z-20 w-36 rounded-lg border-default bg-surface-900 shadow-xl p-1">
+              <button onClick={() => { onToggleStar(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover-surface rounded flex items-center gap-2">
                 <Star size={12} /> {msg.starred ? "Unstar" : "Star"}
               </button>
               {isOwn && (
-                <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+                <button onClick={() => { onEdit(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover-surface rounded flex items-center gap-2">
                   <Pencil size={12} /> Edit
                 </button>
               )}
-              <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded flex items-center gap-2">
+              <button onClick={() => { onForward(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover-surface rounded flex items-center gap-2">
                 <Forward size={12} /> Forward
               </button>
-              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-white/5">
+              <div className="px-2 py-1.5 flex items-center gap-1 border-b border-subtle">
                 {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((em) => (
                   <button
                     key={em}
                     onClick={() => { onReact(msg, em); setMenuOpen(false); }}
-                    className="w-7 h-7 rounded hover:bg-white/10 text-base transition-transform hover:scale-110"
+                    className="w-7 h-7 rounded hover-surface text-base transition-transform hover:scale-110"
                     title={`React with ${em}`}
                   >
                     {em}
@@ -284,7 +243,7 @@ function MessageBubble({
                 ))}
               </div>
               {isOwn && (
-                <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5 rounded text-danger flex items-center gap-2">
+                <button onClick={() => { onDelete(msg); setMenuOpen(false); }} className="w-full text-left text-xs px-2 py-1.5 hover-surface rounded text-danger flex items-center gap-2">
                   <Trash2 size={12} /> Delete
                 </button>
               )}
@@ -311,7 +270,7 @@ function TypingBubble({ name }: { name: string }) {
 
 function ReplyPreview({ msg, onCancel, title }: { msg: ChatMessage; onCancel: () => void; title: string }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
+    <div className="flex items-center gap-2 px-4 py-2 border-t border-subtle bg-surface-900/30">
       <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-[10px] text-accent-soft font-medium">{title} {msg.senderJid.split("@")[0]}</p>
@@ -346,7 +305,7 @@ function ForwardModal({
   );
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
+      <div className="w-full max-w-md rounded-xl border-default bg-surface-900 shadow-2xl p-4 flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-surface-50">{t("chat.forwardMessage")}</h3>
         <p className="text-xs text-surface-200/50 line-clamp-2">{message.body}</p>
         <input
@@ -368,7 +327,7 @@ function ForwardModal({
                 "w-full text-left text-sm px-3 py-2 rounded-lg transition-colors",
                 targetId === c.id
                   ? "bg-accent/20 text-accent-soft"
-                  : "hover:bg-white/5 text-surface-200/70"
+                  : "hover-surface text-surface-200/70"
               )}
             >
               {c.title ?? c.peerJid}
@@ -420,12 +379,12 @@ function ImageLightbox({
       <img
         src={src}
         alt={alt}
-        className="max-w-full max-h-full object-contain rounded-lg border border-white/10"
+        className="max-w-full max-h-full object-contain rounded-lg border-default"
         onClick={(event) => event.stopPropagation()}
       />
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 border border-white/20 text-white hover:bg-black/70"
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 border border-default text-white hover:bg-black/70"
         title={t("common.close")}
       >
         <X size={16} className="mx-auto" />
@@ -440,6 +399,23 @@ export default function MessageView({ conversationId }: { conversationId: string
   const [input, setInput] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  // Track the resolved theme so the third-party emoji picker can follow it.
+  // We watch the .light / .dark class on <html> via MutationObserver.
+  const [emojiPickerTheme, setEmojiPickerTheme] = useState<Theme>(() => {
+    if (typeof document !== "undefined" && document.documentElement.classList.contains("light")) {
+      return Theme.LIGHT;
+    }
+    return Theme.DARK;
+  });
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setEmojiPickerTheme(root.classList.contains("light") ? Theme.LIGHT : Theme.DARK);
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
   const [pluginToolbarActions, setPluginToolbarActions] = useState<ChatToolbarAction[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -519,18 +495,28 @@ export default function MessageView({ conversationId }: { conversationId: string
     if (!client?.connected) return;
     const roomJid = conversation.peerJid;
     const nickname = client.config.jid.split("@")[0] || "user";
-    try {
-      client.joinRoom(roomJid, nickname);
-      upsertRoom({
-        jid: roomJid,
-        name: conversation.title || roomJid.split("@")[0],
-        nickname,
-        isPublic: true,
-        joined: true,
-      });
-    } catch {
-      // ignore transient join errors; reconnect flow may retry
+
+    // Skip auto-join if we're already joined / joining / kicked / destroyed.
+    // (Only auto-attempt for "idle" or "error" states.)
+    const existing = useGroupStore.getState().getRoom(activeAccountId, roomJid);
+    if (existing && (existing.joinState === "joined" || existing.joinState === "joining"
+                  || existing.joinState === "kicked" || existing.joinState === "destroyed")) {
+      return;
     }
+
+    upsertRoom({
+      accountId: activeAccountId,
+      jid: roomJid,
+      name: conversation.title || roomJid.split("@")[0],
+      nickname,
+      isPublic: true,
+      joinState: "joining",
+    });
+    client.joinRoom(roomJid, nickname).catch((err) => {
+      // The bridge's room.join.failed handler will set joinState=error.
+      // eslint-disable-next-line no-console
+      console.warn(`[MUC] auto-join from chat view failed: ${err?.message}`);
+    });
   }, [activeAccountId, conversation, upsertRoom]);
 
   useEffect(() => {
@@ -654,9 +640,6 @@ export default function MessageView({ conversationId }: { conversationId: string
   const sendMessage = useCallback(async () => {
     let body = input.trim();
     if (!body && !pendingFiles.length) return;
-    if (!body && pendingFiles.length > 0) {
-      body = pendingFiles.map((f) => f.downloadUrl).filter(Boolean).join("\n");
-    }
     if (!activeAccountId) return;
     if (needsContactApproval) {
       toast.error(t("chat.addContactBeforeReply"));
@@ -1042,6 +1025,7 @@ export default function MessageView({ conversationId }: { conversationId: string
         onReact={handleReact}
         sentLabel={t("chat.sentSent")}
         readLabel={t("chat.sentRead")}
+        activeAccountId={activeAccountId}
       />
     );
   };
@@ -1050,10 +1034,10 @@ export default function MessageView({ conversationId }: { conversationId: string
     <div className="flex flex-col h-full relative">
       {/* Chat header with peer info + call buttons */}
       {conversation.type === "private" && (
-        <div className="flex items-center justify-end gap-1 px-4 py-2 border-b border-white/5 bg-surface-900/30">
+        <div className="flex items-center justify-end gap-1 px-4 py-2 border-b border-subtle bg-surface-900/30">
           <button
             onClick={() => handleStartCall(["audio"])}
-            className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
+            className="w-8 h-8 rounded-full hover-surface flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
             title={t("chat.audioCall")}
             aria-label={t("chat.audioCall")}
           >
@@ -1061,7 +1045,7 @@ export default function MessageView({ conversationId }: { conversationId: string
           </button>
           <button
             onClick={() => handleStartCall(["audio", "video"])}
-            className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
+            className="w-8 h-8 rounded-full hover-surface flex items-center justify-center text-surface-200/60 hover:text-accent-soft transition-colors"
             title={t("chat.videoCall")}
             aria-label={t("chat.videoCall")}
           >
@@ -1141,14 +1125,14 @@ export default function MessageView({ conversationId }: { conversationId: string
       {showScrollBtn && (
         <button
           onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-          className="absolute bottom-24 right-4 w-8 h-8 rounded-full bg-surface-800 border border-white/10 flex items-center justify-center text-surface-200/70 hover:text-surface-50 shadow-lg z-10"
+          className="absolute bottom-24 right-4 w-8 h-8 rounded-full bg-surface-800 border-default flex items-center justify-center text-surface-200/70 hover:text-surface-50 shadow-lg z-10"
         >
           <ChevronDown size={14} />
         </button>
       )}
 
       {showUpload && (
-        <div className="px-4 py-3 border-t border-white/5 bg-surface-900/30">
+        <div className="px-4 py-3 border-t border-subtle bg-surface-900/30">
           <FileUploadZone
             onUploaded={(f) => setPendingFiles((p) => [...p, f])}
             onCancel={() => setShowUpload(false)}
@@ -1158,9 +1142,9 @@ export default function MessageView({ conversationId }: { conversationId: string
       )}
 
       {pendingFiles.length > 0 && !showUpload && (
-        <div className="px-4 py-2 border-t border-white/5 flex gap-2 flex-wrap">
+        <div className="px-4 py-2 border-t border-subtle flex gap-2 flex-wrap">
           {pendingFiles.map((f) => (
-            <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-800 text-xs text-surface-200/70 border border-white/5">
+            <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-800 text-xs text-surface-200/70 border-default">
               <span className="truncate max-w-[100px]">{f.name}</span>
               <button onClick={() => setPendingFiles((p) => p.filter((x) => x.id !== f.id))} className="text-surface-200/30 hover:text-danger">
                 <X size={10} />
@@ -1172,7 +1156,7 @@ export default function MessageView({ conversationId }: { conversationId: string
 
       {replyTo && <ReplyPreview msg={replyTo} onCancel={() => setReplyTo(null)} title={t("chat.replyingTo")} />}
       {editingMessageId && (
-        <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-surface-900/30">
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-subtle bg-surface-900/30">
           <div className="w-0.5 h-8 bg-accent rounded-full flex-shrink-0" />
           <div className="flex-1 min-w-0 text-xs text-surface-200/70">{t("chat.editingMessage")}</div>
           <button
@@ -1188,7 +1172,7 @@ export default function MessageView({ conversationId }: { conversationId: string
         </div>
       )}
 
-      <div ref={composerRef} className="border-t border-white/5 bg-surface-950/60 px-4 py-3 flex-shrink-0 relative">
+      <div ref={composerRef} className="border-t border-subtle bg-surface-950/60 px-4 py-3 flex-shrink-0 relative">
         {pluginToolbarActions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {pluginToolbarActions.map((action) => (
@@ -1216,7 +1200,7 @@ export default function MessageView({ conversationId }: { conversationId: string
                     },
                   })
                 }
-                className="px-2.5 py-1 rounded-lg text-xs border border-white/10 bg-white/5 text-surface-200/80 hover:text-surface-50 hover:bg-white/10"
+                className="px-2.5 py-1 rounded-lg text-xs border-default bg-surface-800/40 text-surface-200/80 hover:text-surface-50 hover-surface"
               >
                 {action.label}
               </button>
@@ -1244,15 +1228,30 @@ export default function MessageView({ conversationId }: { conversationId: string
           ) : (
             <VoiceRecorder
               onSend={async (file) => {
-                // Upload as attachment, then send as message
+                // Upload as attachment, then send the public download URL
+                // to the peer via XMPP. Without this XMPP send the recipient
+                // never sees the voice message.
+                if (!activeAccountId) return;
+                const client = getClient(activeAccountId);
+                if (!client) {
+                  toast.error(t("voice.sendFailed"));
+                  return;
+                }
                 try {
-                  const resp = await attachmentsApi.upload(file, undefined, activeAccountId ?? undefined);
-                  // The upload returns { id, download_url, ... } - send as attachment
-                  const placeholderMsg: ChatMessage = {
-                    id: crypto.randomUUID(),
+                  const resp = await attachmentsApi.upload(file, undefined, activeAccountId);
+                  const peerJid = conversation?.peerJid ?? conversationId;
+
+                  // Transmit the URL as the message body (Conversations &
+                  // Gajim render bare media URLs inline).
+                  const sendType = conversation?.type === "group" ? "groupchat" : "chat";
+                  const sentId = client.sendMessage(peerJid, resp.download_url, sendType);
+
+                  // Mirror in local store so the user sees their own voice msg
+                  const localMsg: ChatMessage = {
+                    id: sentId,
                     conversationId,
-                    senderJid: getClient(activeAccountId ?? "")?.config.jid ?? "self",
-                    body: "",
+                    senderJid: client.config.jid,
+                    body: resp.download_url,
                     bodyType: "text",
                     direction: "out",
                     status: "sent",
@@ -1260,16 +1259,18 @@ export default function MessageView({ conversationId }: { conversationId: string
                     attachments: [{
                       id: resp.id,
                       fileName: file.name,
-                      mimeType: file.type,
+                      mimeType: file.type || resp.mime_type,
                       sizeBytes: file.size,
                       downloadUrl: resp.download_url,
                     }],
                   };
-                  addMessage(placeholderMsg);
-                  cacheMessages([placeholderMsg]).catch(() => {});
+                  addMessage(localMsg);
+                  cacheMessages([localMsg]).catch(() => {});
                   toast.success(t("voice.sent"));
                 } catch (e: any) {
-                  toast.error(e?.message ?? t("voice.sendFailed"));
+                  // Surface real backend error message (e.g. 415 unsupported MIME)
+                  const detail = e?.response?.data?.detail ?? e?.message ?? t("voice.sendFailed");
+                  toast.error(typeof detail === "string" ? detail : t("voice.sendFailed"));
                 }
               }}
             />
@@ -1309,7 +1310,7 @@ export default function MessageView({ conversationId }: { conversationId: string
             placeholder={needsContactApproval ? t("chat.addContactBeforeReply") : `${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
             disabled={needsContactApproval}
             rows={1}
-            className="flex-1 bg-surface-900 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px] disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex-1 bg-surface-900 border-default rounded-xl px-4 py-2.5 text-sm text-surface-50 placeholder:text-surface-200/25 focus:outline-none focus:ring-1 focus:ring-accent/40 resize-none min-h-[40px] max-h-[120px] disabled:opacity-60 disabled:cursor-not-allowed"
           />
           <button onClick={() => void sendMessage()} disabled={needsContactApproval || (!input.trim() && !pendingFiles.length)} className="btn-primary p-2.5 flex-shrink-0 rounded-xl" title={t("chat.send")}>
             <Send size={16} />
@@ -1335,18 +1336,16 @@ export default function MessageView({ conversationId }: { conversationId: string
         )}
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-14 z-20">
-            <Suspense fallback={null}>
-              <EmojiPicker
-                theme={Theme.DARK}
-                lazyLoadEmojis
-                onEmojiClick={(emojiData) => {
-                  const next = `${input}${emojiData.emoji}`;
-                  setInput(next);
-                  setComposerDraft(conversationId, next);
-                  textareaRef.current?.focus();
-                }}
-              />
-            </Suspense>
+            <EmojiPicker
+              theme={emojiPickerTheme}
+              lazyLoadEmojis
+              onEmojiClick={(emojiData) => {
+                const next = `${input}${emojiData.emoji}`;
+                setInput(next);
+                setComposerDraft(conversationId, next);
+                textareaRef.current?.focus();
+              }}
+            />
           </div>
         )}
         <p className="text-[10px] text-surface-200/20 mt-1 pl-1">{t("chat.hint")}</p>

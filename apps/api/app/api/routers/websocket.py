@@ -80,13 +80,28 @@ async def websocket_endpoint(ws: WebSocket, account_id: str):
     await manager.connect(ws, account_id)
     consecutive_timeouts = 0
     MAX_IDLE_TIMEOUTS = 6  # 6 * 30s = 3 minutes idle → disconnect
+    MAX_MESSAGE_BYTES = 8 * 1024  # 8KB — clients only send pings + ack frames
     try:
         await ws.send_json({"type": "connected", "account_id": account_id})
         while True:
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=30)
                 consecutive_timeouts = 0
-                msg = json.loads(data)
+                # Reject oversized messages — without this, an attacker could
+                # send a 100MB payload and force the server to allocate it,
+                # then ws.receive_text gives it to us all at once.
+                if len(data) > MAX_MESSAGE_BYTES:
+                    await ws.close(code=1009, reason="Message too large")
+                    break
+                try:
+                    msg = json.loads(data)
+                except (ValueError, TypeError):
+                    # Malformed JSON — close rather than try to recover, since
+                    # a well-behaved client should never send non-JSON here.
+                    await ws.close(code=1003, reason="Invalid frame")
+                    break
+                if not isinstance(msg, dict):
+                    continue
                 if msg.get("type") == "ping":
                     await ws.send_json({"type": "pong"})
             except asyncio.TimeoutError:

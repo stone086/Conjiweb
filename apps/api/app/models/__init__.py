@@ -39,6 +39,11 @@ class AccountPreference(Base):
 
 class Contact(Base):
     __tablename__ = "contacts"
+    __table_args__ = (
+        # Same race-fix as Conversation: concurrent presence updates on
+        # the same JID created duplicate rows.
+        UniqueConstraint("account_id", "jid", name="uq_contacts_account_jid"),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
     jid = Column(String, nullable=False, index=True)
@@ -53,6 +58,13 @@ class Contact(Base):
 
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        # Close the SELECT-then-INSERT race in create_or_get_conversation:
+        # without this, two concurrent "open chat with X" requests created
+        # duplicate rows. Migration 0008 added this; the model declaration
+        # makes SQLAlchemy aware so IntegrityError fires from this path.
+        UniqueConstraint("account_id", "peer_jid", name="uq_conversations_account_peer"),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     account_id = Column(String, ForeignKey("accounts.id"), nullable=False, index=True)
     type = Column(String, nullable=False, index=True)  # private/group/system
@@ -95,7 +107,7 @@ class Attachment(Base):
     __tablename__ = "attachments"
     id = Column(String, primary_key=True, default=gen_uuid)
     message_id = Column(String, ForeignKey("messages.id"))
-    object_key = Column(String, nullable=False)
+    object_key = Column(String, nullable=False, index=True)
     file_name = Column(String)
     mime_type = Column(String)
     size_bytes = Column(BigInteger)

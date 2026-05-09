@@ -9,6 +9,18 @@ export interface XmppClientConfig {
   password: string;
   wsUrl: string;
   accountId: string;
+
+  /**
+   * Stability tuning (all optional with sane defaults).
+   * Defaults are calibrated for typical mobile/wifi conditions where some
+   * NAT routers drop idle WebSockets after ~3 minutes.
+   */
+  /** ms between keep-alive ping IQs. Default 45000 (45s). */
+  keepaliveIntervalMs?: number;
+  /** ms to wait for ping IQ response before treating link as stalled. Default 20000. */
+  keepaliveTimeoutMs?: number;
+  /** ms between SM <r/> requests. Default 30000. */
+  smRequestIntervalMs?: number;
 }
 
 export type XmppEvent =
@@ -22,6 +34,9 @@ export type XmppEvent =
   | "message.sent"
   | "room.joined"
   | "room.left"
+  | "room.join.failed"
+  | "room.removed"
+  | "room.destroyed"
   | "mam.loaded"
   | "mam.message"
   | "omemo.error"
@@ -140,7 +155,6 @@ function parseXmppDelayTimestamp(stanza: Element): number {
 const OMEMO_NAMESPACE_LEGACY = "eu.siacs.conversations.axolotl";
 const OMEMO_NAMESPACE_MODERN = "urn:xmpp:omemo:2";
 const OMEMO_NAMESPACES = [OMEMO_NAMESPACE_MODERN, OMEMO_NAMESPACE_LEGACY] as const;
-const OMEMO_FALLBACK_BODY = "This message is OMEMO encrypted";
 const PUBSUB_NS = "http://jabber.org/protocol/pubsub";
 function omemoDeviceListNode(namespace: string): string {
   return namespace === OMEMO_NAMESPACE_MODERN
@@ -248,9 +262,13 @@ export class XmppClient {
       const conn = new Strophe.Connection(this.config.wsUrl);
       this._connection = conn;
 
-      conn.connect(this.config.jid, this.config.password, (status: number) => {
+      conn.connect(this.config.jid, this.config.password, (status: number, condition?: string) => {
+        const ts = new Date().toISOString();
+        const accountId = this.config.accountId;
         switch (status) {
           case Strophe.Status.CONNECTED:
+            // eslint-disable-next-line no-console
+            console.info(`[XMPP ${ts}] CONNECTED account=${accountId}`);
             this._connected = true;
             this.emit("connection.changed", { status: "connected", accountId: this.config.accountId });
             this._setupHandlers();
@@ -265,18 +283,38 @@ export class XmppClient {
             resolve();
             break;
           case Strophe.Status.DISCONNECTED:
+            // eslint-disable-next-line no-console
+            console.warn(`[XMPP ${ts}] DISCONNECTED account=${accountId} reason=${condition ?? "unknown"}`);
             this._connected = false;
             this._stopKeepalive();
-            this.emit("connection.changed", { status: "disconnected", accountId: this.config.accountId });
+            this.emit("connection.changed", {
+              status: "disconnected",
+              accountId: this.config.accountId,
+              reason: condition ?? "unknown",
+            });
             break;
           case Strophe.Status.AUTHFAIL:
+            // eslint-disable-next-line no-console
+            console.error(`[XMPP ${ts}] AUTHFAIL account=${accountId}`);
             reject(new Error("Authentication failed. Check your JID and password."));
             break;
           case Strophe.Status.CONNFAIL:
+            // eslint-disable-next-line no-console
+            console.error(`[XMPP ${ts}] CONNFAIL account=${accountId} condition=${condition ?? "unknown"}`);
             reject(new Error("Connection failed. Check the WebSocket URL."));
             break;
           case Strophe.Status.ERROR:
-            this.emit("error", { type: "generic", accountId: this.config.accountId });
+            // eslint-disable-next-line no-console
+            console.warn(`[XMPP ${ts}] ERROR account=${accountId} condition=${condition ?? "unknown"}`);
+            this.emit("error", { type: "generic", accountId: this.config.accountId, condition });
+            break;
+          case Strophe.Status.CONNECTING:
+            // eslint-disable-next-line no-console
+            console.debug(`[XMPP ${ts}] CONNECTING account=${accountId}`);
+            break;
+          case Strophe.Status.AUTHENTICATING:
+            // eslint-disable-next-line no-console
+            console.debug(`[XMPP ${ts}] AUTHENTICATING account=${accountId}`);
             break;
         }
       });
@@ -456,6 +494,60 @@ export class XmppClient {
       const mucUser = stanza.querySelector('x[xmlns="http://jabber.org/protocol/muc#user"]');
       if (mucUser && roomJid && nickname) {
         const item = mucUser.querySelector("item");
+
+        // Detect kick / ban / room destroy via status codes (XEP-0045 §15.6)
+        //   110: this is your own presence
+        //   301: banned
+        //   307: kicked
+        //   321: removed because affiliation changed (no longer member)
+        //   322: removed because room is now members-only
+        //   332: removed because of system shutdown
+        //   333: removed because of error
+        const statusCodes = Array.from(mucUser.querySelectorAll("status"))
+          .map((s) => s.getAttribute("code"))
+          .filter((c): c is string => c !== null);
+        const isOwn = statusCodes.includes("110");
+        if (type === "unavailable" && isOwn) {
+          let removalReason: string | null = null;
+          if (statusCodes.includes("307")) removalReason = "kicked";
+          else if (statusCodes.includes("301")) removalReason = "banned";
+          else if (statusCodes.includes("321")) removalReason = "affiliation-removed";
+          else if (statusCodes.includes("322")) removalReason = "members-only";
+          else if (statusCodes.includes("332")) removalReason = "system-shutdown";
+          else if (statusCodes.includes("333")) removalReason = "error";
+          if (removalReason) {
+            const actor = mucUser.querySelector("item > actor")?.getAttribute("nick")
+              ?? mucUser.querySelector("item > actor")?.getAttribute("jid")
+              ?? null;
+            const reasonText = mucUser.querySelector("item > reason")?.textContent ?? null;
+            // eslint-disable-next-line no-console
+            console.warn(`[XMPP MUC] removed-from-room room=${roomJid} reason=${removalReason}`);
+            this.emit("room.removed", {
+              accountId: this.config.accountId,
+              roomJid,
+              reason: removalReason,
+              actor,
+              reasonText,
+            });
+            return true;
+          }
+        }
+        // Detect room destroyed: <x><destroy jid="..."><reason/></destroy></x>
+        const destroy = mucUser.querySelector("destroy");
+        if (destroy) {
+          const altJid = destroy.getAttribute("jid") ?? null;
+          const reasonText = destroy.querySelector("reason")?.textContent ?? null;
+          // eslint-disable-next-line no-console
+          console.warn(`[XMPP MUC] room-destroyed room=${roomJid}`);
+          this.emit("room.destroyed", {
+            accountId: this.config.accountId,
+            roomJid,
+            altJid,
+            reasonText,
+          });
+          return true;
+        }
+
         this.emit("room.member", {
           accountId: this.config.accountId,
           roomJid,
@@ -621,21 +713,29 @@ export class XmppClient {
     toJid: string,
     envelope: OmemoEnvelope,
     type: "chat" | "groupchat" = "chat",
-    options?: SendMessageOptions
+    options?: SendMessageOptions,
+    plaintextForLocalEcho?: string
   ): string {
     if (!this._connection || !this._connected) throw new Error("Not connected");
     const id = crypto.randomUUID();
+    // Body fallback per XEP-0384 §4.5 — for clients that don't speak OMEMO at all.
+    // Recipients that DO support OMEMO will ignore this body in favor of <encrypted>.
+    const fallbackBody = "I sent you an OMEMO encrypted message but your client doesn't seem to support that. Find more information on https://conversations.im/omemo";
     const stanza = this._$msg({ to: toJid, type, id })
-      .c("body").t(OMEMO_FALLBACK_BODY)
+      .c("body").t(fallbackBody)
       .up()
-      .c("store", { xmlns: "urn:xmpp:hints" })
-      .up()
+      // XEP-0380 Explicit Message Encryption — tells recipients this is OMEMO
+      // so they show a proper E2EE indicator instead of "unknown encryption".
       .c("encryption", {
         xmlns: "urn:xmpp:eme:0",
-        namespace: envelope.namespace || OMEMO_NAMESPACE_LEGACY,
+        namespace: envelope.namespace,
         name: "OMEMO",
       })
       .up()
+      // XEP-0334 hints — tell server NOT to copy this stanza in plain to other
+      // resources (no-copy) and DO archive it (store, since body is opaque).
+      .c("store", { xmlns: "urn:xmpp:hints" }).up()
+      .c("no-copy", { xmlns: "urn:xmpp:hints" }).up()
       .c("request", { xmlns: "urn:xmpp:receipts" })
       .up();
     if (options?.replyToId) {
@@ -672,7 +772,10 @@ export class XmppClient {
       id,
       from: this.config.jid,
       to: toJid,
-      body: OMEMO_FALLBACK_BODY,
+      // Local echo carries plaintext when available so other parts of the app
+      // (carbons, MAM dedup) can match by content. The wire body is the
+      // OMEMO fallback hint sent above.
+      body: plaintextForLocalEcho ?? fallbackBody,
       timestamp: Date.now(),
       type,
       replyTo: options?.replyToId,
@@ -762,16 +865,91 @@ export class XmppClient {
     );
   }
 
-  joinRoom(roomJid: string, nickname: string, password?: string) {
-    if (!this._connection) return;
-    const pres = this._$pres({ to: `${roomJid}/${nickname}` })
+  /**
+   * Join a MUC room (XEP-0045).
+   *
+   * Returns a Promise that resolves when the server sends our self-presence
+   * (`<status code="110"/>`) confirming we're in the room. Rejects if the
+   * server returns `<presence type="error">` (room doesn't exist, not on
+   * member list, banned, password incorrect, etc).
+   *
+   * `room.joined` event fires only AFTER server confirmation. The frontend
+   * should never set "joined" state from a synchronous return value of
+   * this method — wait for the promise to resolve.
+   */
+  joinRoom(roomJid: string, nickname: string, password?: string): Promise<void> {
+    if (!this._connection || !this._connected) {
+      return Promise.reject(new Error("Not connected"));
+    }
+    const fullJid = `${roomJid}/${nickname}`;
+    const pres = this._$pres({ to: fullJid })
       .c("x", { xmlns: "http://jabber.org/protocol/muc" });
     if (password) pres.c("password").t(password);
-    this._connection.send(pres);
-    this.emit("room.joined", { accountId: this.config.accountId, roomJid, nickname });
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const handler = (stanza: Element) => {
+        if (settled) return false; // remove
+        const from = stanza.getAttribute("from") ?? "";
+        if (from !== fullJid) return true; // keep, not ours
+        const type = stanza.getAttribute("type") ?? "available";
+        if (type === "error") {
+          const errEl = stanza.querySelector("error");
+          const code = errEl?.getAttribute("code") ?? "";
+          const condition = errEl?.firstElementChild?.tagName ?? "unknown";
+          settled = true;
+          // eslint-disable-next-line no-console
+          console.warn(`[XMPP MUC] join-failed room=${roomJid} code=${code} condition=${condition}`);
+          this.emit("room.join.failed", {
+            accountId: this.config.accountId,
+            roomJid,
+            code,
+            condition,
+          });
+          reject(new Error(`MUC join failed: ${condition}${code ? ` (${code})` : ""}`));
+          return false;
+        }
+        // Look for self-presence marker (status code 110)
+        const statusCodes = Array.from(
+          stanza.querySelectorAll('x[xmlns="http://jabber.org/protocol/muc#user"] status'),
+        )
+          .map((s) => s.getAttribute("code"))
+          .filter((c): c is string => c !== null);
+        if (statusCodes.includes("110") && type !== "unavailable") {
+          settled = true;
+          this.emit("room.joined", {
+            accountId: this.config.accountId,
+            roomJid,
+            nickname,
+          });
+          resolve();
+          return false;
+        }
+        return true; // keep listening (other participants' presence)
+      };
+      // Strophe's addHandler returns a handler ref; remove on settle
+      const ref = this._connection.addHandler(handler, null, "presence");
+      this._connection.send(pres);
+
+      // Safety timeout: if no response in 20s, reject
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { this._connection.deleteHandler(ref); } catch {}
+        // eslint-disable-next-line no-console
+        console.warn(`[XMPP MUC] join-timeout room=${roomJid}`);
+        this.emit("room.join.failed", {
+          accountId: this.config.accountId,
+          roomJid,
+          code: "timeout",
+          condition: "no-response",
+        });
+        reject(new Error("MUC join timeout"));
+      }, 20000);
+    });
   }
 
-  leaveRoom(roomJid: string, nickname: string) {
+  leaveRoom(roomJid: string, nickname: string): void {
     if (!this._connection) return;
     this._connection.send(
       this._$pres({ to: `${roomJid}/${nickname}`, type: "unavailable" })
@@ -1200,6 +1378,7 @@ export class XmppClient {
 
   private _startSmRequestTimer() {
     if (this._smRequestTimer) return;
+    const interval = this.config.smRequestIntervalMs ?? 30000;
     // Periodically request ack to keep queue from growing unbounded
     this._smRequestTimer = setInterval(() => {
       if (this._connection && this._connected && this._smEnabled
@@ -1207,7 +1386,7 @@ export class XmppClient {
         const r = this._buildElement("r", { xmlns: "urn:xmpp:sm:3" });
         if (r) this._connection.send(r);
       }
-    }, 30000);
+    }, interval);
   }
 
   private _stopSmRequestTimer() {
@@ -1473,6 +1652,9 @@ export class XmppClient {
 
   private _startKeepalive() {
     if (this._keepaliveTimer) return;
+    const interval = this.config.keepaliveIntervalMs ?? 45000;
+    const timeout = this.config.keepaliveTimeoutMs ?? 20000;
+    let consecutiveFailures = 0;
     // Keep websocket/NAT path alive; some links recycle idle WS within minutes.
     this._keepaliveTimer = setInterval(() => {
       if (!this._connection || !this._connected) return;
@@ -1480,13 +1662,50 @@ export class XmppClient {
         const domain = this.config.jid.split("@")[1]?.split("/")[0] ?? "";
         if (!domain) return;
         const id = `cw-ping-${Date.now()}`;
+        const start = Date.now();
         const iq = this._$iq({ type: "get", to: domain, id })
           .c("ping", { xmlns: "urn:xmpp:ping" });
-        this._connection.sendIQ(iq, () => {}, () => {}, 15000);
+        this._connection.sendIQ(
+          iq,
+          // success
+          () => {
+            consecutiveFailures = 0;
+            const rtt = Date.now() - start;
+            // Log only slow pings to keep logs quiet on healthy links
+            if (rtt > 5000) {
+              // eslint-disable-next-line no-console
+              console.warn(`[XMPP] slow keepalive id=${id} rtt=${rtt}ms`, {
+                accountId: this.config.accountId,
+              });
+            }
+          },
+          // failure / timeout
+          (err: any) => {
+            consecutiveFailures++;
+            // eslint-disable-next-line no-console
+            console.warn(`[XMPP] keepalive-fail id=${id} consecutive=${consecutiveFailures}`, {
+              accountId: this.config.accountId,
+              err: err?.toString?.() ?? String(err),
+            });
+            // Two failed pings in a row → link is dead; force disconnect so
+            // the bridge-level reconnect strategy kicks in. Strophe sometimes
+            // takes minutes to notice a half-open WebSocket on its own.
+            if (consecutiveFailures >= 2 && this._connection) {
+              // eslint-disable-next-line no-console
+              console.warn("[XMPP] keepalive-dead-link forcing disconnect", {
+                accountId: this.config.accountId,
+              });
+              try {
+                this._connection.disconnect("keepalive-failed");
+              } catch {}
+            }
+          },
+          timeout,
+        );
       } catch {
         // Keepalive is best-effort.
       }
-    }, 45000);
+    }, interval);
   }
 
   private _stopKeepalive() {

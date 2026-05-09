@@ -13,6 +13,7 @@ import {
 import toast from "react-hot-toast";
 import { useLanguage } from "@/utils/i18n";
 import { generateConversationId, isValidBareJid, normalizeBareJid } from "@/utils/helpers";
+import { safeImageSrc } from "@/utils/urlSafety";
 import { useShallow } from "zustand/react/shallow";
 import Avatar from "@/components/Avatar";
 
@@ -127,7 +128,7 @@ function ContactRow({
   }, [menuOpen]);
 
   return (
-    <div className="relative flex items-center gap-3 px-3 py-2 hover:bg-white/4 group rounded-lg mx-1 cursor-pointer"
+    <div className="relative flex items-center gap-3 px-3 py-2 hover-surface group rounded-lg mx-1 cursor-pointer"
       onClick={() => onChat(contact.jid)}>
       {/* Avatar */}
       <Avatar name={contact.name ?? contact.jid} src={contact.avatarUrl} size="sm" presence={contact.presence} />
@@ -152,39 +153,39 @@ function ContactRow({
               {t("roster.accept")}
             </button>
             <button onClick={handleReject}
-              className="px-2 py-1 rounded bg-white/10 text-surface-100 text-[10px] font-semibold hover:bg-white/20">
+              className="px-2 py-1 rounded bg-surface-800/60 text-surface-100 text-[10px] font-semibold hover:bg-surface-800/80">
               {t("roster.reject")}
             </button>
           </>
         )}
         <button onClick={() => onChat(contact.jid)}
-          className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
+          className="p-1.5 rounded hover-surface text-surface-200/50 hover:text-surface-200">
           <MessageSquare size={13} />
         </button>
         <button onClick={() => onProfile(contact)}
-          className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
+          className="p-1.5 rounded hover-surface text-surface-200/50 hover:text-surface-200">
           <Info size={13} />
         </button>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen(!menuOpen)}
-            className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
+            className="p-1.5 rounded hover-surface text-surface-200/50 hover:text-surface-200">
             <MoreVertical size={13} />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-6 z-50 glass rounded-lg py-1 w-36 shadow-xl border border-white/10">
+            <div className="absolute right-0 top-6 z-50 glass rounded-lg py-1 w-36 shadow-xl border-default">
               {contact.isBlocked ? (
                 <button onClick={() => { handleUnblock(); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-success hover:bg-white/5">
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-success hover-surface">
                   <Unlock size={12} /> {t("roster.unblock")}
                 </button>
               ) : (
                 <button onClick={() => { handleBlock(); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-surface-200 hover:bg-white/5">
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-surface-200 hover-surface">
                   <Ban size={12} /> {t("roster.block")}
                 </button>
               )}
               <button onClick={() => { handleRemove(); setMenuOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover:bg-white/5">
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover-surface">
                 <Trash2 size={12} /> {t("roster.remove")}
               </button>
             </div>
@@ -331,18 +332,18 @@ export default function RosterPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-subtle">
         <h2 className="text-sm font-semibold text-surface-50 flex items-center gap-2">
           <Users size={14} /> {t("roster.title")}
         </h2>
         <button onClick={() => setShowAdd(!showAdd)}
-          className="p-1.5 rounded hover:bg-white/5 text-surface-200/50 hover:text-surface-200">
+          className="p-1.5 rounded hover-surface text-surface-200/50 hover:text-surface-200">
           <UserPlus size={14} />
         </button>
       </div>
 
       {showAdd && (
-        <div className="px-3 py-2 border-b border-white/5 flex gap-2">
+        <div className="px-3 py-2 border-b border-subtle flex gap-2">
           <input value={newJid} onChange={(e) => setNewJid(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addContact()}
             placeholder={t("roster.addJidPlaceholder")}
@@ -351,13 +352,13 @@ export default function RosterPanel() {
         </div>
       )}
 
-      <div className="px-3 py-2 border-b border-white/5">
+      <div className="px-3 py-2 border-b border-subtle">
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-200/30" />
           <input value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder={t("roster.searchPlaceholder")}
             className="w-full pl-7 pr-3 py-1.5 text-xs bg-surface-900 rounded-lg
-                       border border-white/5 text-surface-50 placeholder:text-surface-200/30
+                       border-default text-surface-50 placeholder:text-surface-200/30
                        focus:outline-none focus:ring-1 focus:ring-accent/30" />
         </div>
       </div>
@@ -377,12 +378,15 @@ export default function RosterPanel() {
       </div>
       {profileContact && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setProfileContact(null)}>
-          <div className="w-full max-w-sm rounded-xl border border-white/10 bg-surface-900 p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-xl border-default bg-surface-900 p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-surface-800 overflow-hidden flex items-center justify-center text-lg font-semibold uppercase text-surface-100">
-                {profileContact.avatarUrl
-                  ? <img src={profileContact.avatarUrl} alt={profileContact.name ?? profileContact.jid} className="w-full h-full object-cover" />
-                  : (profileContact.name ?? profileContact.jid)[0]}
+                {(() => {
+                  const safeAvatar = safeImageSrc(profileContact.avatarUrl);
+                  return safeAvatar
+                    ? <img src={safeAvatar} alt={profileContact.name ?? profileContact.jid} className="w-full h-full object-cover" />
+                    : (profileContact.name ?? profileContact.jid)[0];
+                })()}
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-surface-50 truncate">{profileContact.name ?? profileContact.jid.split("@")[0]}</div>

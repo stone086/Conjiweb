@@ -61,14 +61,14 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
 
   return (
     <>
-      <header className="h-12 flex items-center gap-3 px-4 border-b border-white/5 bg-surface-950/80 backdrop-blur-sm flex-shrink-0 relative z-20">
+      <header className="h-12 flex items-center gap-3 px-4 border-b border-subtle bg-surface-950/80 backdrop-blur-sm flex-shrink-0 relative z-20">
         <button
           onClick={() => setShowSearch(true)}
-          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border border-white/5 text-surface-200/30 hover:border-white/10 transition-colors cursor-text"
+          className="flex items-center gap-2 flex-1 max-w-xs px-3 py-1.5 rounded-lg bg-surface-900 border-default text-surface-200/30 hover:border-default transition-colors cursor-text"
         >
           <Search size={13} />
           <span className="text-xs flex-1 text-left">{t("topbar.searchPlaceholder")}</span>
-          <kbd className="hidden sm:inline text-[9px] px-1.5 py-0.5 rounded bg-surface-800 text-surface-200/30 border border-white/5">
+          <kbd className="hidden sm:inline text-[9px] px-1.5 py-0.5 rounded bg-surface-800 text-surface-200/30 border-default">
             {t("topbar.searchShortcut")}
           </kbd>
         </button>
@@ -113,7 +113,7 @@ export default function TopBar({ onToggleRight, showRightToggle }: TopBarProps) 
           {showNotifs && <NotificationPanel onClose={() => setShowNotifs(false)} />}
         </div>
         {account && (
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-surface-900 border border-white/5 select-none">
+          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-surface-900 border-default select-none">
             <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-accent-soft text-xs uppercase font-medium">
               {(account.displayName ?? account.jid)[0]}
             </div>

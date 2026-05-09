@@ -6,7 +6,7 @@ This repository contains the production app plus the 2.0 migration work.
 ## Status
 
 - Active branch: `2.0` architecture migration on top of the existing deployable stack.
-- Current package version: `1.6.0` (see [package.json](package.json)).
+- Current package version: `2.2.0` (see [package.json](package.json)).
 - Frontend source of truth: `apps/web`
 - Backend API source: `apps/api`
 

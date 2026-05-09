@@ -53,7 +53,7 @@ export default function ConversationList() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-subtle">
         <h2 className="text-sm font-semibold text-surface-50">{t("conv.title")}</h2>
         <span className="text-xs text-surface-200/40">{filtered.length}</span>
       </div>
@@ -76,7 +76,7 @@ export default function ConversationList() {
                 "group w-full flex items-center gap-3 px-3 py-2.5 transition-all duration-100 text-left",
                 conversationId === conv.id
                   ? "bg-accent/10 border-r-2 border-accent"
-                  : "hover:bg-white/4"
+                  : "hover-surface"
               )}
             >
               <Avatar name={conv.title ?? conv.peerJid ?? "?"} size="sm" presence={presence as any} />
@@ -114,7 +114,7 @@ export default function ConversationList() {
                   e.stopPropagation();
                   handleDelete(conv.id);
                 }}
-                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10 text-surface-200/40 hover:text-danger flex-shrink-0"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover-surface text-surface-200/40 hover:text-danger flex-shrink-0"
                 title={t("conv.deleteConversation")}
               >
                 <Trash2 size={13} />

@@ -33,9 +33,9 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
   };
 
   return (
-    <div className="absolute right-0 top-12 z-50 w-80 glass rounded-xl shadow-2xl border border-white/10
+    <div className="absolute right-0 top-12 z-50 w-80 glass rounded-xl shadow-2xl border-default
                     animate-fade-in overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-subtle">
         <div className="flex items-center gap-2">
           <Bell size={14} className="text-surface-200/60" />
           <span className="text-sm font-semibold text-surface-50">{t("notify.title")}</span>
@@ -44,13 +44,13 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
         <div className="flex items-center gap-1">
           {totalUnread > 0 && (
             <button onClick={markAllRead}
-              className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-surface-200"
+              className="p-1.5 rounded hover-surface text-surface-200/40 hover:text-surface-200"
               title={t("notify.markAllRead")}>
               <Check size={12} />
             </button>
           )}
           <button onClick={clearAll}
-            className="p-1.5 rounded hover:bg-white/5 text-surface-200/40 hover:text-danger"
+            className="p-1.5 rounded hover-surface text-surface-200/40 hover:text-danger"
             title={t("notify.clearAll")}>
             <Trash2 size={12} />
           </button>
@@ -58,7 +58,7 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
       </div>
 
       {/* Settings row */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-white/5 bg-surface-900/30">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-subtle bg-surface-900/30">
         <label className="flex items-center gap-1.5 cursor-pointer text-xs text-surface-200/50 hover:text-surface-200">
           <input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)}
             className="w-3.5 h-3.5 accent-[#7c6af7]" />
@@ -85,7 +85,7 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
               key={n.id}
               onClick={() => handleClick(n)}
               className={clsx(
-                "w-full flex items-start gap-3 px-4 py-3 hover:bg-white/4 transition-colors text-left",
+                "w-full flex items-start gap-3 px-4 py-3 hover-surface transition-colors text-left",
                 !n.read && "bg-accent/5"
               )}
             >
