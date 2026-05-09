@@ -602,7 +602,10 @@ log-file=/var/log/coturn.log
 verbose
 EOF
 
-  # Save TURN secret to api/.env so Prosody mod_external_services can use it
+  # Save TURN secret to api/.env so Prosody mod_external_services can use it.
+  # On fresh installs, api dir may not exist yet at this stage.
+  mkdir -p "${INSTALL_DIR}/api"
+  touch "${INSTALL_DIR}/api/.env"
   echo "TURN_SECRET=${TURN_SECRET}" >> "${INSTALL_DIR}/api/.env"
 
   systemctl enable coturn
