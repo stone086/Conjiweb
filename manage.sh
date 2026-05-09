@@ -310,7 +310,7 @@ cmd_smoke_check() {
   if [[ -d "apps/api/alembic/versions" ]]; then
     local dup_downrev
     dup_downrev="$(grep -h '^down_revision' apps/api/alembic/versions/*.py 2>/dev/null \
-      | grep -v 'down_revision = None' \
+      | grep -vE 'down_revision[[:space:]]*(:[^=]+)?=[[:space:]]*None' \
       | sort | uniq -d)"
     if [[ -n "${dup_downrev}" ]]; then
       echo -e "${RED}FAIL${NC}"
@@ -321,8 +321,9 @@ cmd_smoke_check() {
       # Also check that every revision = X declared corresponds to a file
       local missing_rev=0
       for downrev in $(grep -h '^down_revision' apps/api/alembic/versions/*.py 2>/dev/null \
-                       | grep -v None | sed -E 's/.*"([^"]+)".*/\1/' | sort -u); do
-        if ! grep -lq "^revision\s*=\s*[\"']${downrev}[\"']" apps/api/alembic/versions/*.py 2>/dev/null; then
+                       | grep -vE 'down_revision[[:space:]]*(:[^=]+)?=[[:space:]]*None' \
+                       | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/" | sort -u); do
+        if ! grep -Eq "^revision[[:space:]]*(:[^=]+)?=[[:space:]]*[\"']${downrev}[\"']" apps/api/alembic/versions/*.py 2>/dev/null; then
           missing_rev=1
           break
         fi
