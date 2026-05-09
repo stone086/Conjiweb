@@ -204,12 +204,33 @@ load_config() {
   fi
   # Normalize CRLF to LF to avoid hidden '\r' in secrets.
   sed -i 's/\r$//' .env
-  # Guard against unquoted LABEL values with spaces, e.g.
-  # OIDC_LABEL=Single Sign-On -> must be quoted for shell source.
-  sed -i -E 's/^(OIDC_LABEL)=(.*[[:space:]].*)$/\1="\2"/' .env
-  sed -i -E 's/^(LDAP_LABEL)=(.*[[:space:]].*)$/\1="\2"/' .env
-  # shellcheck disable=SC1091
-  set -a; source .env; set +a
+  # Safe .env loader: supports spaces without requiring shell quoting.
+  # Avoids "command not found" when values like "Single Sign-On" are unquoted.
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *"="* ]] && continue
+
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="$(echo -n "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+
+    # Keep inline '#' as part of value (common in secrets), only trim outer spaces.
+    val="$(echo -n "$val" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+
+    # Strip one layer of surrounding quotes.
+    if [[ "$val" =~ ^\".*\"$ ]]; then
+      val="${val:1:${#val}-2}"
+    elif [[ "$val" =~ ^\'.*\'$ ]]; then
+      val="${val:1:${#val}-2}"
+    fi
+
+    # Export only valid env keys.
+    if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      export "$key=$val"
+    fi
+  done < .env
 
   DOMAIN="${DOMAIN:-}"
   PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-${DOMAIN}}"
