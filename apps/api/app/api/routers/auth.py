@@ -12,9 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 import base64
+import hashlib
+import hmac
 import socket
 import ssl
 import logging
+from pathlib import Path
 import re
 import secrets
 import subprocess
@@ -232,6 +235,42 @@ def _verify_xmpp_sasl_plain(username: str, domain: str, password: str) -> bool:
         return b"<success" in resp
 
 
+def _prosody_path_encode(value: str) -> str:
+    encoded = []
+    for ch in value.lower():
+        if ch.isalnum() or ch in {"_", "-"}:
+            encoded.append(ch)
+        else:
+            encoded.append(f"%{ord(ch):02x}")
+    return "".join(encoded)
+
+
+def _verify_prosody_internal_hashed(username: str, domain: str, password: str) -> bool:
+    account_file = (
+        Path("/var/lib/prosody")
+        / _prosody_path_encode(domain)
+        / "accounts"
+        / f"{_prosody_path_encode(username)}.dat"
+    )
+    try:
+        data = account_file.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    salt_match = re.search(r'\["salt"\]\s*=\s*"([^"]+)"', data)
+    stored_match = re.search(r'\["stored_key"\]\s*=\s*"([0-9a-fA-F]+)"', data)
+    iter_match = re.search(r'\["iteration_count"\]\s*=\s*(\d+)', data)
+    if not (salt_match and stored_match and iter_match):
+        return False
+
+    salt = salt_match.group(1).encode()
+    iterations = int(iter_match.group(1))
+    salted_password = hashlib.pbkdf2_hmac("sha1", password.encode(), salt, iterations)
+    client_key = hmac.new(salted_password, b"Client Key", hashlib.sha1).digest()
+    stored_key = hashlib.sha1(client_key).hexdigest()
+    return hmac.compare_digest(stored_key, stored_match.group(1).lower())
+
+
 @router.post(
     "/register",
     summary="Register XMPP account",
@@ -321,9 +360,12 @@ async def issue_user_token(
     if not verified:
         if check_password_unsupported:
             # Older Prosody packages do not support `prosodyctl check password`.
-            # Verify against local C2S with STARTTLS + SASL PLAIN instead.
+            # Verify Prosody's internal_hashed SCRAM storage directly, then
+            # fall back to local C2S with STARTTLS + SASL PLAIN.
             try:
-                if await asyncio.to_thread(_verify_xmpp_sasl_plain, username, domain, password):
+                if await asyncio.to_thread(_verify_prosody_internal_hashed, username, domain, password):
+                    verified = True
+                elif await asyncio.to_thread(_verify_xmpp_sasl_plain, username, domain, password):
                     verified = True
                 else:
                     raise HTTPException(status_code=401, detail="Invalid JID or password")
