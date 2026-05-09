@@ -28,6 +28,30 @@ ensure_rsync() {
   run_root apt-get install -y rsync
 }
 
+ensure_nodejs20() {
+  local current_major=""
+  if command -v node >/dev/null 2>&1; then
+    current_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+    if [[ "$current_major" =~ ^[0-9]+$ ]] && (( current_major >= 20 )); then
+      return 0
+    fi
+  fi
+
+  echo -e "${YELLOW}Node.js 20+ required for production frontend build; installing NodeSource 20.x...${NC}"
+  if curl -fsSL https://deb.nodesource.com/setup_20.x | run_root bash - >/dev/null 2>&1; then
+    run_root apt-get install -y -qq nodejs
+  else
+    echo -e "${RED}NodeSource setup failed; install Node.js 20+ and retry.${NC}" >&2
+    return 1
+  fi
+
+  current_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+  if ! [[ "$current_major" =~ ^[0-9]+$ ]] || (( current_major < 20 )); then
+    echo -e "${RED}Node.js 20+ is required, installed: $(node --version)${NC}" >&2
+    return 1
+  fi
+}
+
 git_fetch_with_retry() {
   local attempts=3
   local delay=3
@@ -193,6 +217,7 @@ cmd_change_pass() {
 cmd_update_front() {
   load_env
   ensure_rsync
+  ensure_nodejs20
   mkdir -p "${INSTALL_DIR}/web"
   run_root rsync -a --delete \
     --exclude "node_modules" \
@@ -490,6 +515,7 @@ cmd_create_snapshot() {
 #
 # Returns 0 only if all five pass within max_seconds.
 cmd_health_gate() {
+  load_env
   local max_seconds=60
   local deadline=$(( $(date +%s) + max_seconds ))
   local wait_step=2
@@ -518,7 +544,13 @@ cmd_health_gate() {
 
   # Layer 3: Redis
   if command -v redis-cli >/dev/null 2>&1; then
-    if ! redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q PONG; then
+    local redis_password="${REDIS_PASS:-${REDIS_PASSWORD:-}}"
+    if [[ -n "${redis_password}" ]]; then
+      if ! REDISCLI_AUTH="${redis_password}" redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q PONG; then
+        echo "  [health] Redis not responding to authenticated PING" >&2
+        return 1
+      fi
+    elif ! redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q PONG; then
       echo "  [health] Redis not responding to PING" >&2
       return 1
     fi
@@ -617,6 +649,7 @@ cmd_rollback_to() {
       --exclude ".venv" \
       --exclude ".env" \
       "${SRC_DIR}/apps/api/" "${INSTALL_DIR}/api/" 2>&1 | sed 's/^/    /'
+    [[ -f "${SRC_DIR}/VERSION" ]] && run_root cp "${SRC_DIR}/VERSION" "${INSTALL_DIR}/api/VERSION"
   fi
 
   # 4b. Optional: restore DB from snapshot (data rollback)

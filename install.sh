@@ -794,7 +794,7 @@ install_nodejs() {
   local current_major=""
   if command -v node >/dev/null 2>&1; then
     current_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
-    if [[ "$current_major" =~ ^[0-9]+$ ]] && (( current_major >= 18 )); then
+    if [[ "$current_major" =~ ^[0-9]+$ ]] && (( current_major >= 20 )); then
       success "Node.js $(node --version) already installed"
       return
     fi
@@ -809,10 +809,9 @@ install_nodejs() {
 
   command -v node >/dev/null 2>&1 || error "Node.js installation failed"
   current_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
-  if ! [[ "$current_major" =~ ^[0-9]+$ ]] || (( current_major < 18 )); then
-    error "Node.js 18+ is required, installed: $(node --version)"
+  if ! [[ "$current_major" =~ ^[0-9]+$ ]] || (( current_major < 20 )); then
+    error "Node.js 20+ is required, installed: $(node --version)"
   fi
-  (( current_major < 20 )) && warn "Node.js 20+ is recommended; installed: $(node --version)"
   success "Node.js $(node --version) installed"
 }
 
