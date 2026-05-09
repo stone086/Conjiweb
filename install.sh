@@ -204,6 +204,10 @@ load_config() {
   fi
   # Normalize CRLF to LF to avoid hidden '\r' in secrets.
   sed -i 's/\r$//' .env
+  # Guard against unquoted LABEL values with spaces, e.g.
+  # OIDC_LABEL=Single Sign-On -> must be quoted for shell source.
+  sed -i -E 's/^(OIDC_LABEL)=(.*[[:space:]].*)$/\1="\2"/' .env
+  sed -i -E 's/^(LDAP_LABEL)=(.*[[:space:]].*)$/\1="\2"/' .env
   # shellcheck disable=SC1091
   set -a; source .env; set +a
 
