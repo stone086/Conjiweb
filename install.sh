@@ -615,8 +615,13 @@ install_prosody() {
   mkdir -p /etc/prosody/certs
   if [ ! -f /etc/prosody/certs/dh-2048.pem ]; then
     info "Generating DH parameters for Prosody TLS (one-time, ~10s)..."
-    openssl dhparam -out /etc/prosody/certs/dh-2048.pem 2048 >/dev/null 2>&1 \
-      || warn "openssl dhparam failed; Prosody will use compiled-in DH params"
+    if [[ -f /etc/letsencrypt/ssl-dhparams.pem ]]; then
+      install -m 0640 -o root -g prosody /etc/letsencrypt/ssl-dhparams.pem /etc/prosody/certs/dh-2048.pem \
+        || warn "Could not install /etc/prosody/certs/dh-2048.pem"
+    else
+      openssl dhparam -out /etc/prosody/certs/dh-2048.pem 2048 >/dev/null 2>&1 \
+        || warn "openssl dhparam failed; Prosody will use compiled-in DH params"
+    fi
     chown prosody:prosody /etc/prosody/certs/dh-2048.pem 2>/dev/null || true
     chmod 640 /etc/prosody/certs/dh-2048.pem 2>/dev/null || true
   fi

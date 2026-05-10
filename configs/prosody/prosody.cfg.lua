@@ -4,6 +4,8 @@
 -- Placeholder XMPP_FRONTEND_ORIGIN is the https://hostname of the web client
 -- =============================================================================
 
+plugin_paths = { "/usr/lib/prosody-modules" }
+
 admins = { "admin@XMPP_DOMAIN" }
 
 modules_enabled = {
@@ -17,7 +19,8 @@ modules_enabled = {
   "private";
   "bookmarks";
   "blocklist";
-  "http_upload";
+  -- File uploads are handled by Conjiweb API + MinIO. Prosody mod_http_upload
+  -- is not installed on all supported distros, so do not load it here.
   "vcard4";
   "vcard_legacy";
   "mam";
@@ -26,7 +29,6 @@ modules_enabled = {
   "websocket";
   "bosh";
   "http";
-  "push";
   "cloud_notify";   -- XEP-0357 push relay (community module)
   "external_services"; -- XEP-0215 STUN/TURN credentials for Jingle
   "turn_external";  -- coturn integration
@@ -85,7 +87,6 @@ max_archive_query_results = 100
 http_cors_override = {
   bosh = { enabled = true; origins = { "XMPP_FRONTEND_ORIGIN" }; credentials = true; };
   http_files = { enabled = true; origins = { "XMPP_FRONTEND_ORIGIN" }; credentials = false; };
-  http_upload = { enabled = true; origins = { "XMPP_FRONTEND_ORIGIN" }; credentials = true; };
   websocket = { enabled = true; origins = { "XMPP_FRONTEND_ORIGIN" }; credentials = true; };
 }
 consider_websocket_secure = true
@@ -94,13 +95,6 @@ consider_bosh_secure = true
 http_interfaces = { "127.0.0.1" }
 http_ports = { 5280 }
 https_ports = {}
-
--- File upload (XEP-0363) limits: prevent disk-fill DoS via malicious /
--- compromised accounts uploading huge files, and per-account quota
--- prevents one user from monopolizing storage.
-http_upload_file_size_limit = 33554432   -- 32MB single file
-http_upload_quota = 1073741824           -- 1GB per-account total
-http_upload_expire_after = 604800        -- 7 days then delete
 
 -- BOSH session hygiene: shorter inactivity = faster cleanup of abandoned
 -- mobile clients that closed without sending </stream:stream>.
