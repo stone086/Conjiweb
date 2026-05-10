@@ -21,8 +21,8 @@ export default function () {
 
   // Public endpoints only. Authenticated chat flows should be tested with a
   // staging-only token/user fixture and never with production credentials.
-  const config = http.get(`${BASE_URL}/api/config/public`, { tags: { endpoint: 'public_config' } });
-  check(config, { 'public config not 5xx': (r) => r.status < 500 });
+  const config = http.get(`${BASE_URL}/api/config/runtime`, { tags: { endpoint: 'runtime_config' } });
+  check(config, { 'runtime config 200': (r) => r.status === 200 });
 
   sleep(Math.random() * 2);
 }
