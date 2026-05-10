@@ -252,6 +252,9 @@ EOF
       run_root sed -i "/location = \/api\/metrics {/,/deny all;/ s|deny all;|allow ${PROMETHEUS_ALLOW_CIDR};\n        deny all;|" /etc/nginx/sites-available/conjiweb
     fi
   fi
+  if [[ -f "${SRC_DIR}/configs/nginx/conjiweb-rate-limit.conf" ]]; then
+    run_root cp "${SRC_DIR}/configs/nginx/conjiweb-rate-limit.conf" /etc/nginx/conf.d/conjiweb-rate-limit.conf
+  fi
   # Test nginx config before reloading — `nginx -t` catches syntax errors
   # without taking the service down. Without this, a bad nginx.conf would
   # cause systemctl reload to silently no-op (old config keeps serving).
