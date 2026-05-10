@@ -3,9 +3,9 @@ import { check, sleep } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '1m', target: 25 },
-    { duration: '2m', target: 25 },
-    { duration: '30s', target: 0 },
+    { duration: __ENV.RAMP_UP || '1m', target: Number(__ENV.VUS || 25) },
+    { duration: __ENV.HOLD || '2m', target: Number(__ENV.VUS || 25) },
+    { duration: __ENV.RAMP_DOWN || '30s', target: 0 },
   ],
   thresholds: {
     http_req_failed: ['rate<0.01'],
