@@ -1162,6 +1162,29 @@ EOF
   systemctl start certbot.timer
 }
 
+configure_prosody_tls() {
+  step "Configure Prosody TLS certificate"
+
+  local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
+  local cert_fullchain="${cert_dir}/fullchain.pem"
+  local cert_privkey="${cert_dir}/privkey.pem"
+  local prosody_cert_dir="/etc/prosody/certs/${XMPP_DOMAIN}"
+
+  if [[ ! -f "$cert_fullchain" || ! -f "$cert_privkey" ]]; then
+    warn "Let's Encrypt certificate not found for ${DOMAIN}; skipping Prosody TLS copy"
+    return 0
+  fi
+
+  mkdir -p "$prosody_cert_dir"
+  install -m 0644 -o root -g prosody "$cert_fullchain" "${prosody_cert_dir}/fullchain.pem"
+  install -m 0640 -o root -g prosody "$cert_privkey" "${prosody_cert_dir}/privkey.pem"
+
+  if systemctl is-active --quiet prosody; then
+    systemctl restart prosody
+  fi
+  success "Prosody TLS certificate configured"
+}
+
 setup_firewall() {
   detect_ssh_ports() {
     local ports=""
@@ -1753,6 +1776,7 @@ main() {
   deploy_frontend
   install_nginx
   setup_ssl
+  configure_prosody_tls
   install_coturn
   setup_firewall
   setup_fail2ban

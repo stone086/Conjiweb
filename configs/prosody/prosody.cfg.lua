@@ -59,6 +59,8 @@ ssl = {
   protocol = "tlsv1_2+";
   ciphers = "ECDHE+AES:!aNULL:!eNULL:!LOW:!3DES:!MD5:!RC4:!EXP:!PSK:!SRP:!DSS";
   options = { "no_compression"; "single_dh_use"; "single_ecdh_use"; };
+  certificate = "/etc/prosody/certs/XMPP_DOMAIN/fullchain.pem";
+  key = "/etc/prosody/certs/XMPP_DOMAIN/privkey.pem";
   -- DH params should be regenerated per-deployment; install.sh creates these.
   dhparam = "/etc/prosody/certs/dh-2048.pem";
 }
