@@ -11,6 +11,7 @@ from app.models import Attachment, Conversation, Message
 from app.utils.security import get_current_user, decode_token
 from minio import Minio
 from minio.error import S3Error
+from urllib.parse import quote
 import uuid, io
 try:
     import magic
@@ -240,6 +241,20 @@ def _actor_from_download_request(request: Request) -> dict[str, str]:
     return {"role": role, "account_id": account_id, "sub": payload.get("sub", "")}
 
 
+def _content_disposition_attachment(file_name: str) -> str:
+    safe_name = (
+        file_name
+        .replace("\\", "_")
+        .replace("/", "_")
+        .replace('"', "")
+        .replace("\r", "")
+        .replace("\n", "")
+    ).strip() or "download"
+    fallback_name = safe_name.encode("ascii", "ignore").decode("ascii").strip() or "download"
+    encoded_name = quote(safe_name, safe="")
+    return f'attachment; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
+
+
 @router.get(
     "/download/{object_key:path}",
     summary="Download attachment",
@@ -272,12 +287,11 @@ async def download_file(
             obj.close()
             obj.release_conn()
 
-    safe_download_name = file_name.replace('"', "")
     return StreamingResponse(
         stream_object(),
         media_type=media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_download_name}"',
+            "Content-Disposition": _content_disposition_attachment(file_name),
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, no-store",
         },
