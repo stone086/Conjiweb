@@ -626,6 +626,24 @@ install_prosody() {
     chmod 640 /etc/prosody/certs/dh-2048.pem 2>/dev/null || true
   fi
 
+  # The template pins Prosody's TLS certificate paths so c2s/s2s always serve
+  # a predictable certificate. On a clean install Let's Encrypt is issued later
+  # by setup_ssl(), so create a short-lived self-signed placeholder first.
+  # configure_prosody_tls() replaces it with the real certificate after ACME.
+  local prosody_cert_dir="/etc/prosody/certs/${XMPP_DOMAIN}"
+  mkdir -p "${prosody_cert_dir}"
+  if [[ ! -f "${prosody_cert_dir}/fullchain.pem" || ! -f "${prosody_cert_dir}/privkey.pem" ]]; then
+    info "Generating temporary Prosody TLS certificate for ${XMPP_DOMAIN}"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+      -days 7 -subj "/CN=${XMPP_DOMAIN}" \
+      -keyout "${prosody_cert_dir}/privkey.pem" \
+      -out "${prosody_cert_dir}/fullchain.pem" >/dev/null 2>&1 \
+      || warn "Could not generate temporary Prosody TLS certificate"
+    chown root:prosody "${prosody_cert_dir}/fullchain.pem" "${prosody_cert_dir}/privkey.pem" 2>/dev/null || true
+    chmod 644 "${prosody_cert_dir}/fullchain.pem" 2>/dev/null || true
+    chmod 640 "${prosody_cert_dir}/privkey.pem" 2>/dev/null || true
+  fi
+
   # Inject TURN secret if coturn was installed
   if [ -n "${TURN_SECRET:-}" ]; then
     sed -i "s|TURN_SECRET_PLACEHOLDER|${TURN_SECRET}|g" /etc/prosody/prosody.cfg.lua
