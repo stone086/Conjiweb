@@ -577,8 +577,10 @@ cmd_health_gate() {
     return 1
   fi
 
-  # Layer 5: Nginx serving the frontend
-  if ! curl -sf --max-time 5 -o /dev/null -w "%{http_code}" http://127.0.0.1/ 2>/dev/null \
+  # Layer 5: Nginx serving the frontend. Use the configured Host so the
+  # default vhost's 421 protection does not make local checks look broken.
+  local frontend_host="${DOMAIN:-localhost}"
+  if ! curl -sf --max-time 5 -H "Host: ${frontend_host}" -o /dev/null -w "%{http_code}" http://127.0.0.1/ 2>/dev/null \
        | grep -qE '^(200|301|302)$'; then
     # Don't fail on this if there's no nginx (some installs use the API directly)
     if run_root systemctl is-active --quiet nginx 2>/dev/null; then
