@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -216,6 +217,70 @@ async def get_presigned_url(
         return {"url": url}
     except S3Error as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+def _actor_from_download_request(request: Request) -> dict[str, str]:
+    auth_header = request.headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):]
+    if not token:
+        token = request.query_params.get("t", "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = decode_token(token)
+    role = payload.get("role")
+    account_id = payload.get("account_id")
+    if role not in ("admin", "user"):
+        raise HTTPException(status_code=403, detail="Invalid token role")
+    if role == "user" and not account_id:
+        raise HTTPException(status_code=403, detail="Invalid user token payload")
+    return {"role": role, "account_id": account_id, "sub": payload.get("sub", "")}
+
+
+@router.get(
+    "/download/{object_key:path}",
+    summary="Download attachment",
+    description="Stream a private MinIO object after token-based ownership checks.",
+)
+async def download_file(
+    object_key: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    actor = _actor_from_download_request(request)
+    if not await _user_can_access_object(db, object_key, actor):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    stmt = select(Attachment).where(Attachment.object_key == object_key)
+    result = await db.execute(stmt)
+    attachment = result.scalar_one_or_none()
+    media_type = attachment.mime_type if attachment else "application/octet-stream"
+    file_name = attachment.file_name if attachment else object_key.rsplit("/", 1)[-1]
+
+    try:
+        obj = minio_client.get_object(settings.MINIO_BUCKET, object_key)
+    except S3Error as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    def stream_object():
+        try:
+            yield from obj.stream(32 * 1024)
+        finally:
+            obj.close()
+            obj.release_conn()
+
+    safe_download_name = file_name.replace('"', "")
+    return StreamingResponse(
+        stream_object(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_download_name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.get(
