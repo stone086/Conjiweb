@@ -84,7 +84,7 @@ async def upload_file(
     # Without Form(), FastAPI treats it as a query parameter, which mismatches
     # how the frontend sends it (inside FormData) and produces obscure 422s.
     message_id: Optional[str] = Form(None),
-    _current_user: dict[str, str] = Depends(get_current_user),
+    current_user: dict[str, str] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     ensure_bucket()
@@ -132,6 +132,7 @@ async def upload_file(
     attachment = Attachment(
         id=file_id,
         message_id=message_id,
+        owner_account_id=current_user.get("account_id"),
         object_key=object_key,
         file_name=safe_name,
         mime_type=detected_mime,
@@ -171,20 +172,26 @@ async def _user_can_access_object(
 
     # Find the attachment by object_key
     stmt = (
-        select(Conversation.account_id)
+        select(Attachment.owner_account_id, Conversation.account_id)
         .select_from(Attachment)
-        .join(Message, Message.id == Attachment.message_id)
-        .join(Conversation, Conversation.id == Message.conversation_id)
+        .outerjoin(Message, Message.id == Attachment.message_id)
+        .outerjoin(Conversation, Conversation.id == Message.conversation_id)
         .where(Attachment.object_key == object_key)
     )
     result = await db.execute(stmt)
-    owner_account_id = result.scalar_one_or_none()
+    row = result.one_or_none()
+    if row is None:
+        return False
+
+    owner_account_id, conversation_account_id = row
+    if owner_account_id == user_account_id or conversation_account_id == user_account_id:
+        return True
 
     # Allow attachments not yet linked to a message (just-uploaded, message
     # hasn't been indexed yet) — only by the uploader, but we don't track
     # uploader-id directly. Best we can do: time-limit the unowned access
     # by checking the attachment age. For safety, deny by default here.
-    if owner_account_id is None:
+    if owner_account_id is None and conversation_account_id is None:
         # Unattached: only allow within first 5 minutes after upload to handle
         # the upload->message-emit race; otherwise deny.
         from datetime import datetime, timedelta, UTC
@@ -197,7 +204,7 @@ async def _user_can_access_object(
             created_at = created_at.replace(tzinfo=UTC)
         return (datetime.now(UTC) - created_at) < timedelta(minutes=5)
 
-    return owner_account_id == user_account_id
+    return False
 
 
 @router.get(

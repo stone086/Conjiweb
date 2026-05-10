@@ -107,6 +107,7 @@ class Attachment(Base):
     __tablename__ = "attachments"
     id = Column(String, primary_key=True, default=gen_uuid)
     message_id = Column(String, ForeignKey("messages.id"))
+    owner_account_id = Column(String, ForeignKey("accounts.id"), index=True)
     object_key = Column(String, nullable=False, index=True)
     file_name = Column(String)
     mime_type = Column(String)
