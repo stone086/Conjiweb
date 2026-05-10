@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { getAccountPassword, normalizeAccountJid, setAccountPassword, useAccountStore, XmppAccount, PresenceType } from "@/stores/accountStore";
@@ -59,22 +59,26 @@ function ShareQr({
   copyText: string;
 }) {
   const { t } = useLanguage();
-  const [dataUrl, setDataUrl] = useState("");
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [qrReady, setQrReady] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
     let cancelled = false;
-    QRCode.toDataURL(payload, {
+    setQrReady(false);
+    QRCode.toCanvas(canvas, payload, {
       errorCorrectionLevel: "M",
       margin: 2,
       scale: 5,
       color: { dark: "#0f172a", light: "#ffffff" },
     })
-      .then((url) => {
-        if (!cancelled) setDataUrl(url);
+      .then(() => {
+        if (!cancelled) setQrReady(true);
       })
       .catch(() => {
-        if (!cancelled) setDataUrl("");
+        if (!cancelled) setQrReady(false);
       });
     return () => {
       cancelled = true;
@@ -94,9 +98,12 @@ function ShareQr({
   return (
     <div className="rounded-lg border-default bg-surface-800/40 p-3 flex gap-3">
       <div className="w-24 h-24 shrink-0 rounded-md bg-white p-1.5 flex items-center justify-center">
-        {dataUrl ? (
-          <img src={dataUrl} alt={title} className="w-full h-full" />
-        ) : (
+        <canvas
+          ref={qrCanvasRef}
+          aria-label={title}
+          className={clsx("w-full h-full", !qrReady && "hidden")}
+        />
+        {!qrReady && (
           <QrCode size={28} className="text-surface-900" />
         )}
       </div>

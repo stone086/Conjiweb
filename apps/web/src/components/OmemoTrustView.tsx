@@ -6,7 +6,7 @@
  * peer device records, and an explicit warning when a known device changes its
  * identity fingerprint.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { AlertTriangle, Shield, ShieldCheck, ShieldAlert, ShieldOff, QrCode, X } from "lucide-react";
 import { getIdentityFingerprint } from "@/services/omemo";
@@ -194,21 +194,25 @@ export default function OmemoTrustView({ peerJid, onClose }: { peerJid: string; 
 }
 
 function FingerprintQr({ data }: { data: string }) {
-  const [dataUrl, setDataUrl] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [qrReady, setQrReady] = useState(false);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     let cancelled = false;
-    QRCode.toDataURL(data, {
+    setQrReady(false);
+    QRCode.toCanvas(canvas, data, {
       errorCorrectionLevel: "M",
       margin: 2,
       scale: 6,
       color: { dark: "#0f172a", light: "#ffffff" },
     })
-      .then((url) => {
-        if (!cancelled) setDataUrl(url);
+      .then(() => {
+        if (!cancelled) setQrReady(true);
       })
       .catch(() => {
-        if (!cancelled) setDataUrl("");
+        if (!cancelled) setQrReady(false);
       });
     return () => {
       cancelled = true;
@@ -217,9 +221,12 @@ function FingerprintQr({ data }: { data: string }) {
 
   return (
     <div className="w-36 h-36 bg-white p-2 rounded flex items-center justify-center">
-      {dataUrl ? (
-        <img src={dataUrl} alt="OMEMO fingerprint QR" className="w-full h-full" />
-      ) : (
+      <canvas
+        ref={canvasRef}
+        aria-label="OMEMO fingerprint QR"
+        className={`w-full h-full${qrReady ? "" : " hidden"}`}
+      />
+      {!qrReady && (
         <QrCode size={28} className="text-surface-900" />
       )}
     </div>
