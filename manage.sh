@@ -244,6 +244,14 @@ EOF
   fi
   npm run build
   run_root chmod -R a+rX "${INSTALL_DIR}/web/dist" || true
+  if [[ -f "${SRC_DIR}/configs/nginx/conjiweb.conf" ]]; then
+    run_root cp "${SRC_DIR}/configs/nginx/conjiweb.conf" /etc/nginx/sites-available/conjiweb
+    run_root sed -i "s|DOMAIN|${DOMAIN}|g" /etc/nginx/sites-available/conjiweb
+    run_root sed -i "s|INSTALL_DIR|${INSTALL_DIR}|g" /etc/nginx/sites-available/conjiweb
+    if [[ -n "${PROMETHEUS_ALLOW_CIDR:-}" ]]; then
+      run_root sed -i "/location = \/api\/metrics {/,/deny all;/ s|deny all;|allow ${PROMETHEUS_ALLOW_CIDR};\n        deny all;|" /etc/nginx/sites-available/conjiweb
+    fi
+  fi
   # Test nginx config before reloading — `nginx -t` catches syntax errors
   # without taking the service down. Without this, a bad nginx.conf would
   # cause systemctl reload to silently no-op (old config keeps serving).
