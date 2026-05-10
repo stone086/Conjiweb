@@ -7,7 +7,7 @@ from typing import Optional
 import logging
 from app.core.database import get_db
 from app.core.config import settings
-from app.models import Attachment, Conversation, Message
+from app.models import Account, Attachment, Conversation, Message
 from app.utils.security import get_current_user, decode_token
 from minio import Minio
 from minio.error import S3Error
@@ -88,6 +88,12 @@ async def upload_file(
     db: AsyncSession = Depends(get_db),
 ):
     ensure_bucket()
+    account_exists = await db.scalar(
+        select(Account.id).where(Account.id == current_user["account_id"])
+    )
+    if not account_exists:
+        raise HTTPException(status_code=403, detail="Account access denied")
+
     file_id = str(uuid.uuid4())
     # Sanitize filename: strip path components, limit characters
     raw_name = file.filename or "unnamed"
