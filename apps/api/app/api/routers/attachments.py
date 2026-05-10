@@ -171,6 +171,7 @@ async def _user_can_access_object(
     # Find the attachment by object_key
     stmt = (
         select(Conversation.account_id)
+        .select_from(Attachment)
         .join(Message, Message.id == Attachment.message_id)
         .join(Conversation, Conversation.id == Message.conversation_id)
         .where(Attachment.object_key == object_key)
