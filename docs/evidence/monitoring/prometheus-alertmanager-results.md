@@ -1,14 +1,57 @@
 # Prometheus / Alertmanager Evidence
 
-Status: PENDING_STAGING_RUN
+Status: PASS_STAGING_REAL_TARGET
 
 ## Prometheus target health
 
 | Target | Result | Evidence |
 |---|---:|---|
-| Conjiweb API `/api/metrics` | PENDING | Prometheus targets screenshot or curl output |
-| Alert rules loaded | PENDING | `promtool check rules` output |
-| Alertmanager reachable | PENDING | Alertmanager status screenshot or curl output |
+| Conjiweb API `/metrics` | UP | Prometheus target `conjiweb-api` scraped `http://127.0.0.1:8000/metrics` |
+| Alert rules loaded | PASS | `ConjiwebStagingAlertSmoke` entered firing state |
+| Alertmanager reachable | PASS | Alertmanager API showed the smoke alert as active |
+
+## 2026-05-13 staging validation
+
+Target: `https://staging.cjw.52nbc.com`
+
+```text
+scripts/observability_validate.sh
+[OK] metrics render smoke test
+[OK] observability static validation passed
+
+systemctl is-active prometheus prometheus-alertmanager
+active
+active
+
+Prometheus target:
+job=conjiweb-api instance=127.0.0.1:8000 health=up scrapeUrl=http://127.0.0.1:8000/metrics
+
+Prometheus alert:
+ConjiwebStagingAlertSmoke state=firing value=1
+
+Alertmanager alert:
+ConjiwebStagingAlertSmoke status=active receiver=staging-null
+```
+
+Notes:
+
+- Public `/metrics` remains restricted by Nginx; the real Prometheus target is local-only.
+- Alertmanager required `--cluster.listen-address=` on this single-node VPS because no private advertise address is present.
+
+## 2026-05-10 validation
+
+```text
+scripts/observability_validate.sh
+[OK] metrics render smoke test
+[OK] observability static validation passed
+
+curl https://cjw.52nbc.com/api/metrics
+HTTP 403
+```
+
+The 403 confirms `/api/metrics` is not publicly exposed. To complete this
+evidence, run Prometheus/Alertmanager from an allowed monitoring host, set
+`PROMETHEUS_ALLOW_CIDR`, and capture the Prometheus target as UP.
 
 ## Commands
 
@@ -25,4 +68,4 @@ docker compose -f examples/observability/docker-compose.observability.yml exec p
 
 Temporarily trigger repeated admin login failures against staging and confirm `ConjiwebAdminLoginFailures` enters pending/firing state.
 
-Result: PENDING
+Result: PASS on staging smoke alert

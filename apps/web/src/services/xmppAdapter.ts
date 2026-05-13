@@ -2,7 +2,7 @@
  * Full XMPP client wrapper for Conjiweb.
  * Wraps Strophe.js with a clean event-driven API.
  */
-import { normalizeValidBareJid } from "@/utils/helpers";
+import { normalizeBareJid, normalizeValidBareJid } from "@/utils/helpers";
 
 export interface XmppClientConfig {
   jid: string;
@@ -230,6 +230,7 @@ export class XmppClient {
   private _$msg: any = null;
   private _$iq: any = null;
   private _$pres: any = null;
+  private _lastFullJidByBare: Map<string, string> = new Map();
 
   constructor(config: XmppClientConfig) {
     this.config = config;
@@ -580,6 +581,11 @@ export class XmppClient {
       if (!validFromBare || (type !== "available" && type !== "unavailable")) {
         return true;
       }
+      if (type === "available" && from.includes("/")) {
+        this._lastFullJidByBare.set(validFromBare, from);
+      } else if (type === "unavailable") {
+        this._lastFullJidByBare.delete(validFromBare);
+      }
       const show = stanza.querySelector("show")?.textContent
         ?? (type === "unavailable" ? "unavailable" : "available");
       const status = stanza.querySelector("status")?.textContent ?? undefined;
@@ -589,7 +595,11 @@ export class XmppClient {
 
     // Jingle (XEP-0166) IQ handler - audio/video calls
     conn.addHandler((stanza: Element) => {
-      const jingle = stanza.querySelector('jingle[xmlns="urn:xmpp:jingle:1"]');
+      const jingle = Array.from(stanza.getElementsByTagName("jingle"))
+        .find((el) =>
+          el.namespaceURI === "urn:xmpp:jingle:1"
+          || el.getAttribute("xmlns") === "urn:xmpp:jingle:1"
+        );
       if (!jingle) return true;
 
       const fromJid = stanza.getAttribute("from") ?? "";
@@ -909,12 +919,19 @@ export class XmppClient {
           reject(new Error(`MUC join failed: ${condition}${code ? ` (${code})` : ""}`));
           return false;
         }
-        // Look for self-presence marker (status code 110)
-        const statusCodes = Array.from(
-          stanza.querySelectorAll('x[xmlns="http://jabber.org/protocol/muc#user"] status'),
-        )
-          .map((s) => s.getAttribute("code"))
-          .filter((c): c is string => c !== null);
+        // Look for self-presence marker (status code 110). Browser XML
+        // namespace handling is inconsistent for CSS selectors, so inspect
+        // localName/namespaceURI instead of `querySelectorAll('x[xmlns=...]')`.
+        const mucUserEls = Array.from(stanza.getElementsByTagName("x"))
+          .filter((el) =>
+            el.namespaceURI === "http://jabber.org/protocol/muc#user"
+            || el.getAttribute("xmlns") === "http://jabber.org/protocol/muc#user"
+          );
+        const statusCodes = mucUserEls.flatMap((x) =>
+          Array.from(x.getElementsByTagName("status"))
+            .map((s) => s.getAttribute("code"))
+            .filter((c): c is string => c !== null)
+        );
         if (statusCodes.includes("110") && type !== "unavailable") {
           settled = true;
           this.emit("room.joined", {
@@ -1249,7 +1266,8 @@ export class XmppClient {
     const jingleEl = doc.documentElement;
     if (!jingleEl || jingleEl.localName !== "jingle") return;
 
-    const iq = this._$iq({ type: "set", to: peerJid });
+    const targetJid = peerJid.includes("/") ? peerJid : (this._lastFullJidByBare.get(normalizeBareJid(peerJid)) ?? peerJid);
+    const iq = this._$iq({ type: "set", to: targetJid });
     // Append the jingle element to the IQ via cnode()
     iq.cnode(jingleEl as any);
     this._connection.send(iq);

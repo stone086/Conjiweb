@@ -54,6 +54,9 @@ class ApiSocketClient {
     this.ws.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
+        if (data?.type === "ping" && this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: "pong" }));
+        }
         this.emit(data.type as ApiSocketEvent, data);
       } catch { /* ignore malformed messages */ }
     };

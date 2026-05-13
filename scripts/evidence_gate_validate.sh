@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
 need_files=(
   docs/evidence/EVIDENCE_INDEX.md
+  docs/evidence/install/staging-install-results.md
   docs/evidence/omemo/interop-results.md
   docs/evidence/trusted-build/python-hash-regeneration.md
   docs/evidence/monitoring/prometheus-alertmanager-results.md

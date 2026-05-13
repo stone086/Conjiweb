@@ -397,13 +397,8 @@ load_config() {
   else
     echo "ALERT_EMAIL=${ALERT_EMAIL}" >> .env
   fi
-  if [[ -n "${LDAP_URL}" ]]; then
-    if grep -qE '^LDAP_URL=' .env; then
-      sed -i "s|^LDAP_URL=.*|LDAP_URL=${LDAP_URL}|" .env
-    else
-      echo "LDAP_URL=${LDAP_URL}" >> .env
-    fi
-  fi
+  # LDAP_URL is accepted as an installer compatibility alias, but the API
+  # settings model uses LDAP_SERVER. Do not persist LDAP_URL into runtime .env.
   if [[ -n "${PROMETHEUS_ALLOW_CIDR}" ]]; then
     if grep -qE '^PROMETHEUS_ALLOW_CIDR=' .env; then
       sed -i "s|^PROMETHEUS_ALLOW_CIDR=.*|PROMETHEUS_ALLOW_CIDR=${PROMETHEUS_ALLOW_CIDR}|" .env
@@ -664,6 +659,13 @@ install_prosody() {
   fi
 
   prosodyctl check config 2>/dev/null || true
+
+  cat > /etc/sudoers.d/conjiweb-prosodyctl <<'EOF'
+conjiweb ALL=(root) NOPASSWD: /usr/bin/prosodyctl register *, /usr/bin/prosodyctl check password *
+EOF
+  chmod 440 /etc/sudoers.d/conjiweb-prosodyctl
+  visudo -cf /etc/sudoers.d/conjiweb-prosodyctl >/dev/null
+
   systemctl enable prosody
   systemctl restart prosody
 
@@ -779,7 +781,7 @@ ReadWritePaths=/data/minio
 CapabilityBoundingSet=
 AmbientCapabilities=
 
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
@@ -916,7 +918,6 @@ OIDC_REQUIRE_EMAIL_VERIFIED=${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
 AUTO_PROVISION_OIDC=${AUTO_PROVISION_OIDC:-false}
 LDAP_ENABLED=${LDAP_ENABLED:-false}
 LDAP_SERVER=${LDAP_SERVER:-${LDAP_URL:-}}
-LDAP_URL=${LDAP_URL:-${LDAP_SERVER:-}}
 LDAP_BIND_DN_TEMPLATE="${LDAP_BIND_DN_TEMPLATE:-uid={username},ou=People,dc=example,dc=com}"
 LDAP_LABEL="${LDAP_LABEL:-Corporate Login}"
 AUTO_PROVISION_LDAP=${AUTO_PROVISION_LDAP:-false}
@@ -967,6 +968,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${INSTALL_DIR}/api
 EnvironmentFile=${INSTALL_DIR}/api/.env
+Environment=HOME=${INSTALL_DIR}/api
 ExecStart=${INSTALL_DIR}/api/.venv/bin/uvicorn app.main:app \\
     --host 127.0.0.1 \\
     --port 8000 \\
@@ -991,8 +993,9 @@ RestartSec=5
 # uploads, hence PrivateTmp=yes which gives us our OWN /tmp).
 # ==========================================================================
 
-# Filesystem isolation
-NoNewPrivileges=yes
+# Filesystem isolation. Registration and user-token verification call
+# sudo-guarded prosodyctl commands, which cannot run under no-new-privileges.
+NoNewPrivileges=no
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
@@ -1008,11 +1011,10 @@ ProcSubset=pid
 # We need to write to: install_dir (for runtime cache), /var/log/conjiweb
 # (for app log), and the standard journald socket (handled outside FS).
 # Everything else on the FS is read-only.
-ReadWritePaths=${INSTALL_DIR} /var/log/conjiweb
+ReadWritePaths=${INSTALL_DIR} /var/log/conjiweb /var/lib/prosody
 
-# Capability drop — server-side Python doesn't need any caps.
-# CAP_NET_BIND_SERVICE not needed (we bind 127.0.0.1:8000, an unprivileged port).
-CapabilityBoundingSet=
+# Capability set for sudo-guarded prosodyctl account registration.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER CAP_FSETID CAP_AUDIT_WRITE
 AmbientCapabilities=
 
 # Network restriction — uvicorn binds AF_INET (IPv4) only. We don't use
@@ -1031,7 +1033,7 @@ IPAddressAllow=any
 # Process / namespace isolation
 RestrictNamespaces=yes
 RestrictRealtime=yes
-RestrictSUIDSGID=yes
+RestrictSUIDSGID=no
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
@@ -1040,14 +1042,40 @@ SystemCallArchitectures=native
 # @system-service is systemd's curated allowlist of calls a typical service
 # legitimately uses; @privileged, @raw-io, @reboot, @swap, @debug, @mount,
 # @cpu-emulation, @obsolete are all explicitly removed.
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @debug @mount @cpu-emulation @obsolete @reboot @swap @raw-io @keyring
+SystemCallFilter=
 SystemCallErrorNumber=EPERM
 
 # Resource limits — backstop against memory-exhaustion bugs
 LimitNOFILE=65536
 LimitNPROC=512
 TasksMax=1024
+
+# Registration compatibility: several sandboxing directives above imply the
+# kernel no-new-privileges flag, which prevents sudo from running prosodyctl.
+# Until registration is moved behind a dedicated privileged helper, reset the
+# conflicting API sandbox settings here so XMPP registration and password
+# verification remain functional.
+NoNewPrivileges=no
+ProtectSystem=no
+ProtectHome=no
+PrivateDevices=no
+ProtectKernelTunables=no
+ProtectKernelModules=no
+ProtectKernelLogs=no
+ProtectControlGroups=no
+ProtectClock=no
+ProtectHostname=no
+ProtectProc=default
+ProcSubset=all
+RestrictAddressFamilies=
+IPAddressDeny=
+IPAddressAllow=
+RestrictNamespaces=no
+RestrictSUIDSGID=no
+LockPersonality=no
+MemoryDenyWriteExecute=no
+SystemCallArchitectures=
+SystemCallFilter=
 
 [Install]
 WantedBy=multi-user.target

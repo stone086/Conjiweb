@@ -45,7 +45,7 @@ class CallManager {
     this.iceServers = servers;
   }
 
-  on(event: "incoming" | "ended", fn: Listener): () => void {
+  on(event: "incoming" | "started" | "ended", fn: Listener): () => void {
     const arr = this.listeners.get(event) ?? [];
     arr.push(fn);
     this.listeners.set(event, arr);
@@ -53,7 +53,7 @@ class CallManager {
     return () => this.off(event, fn);
   }
 
-  off(event: "incoming" | "ended", fn: Listener) {
+  off(event: "incoming" | "started" | "ended", fn: Listener) {
     const arr = this.listeners.get(event);
     if (!arr) return;
     this.listeners.set(event, arr.filter(l => l !== fn));
@@ -85,6 +85,7 @@ class CallManager {
       this.sessions.delete(sessionId);
       this.emit("ended", session);
     });
+    this.emit("started", session);
     await session.initiate();
     return session;
   }

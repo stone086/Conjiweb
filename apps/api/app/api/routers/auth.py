@@ -22,7 +22,7 @@ import re
 import secrets
 import subprocess
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 # Password hash verification — argon2 preferred, bcrypt fallback.
 # CryptContext picks the right algorithm by inspecting the hash prefix.
@@ -34,6 +34,7 @@ except ImportError:
 
 router = APIRouter()
 logger = logging.getLogger("conjiweb.auth")
+UTC = timezone.utc
 
 ADMIN_USERNAME = settings.ADMIN_USER
 ADMIN_PASSWORD = settings.ADMIN_PASS or None
@@ -304,6 +305,14 @@ async def register_xmpp_account(request: Request, data: RegisterRequest):
     if result.returncode != 0:
         if "exists" in output or "conflict" in output or "already" in output:
             raise HTTPException(status_code=409, detail="Account already exists")
+        logger.warning(
+            "xmpp_register_failed",
+            extra={
+                "jid": f"{username}@{domain}",
+                "returncode": result.returncode,
+                "output_preview": output[:300],
+            },
+        )
         raise HTTPException(status_code=500, detail="Failed to create account")
 
     return {"ok": True, "jid": f"{username}@{domain}"}

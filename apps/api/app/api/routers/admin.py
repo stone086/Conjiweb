@@ -132,8 +132,10 @@ async def service_health(db: AsyncSession = Depends(get_db)):
 # =====================================================
 # KILLER-02: Enterprise dashboard endpoints
 # =====================================================
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func, and_
+
+UTC = timezone.utc
 
 @router.get("/dashboard/activity")
 async def dashboard_activity(

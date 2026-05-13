@@ -9,7 +9,7 @@ The discovery directory is opt-in per group. Groups marked private don't appear.
 Admins can curate which groups to expose via the admin panel.
 """
 from typing import List, Optional
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 import time
 
 from fastapi import APIRouter, Depends, Request
@@ -22,6 +22,7 @@ from app.core.rate_limit import limiter
 from app.core.version import APP_VERSION
 
 router = APIRouter()
+UTC = timezone.utc
 
 _server_start_time = time.time()
 

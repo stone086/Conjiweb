@@ -1,6 +1,6 @@
 # Conjiweb release todo
 
-Current candidate: `2.3.4-prestaging-i18n-closure`
+Current candidate: `2.3.5-staging-complete`
 
 ## Completed before staging
 
@@ -10,7 +10,7 @@ Current candidate: `2.3.4-prestaging-i18n-closure`
 - i18n release gate: `scripts/i18n_validate.sh`.
 - Post-2.3.3 execution plan: `docs/roadmap/POST_2.3.3_EXECUTION_PLAN.md`.
 
-## Must be done on real staging before v2.4.0
+## Real staging completed for 2.3.5
 
 - Clean VPS install.
 - Stage 0 server validation.

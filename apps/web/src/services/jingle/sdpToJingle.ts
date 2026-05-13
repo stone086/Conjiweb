@@ -34,6 +34,18 @@ const NS_SSMA = "urn:xmpp:jingle:apps:rtp:ssma:0";
 const NS_ICE = "urn:xmpp:jingle:transports:ice-udp:1";
 const NS_DTLS = "urn:xmpp:jingle:apps:dtls:0";
 
+function elementsByName(parent: Element, localName: string, namespace?: string): Element[] {
+  return Array.from(parent.getElementsByTagName(localName)).filter((el) =>
+    !namespace
+    || el.namespaceURI === namespace
+    || el.getAttribute("xmlns") === namespace
+  );
+}
+
+function firstElementByName(parent: Element, localName: string, namespace?: string): Element | undefined {
+  return elementsByName(parent, localName, namespace)[0];
+}
+
 /**
  * Build a Jingle <jingle> Element tree from SDP, ready to insert into an IQ.
  * Returns the serialized XML string of the <jingle> element only.
@@ -76,29 +88,29 @@ export function jingleXmlToSdp(jingleEl: Element): string {
   lines.push("a=msid-semantic: WMS *");
 
   contents.forEach((contentEl) => {
-    const desc = contentEl.querySelector(`description[xmlns="${NS_RTP}"]`);
+    const desc = firstElementByName(contentEl, "description", NS_RTP);
     if (!desc) return;
     const media = desc.getAttribute("media") ?? "audio";
-    const payloads = Array.from(desc.querySelectorAll("payload-type"));
+    const payloads = elementsByName(desc, "payload-type");
     const ptIds = payloads.map((p) => p.getAttribute("id") ?? "0");
 
     lines.push(`m=${media} 9 UDP/TLS/RTP/SAVPF ${ptIds.join(" ")}`);
     lines.push("c=IN IP4 0.0.0.0");
     lines.push(`a=mid:${contentEl.getAttribute("name") ?? "0"}`);
 
-    const transport = contentEl.querySelector(`transport[xmlns="${NS_ICE}"]`);
+    const transport = firstElementByName(contentEl, "transport", NS_ICE);
     if (transport) {
       const ufrag = transport.getAttribute("ufrag");
       const pwd = transport.getAttribute("pwd");
       if (ufrag) lines.push(`a=ice-ufrag:${ufrag}`);
       if (pwd) lines.push(`a=ice-pwd:${pwd}`);
-      const fp = transport.querySelector(`fingerprint[xmlns="${NS_DTLS}"]`);
+      const fp = firstElementByName(transport, "fingerprint", NS_DTLS);
       if (fp) {
         lines.push(`a=fingerprint:${fp.getAttribute("hash") ?? "sha-256"} ${fp.textContent ?? ""}`);
         const setup = fp.getAttribute("setup") ?? "actpass";
         lines.push(`a=setup:${setup}`);
       }
-      Array.from(transport.querySelectorAll("candidate")).forEach((c) => {
+      elementsByName(transport, "candidate").forEach((c) => {
         lines.push(
           `a=candidate:${c.getAttribute("foundation") ?? "1"} ` +
           `${c.getAttribute("component") ?? "1"} ` +
@@ -122,21 +134,23 @@ export function jingleXmlToSdp(jingleEl: Element): string {
       const cr = p.getAttribute("clockrate");
       const ch = p.getAttribute("channels");
       lines.push(`a=rtpmap:${id} ${name}/${cr}${ch && ch !== "1" ? `/${ch}` : ""}`);
-      const params = Array.from(p.querySelectorAll("parameter"))
+      const params = elementsByName(p, "parameter")
         .map((pp) => `${pp.getAttribute("name")}=${pp.getAttribute("value")}`)
         .join(";");
       if (params) lines.push(`a=fmtp:${id} ${params}`);
-      Array.from(p.querySelectorAll(`rtcp-fb`)).forEach((fb) => {
+      elementsByName(p, "rtcp-fb").forEach((fb) => {
         const t = fb.getAttribute("type");
         const sub = fb.getAttribute("subtype");
         lines.push(`a=rtcp-fb:${id} ${t}${sub ? ` ${sub}` : ""}`);
       });
     });
 
-    const ssrcs = Array.from(desc.querySelectorAll(`source[xmlns="${NS_SSMA}"]`));
+    const ssrcs = elementsByName(desc, "source", NS_SSMA);
     ssrcs.forEach((s) => {
       const ssrc = s.getAttribute("ssrc");
-      const cname = s.querySelector('parameter[name="cname"]')?.getAttribute("value") ?? "conjiweb";
+      const cname = elementsByName(s, "parameter")
+        .find((p) => p.getAttribute("name") === "cname")
+        ?.getAttribute("value") ?? "conjiweb";
       if (ssrc) lines.push(`a=ssrc:${ssrc} cname:${cname}`);
     });
   });

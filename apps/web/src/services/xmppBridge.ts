@@ -1012,9 +1012,13 @@ export function initXmppBridge(client: XmppClient) {
       const contentEl = jingleEl.querySelector("content");
       const senders = contentEl?.getAttribute("senders") ?? "both";
       // Determine media types from <description xmlns="urn:xmpp:jingle:apps:rtp:1" media="...">
-      const descs = jingleEl.querySelectorAll('description[xmlns="urn:xmpp:jingle:apps:rtp:1"]');
+      const descs = (Array.from(jingleEl.getElementsByTagName("description")) as Element[])
+        .filter((el) =>
+          el.namespaceURI === "urn:xmpp:jingle:apps:rtp:1"
+          || el.getAttribute("xmlns") === "urn:xmpp:jingle:apps:rtp:1"
+        );
       const mediaTypes: ("audio" | "video")[] = [];
-      descs.forEach((d: Element) => {
+      descs.forEach((d) => {
         const m = d.getAttribute("media");
         if (m === "audio" || m === "video") mediaTypes.push(m);
       });
@@ -1054,13 +1058,7 @@ export function initXmppBridge(client: XmppClient) {
     });
   };
   callManager.on("incoming", subscribeSession);
-  // Also auto-subscribe outgoing calls created via callManager.startCall
-  const _origStartCall = callManager.startCall.bind(callManager);
-  callManager.startCall = async (peerJid, mediaTypes) => {
-    const session = await _origStartCall(peerJid, mediaTypes);
-    subscribeSession(session);
-    return session;
-  };
+  callManager.on("started", subscribeSession);
 
   useChatStore.subscribe(() => { void triggerSync(); });
 }

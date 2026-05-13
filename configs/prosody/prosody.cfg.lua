@@ -31,7 +31,7 @@ modules_enabled = {
   "http";
   "cloud_notify";   -- XEP-0357 push relay (community module)
   "external_services"; -- XEP-0215 STUN/TURN credentials for Jingle
-  "turn_external";  -- coturn integration
+  "turncredentials";  -- coturn REST credentials for older clients/modules
   "version";
   "uptime";
   "time";
@@ -91,6 +91,7 @@ http_cors_override = {
 }
 consider_websocket_secure = true
 consider_bosh_secure = true
+cross_domain_websocket = { "XMPP_FRONTEND_ORIGIN" }
 
 http_interfaces = { "127.0.0.1" }
 http_ports = { 5280 }
@@ -108,10 +109,18 @@ log = {
 
 -- TURN/STUN configuration for Jingle calls (XEP-0215)
 -- Install.sh fills TURN_SECRET; coturn config also uses it
-turn_external_host = "turn.XMPP_DOMAIN"
-turn_external_port = 3478
-turn_external_secret = "TURN_SECRET_PLACEHOLDER"
-turn_external_ttl = 86400
+external_service_secret = "TURN_SECRET_PLACEHOLDER"
+external_service_ttl = 86400
+external_services = {
+  { type = "stun"; transport = "udp"; host = "turn.XMPP_DOMAIN"; port = 3478 };
+  { type = "stun"; transport = "tcp"; host = "turn.XMPP_DOMAIN"; port = 3478 };
+  { type = "turn"; transport = "udp"; host = "turn.XMPP_DOMAIN"; port = 3478; secret = true; ttl = 86400 };
+  { type = "turn"; transport = "tcp"; host = "turn.XMPP_DOMAIN"; port = 3478; secret = true; ttl = 86400 };
+}
+turncredentials_host = "turn.XMPP_DOMAIN"
+turncredentials_port = 3478
+turncredentials_secret = "TURN_SECRET_PLACEHOLDER"
+turncredentials_ttl = 86400
 
 -- Push notification relay configuration
 -- mod_cloud_notify forwards push notifications to the Conjiweb FastAPI backend,

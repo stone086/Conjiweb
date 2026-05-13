@@ -200,7 +200,8 @@ async def _user_can_access_object(
     if owner_account_id is None and conversation_account_id is None:
         # Unattached: only allow within first 5 minutes after upload to handle
         # the upload->message-emit race; otherwise deny.
-        from datetime import datetime, timedelta, UTC
+        from datetime import datetime, timedelta, timezone
+        UTC = timezone.utc
         age_stmt = select(Attachment.created_at).where(Attachment.object_key == object_key)
         age_result = await db.execute(age_stmt)
         created_at = age_result.scalar_one_or_none()

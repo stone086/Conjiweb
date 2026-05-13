@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, Security
@@ -32,6 +32,7 @@ from app.core.config import settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 logger = logging.getLogger("conjiweb.security")
+UTC = timezone.utc
 
 # Redis client created lazily so missing redis (e.g. tests) doesn't crash import
 _redis_client = None

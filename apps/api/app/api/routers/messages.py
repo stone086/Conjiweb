@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select, update
 from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
+from datetime import datetime
 from app.core.database import get_db
 from app.models import Attachment, Message, Conversation
 from app.utils.security import bearer_scheme, decode_token
@@ -51,7 +52,7 @@ class MessageResponse(BaseModel):
     body: Optional[str]
     direction: str
     status: str
-    created_at: Optional[str]
+    created_at: Optional[datetime]
 
     model_config = ConfigDict(from_attributes=True)
 

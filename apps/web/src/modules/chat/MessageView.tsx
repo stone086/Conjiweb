@@ -431,6 +431,7 @@ export default function MessageView({ conversationId }: { conversationId: string
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
+  const loadedDraftConversationRef = useRef<string | null>(null);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const conversation = useChatStore((s) => s.conversations[conversationId]);
@@ -455,6 +456,16 @@ export default function MessageView({ conversationId }: { conversationId: string
   const forwardCandidates = allConversations
     .filter((c) => c.accountId === activeAccountId && c.id !== conversationId)
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+  const syncComposerValue = useCallback((nextValue: string, el?: HTMLTextAreaElement | null) => {
+    setInput(nextValue);
+    setComposerDraft(conversationId, nextValue);
+    onInputChange();
+    const target = el ?? textareaRef.current;
+    if (target) {
+      target.style.height = "auto";
+      target.style.height = Math.min(target.scrollHeight, 120) + "px";
+    }
+  }, [conversationId, onInputChange, setComposerDraft]);
   const peerDomain = (conversation?.peerJid.split("@")[1] ?? "").toLowerCase();
   const isMucPeer =
     conversation?.type === "group"
@@ -520,6 +531,8 @@ export default function MessageView({ conversationId }: { conversationId: string
   }, [activeAccountId, conversation, upsertRoom]);
 
   useEffect(() => {
+    if (loadedDraftConversationRef.current === conversationId) return;
+    loadedDraftConversationRef.current = conversationId;
     let cancelled = false;
     const loadDraft = async () => {
       if (composerDraft) {
@@ -535,7 +548,7 @@ export default function MessageView({ conversationId }: { conversationId: string
     return () => {
       cancelled = true;
     };
-  }, [conversationId, composerDraft, setComposerDraft]);
+  }, [conversationId, setComposerDraft]);
 
   useEffect(() => {
     if (isComposingRef.current) return;
@@ -1286,27 +1299,23 @@ export default function MessageView({ conversationId }: { conversationId: string
             ref={textareaRef}
             value={input}
             maxLength={10000}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setInput(nextValue);
-              setComposerDraft(conversationId, nextValue);
-              onInputChange();
-              const next = e.target;
-              next.style.height = "auto";
-              next.style.height = Math.min(next.scrollHeight, 120) + "px";
-            }}
+            onChange={(e) => syncComposerValue(e.target.value, e.target)}
             onCompositionStart={() => {
               isComposingRef.current = true;
             }}
-            onCompositionEnd={(e) => {
+            onCompositionEnd={() => {
               isComposingRef.current = false;
-              const nextValue = e.currentTarget.value;
-              setInput(nextValue);
-              setComposerDraft(conversationId, nextValue);
+              window.requestAnimationFrame(() => {
+                syncComposerValue(textareaRef.current?.value ?? "");
+              });
             }}
             onKeyDown={handleKeyDown}
             onPaste={handleComposerPaste}
-            onBlur={onBlur}
+            onBlur={() => {
+              isComposingRef.current = false;
+              syncComposerValue(textareaRef.current?.value ?? "");
+              onBlur();
+            }}
             placeholder={needsContactApproval ? t("chat.addContactBeforeReply") : `${t("chat.messagePlaceholder")} ${conversation.title ?? conversation.peerJid}...`}
             disabled={needsContactApproval}
             rows={1}

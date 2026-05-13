@@ -6,6 +6,7 @@ This release turns the unfinished roadmap items into concrete staging evidence w
 
 | Area | Evidence file | What must be attached after staging |
 |---|---|---|
+| Fresh install | `docs/evidence/install/staging-install-results.md` | `install.sh` output, post-install health, Stage 0, browser smoke |
 | OMEMO interop | `docs/evidence/omemo/interop-results.md` | Conversations, Gajim, Dino test notes and screenshots/log excerpts |
 | Python trusted build | `docs/evidence/trusted-build/python-hash-regeneration.md` | Ubuntu/Python-specific regenerated `requirements.txt` hash result |
 | Monitoring | `docs/evidence/monitoring/prometheus-alertmanager-results.md` | Prometheus target health, alert rule check, sample `/api/metrics` output |
