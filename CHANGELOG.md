@@ -1,7 +1,7 @@
 ## 2.3.5 - Staging Completion
 
 ### Added
-- Added staging fresh-install evidence after running `bash install.sh` on `staging.cjw.52nbc.com`.
+- Added staging fresh-install evidence after running `bash install.sh` on `staging.example.com`.
 - Added real staging evidence for Prometheus/Alertmanager, k6 baseline, and destructive backup/restore drill.
 - Added `docs/evidence/install/staging-install-results.md` and included it in the evidence gate.
 
@@ -9,7 +9,7 @@
 - Regenerated the API hash-pinned `requirements.txt` for Ubuntu 22.04 / CPython 3.10 staging installs.
 
 ### Verified
-- Completed the full `Conjiweb_Staging_完整部署方案.txt` 1-10 staging flow.
+- Completed the full 1-10 staging validation flow.
 - Re-ran post-install preflight, Stage 0 validation, browser smoke, k6 low-concurrency baseline, and evidence gate.
 
 ## 2.3.4 - Pre-staging i18n closure
@@ -1567,7 +1567,7 @@ observability, accessibility, UX, and resource management.
 - SSO tests expanded: code exchange, JID collision, sanitizer, provider labels
 
 ### Privacy
-- README: removed Windows path leak `/C:/Users/Stone/Documents/...`
+- README: removed a local Windows path leak.
 - README: version bumped to current
 
 ### Configuration

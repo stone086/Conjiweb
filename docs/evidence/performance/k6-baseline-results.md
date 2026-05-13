@@ -3,7 +3,7 @@
 Status: PASS_STAGING_BASELINE_WITH_RATE_LIMIT_NOTE
 
 Run date: 2026-05-10
-Target: `https://cjw.52nbc.com`
+Target: `https://example.com`
 
 Note: this target has production Nginx rate limits enabled
 (`api_general` = 300 requests/minute per source IP, burst 50). Public API
@@ -34,11 +34,11 @@ Services: conjiweb-api, nginx, prosody, minio, postgresql, redis-server all acti
 ## Commands
 
 ```bash
-BASE_URL=https://cjw.52nbc.com VUS=25 RAMP_UP=15s HOLD=45s RAMP_DOWN=15s k6 run examples/loadtest/health.js
-BASE_URL=https://cjw.52nbc.com VUS=4 RAMP_UP=15s HOLD=45s RAMP_DOWN=15s k6 run examples/loadtest/api-readiness.js
+BASE_URL=https://example.com VUS=25 RAMP_UP=15s HOLD=45s RAMP_DOWN=15s k6 run examples/loadtest/health.js
+BASE_URL=https://example.com VUS=4 RAMP_UP=15s HOLD=45s RAMP_DOWN=15s k6 run examples/loadtest/api-readiness.js
 
 # Demonstrates production gateway limit, not backend saturation:
-BASE_URL=https://cjw.52nbc.com VUS=10 RAMP_UP=15s HOLD=45s RAMP_DOWN=15s k6 run examples/loadtest/api-readiness.js
+BASE_URL=https://example.com VUS=10 RAMP_UP=15s HOLD=45s RAMP_DOWN=15s k6 run examples/loadtest/api-readiness.js
 ```
 
 ## Database evidence
@@ -86,7 +86,7 @@ claiming hot-query coverage.
 
 ## 2026-05-13 staging baseline
 
-Target: `https://staging.cjw.52nbc.com`
+Target: `https://staging.example.com`
 
 | Test | VUs | Duration | p95 | Error rate | Result |
 |---|---:|---:|---:|---:|---:|

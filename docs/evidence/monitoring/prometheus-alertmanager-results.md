@@ -12,7 +12,7 @@ Status: PASS_STAGING_REAL_TARGET
 
 ## 2026-05-13 staging validation
 
-Target: `https://staging.cjw.52nbc.com`
+Target: `https://staging.example.com`
 
 ```text
 scripts/observability_validate.sh
@@ -45,7 +45,7 @@ scripts/observability_validate.sh
 [OK] metrics render smoke test
 [OK] observability static validation passed
 
-curl https://cjw.52nbc.com/api/metrics
+curl https://example.com/api/metrics
 HTTP 403
 ```
 

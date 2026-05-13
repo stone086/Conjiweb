@@ -19,7 +19,7 @@ describe("i18n language packs", () => {
   });
 
   it("formats placeholder values", () => {
-    expect(formatMessage("Hello {name}", { name: "Stone" })).toBe("Hello Stone");
+    expect(formatMessage("Hello {name}", { name: "User" })).toBe("Hello User");
     expect(formatMessage("Keep {missing}", {})).toBe("Keep {missing}");
   });
 });

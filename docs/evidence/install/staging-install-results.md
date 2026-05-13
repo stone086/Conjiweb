@@ -2,7 +2,7 @@
 
 Status: PASS_AFTER_HASH_LOCK_REPAIR
 
-Target: `https://staging.cjw.52nbc.com`
+Target: `https://staging.example.com`
 
 Run date: 2026-05-13
 
@@ -20,10 +20,10 @@ back into the repository as `apps/api/requirements.txt`.
 
 ```text
 Conjiweb Install Completed
-Web URL:        https://staging.cjw.52nbc.com
-API Docs:       https://staging.cjw.52nbc.com/api/docs
-XMPP Domain:    staging.cjw.52nbc.com
-WebSocket:      wss://staging.cjw.52nbc.com/xmpp-websocket
+Web URL:        https://staging.example.com
+API Docs:       https://staging.example.com/api/docs
+XMPP Domain:    staging.example.com
+WebSocket:      wss://staging.example.com/xmpp-websocket
 ```
 
 Installer stages completed:
@@ -33,7 +33,7 @@ System checks passed
 System dependencies installed
 PostgreSQL 16 installed, database: conjiweb
 Redis 7 installed
-Prosody installed, domain: staging.cjw.52nbc.com
+Prosody installed, domain: staging.example.com
 MinIO installed, bucket: conjiweb-files
 Node.js v20.20.2 already installed
 FastAPI backend deployed, listening on 127.0.0.1:8000
@@ -57,12 +57,12 @@ preflight_check.sh --strict
 [OK] Memory 3905MB
 [OK] Free disk 57GB
 [OK] env validation passed (0 warning(s))
-[OK] DNS resolves: staging.cjw.52nbc.com
+[OK] DNS resolves: staging.example.com
 [OK] preflight completed
 ```
 
 ```text
-stage0_validate.sh --server --domain staging.cjw.52nbc.com
+stage0_validate.sh --server --domain staging.example.com
 [PASS] nginx -t passed
 [PASS] prosodyctl check config passed
 [PASS] systemd active: conjiweb-api
@@ -70,7 +70,7 @@ stage0_validate.sh --server --domain staging.cjw.52nbc.com
 [PASS] systemd active: nginx
 [PASS] systemd active: minio
 [PASS] Local API health ok: http://127.0.0.1:8000/health
-[PASS] Public HTTPS health ok: https://staging.cjw.52nbc.com/api/health
+[PASS] Public HTTPS health ok: https://staging.example.com/api/health
 [PASS] alembic current passed
 [PASS] alembic heads passed
 [PASS] alembic upgrade head passed
@@ -85,7 +85,7 @@ title=Conjiweb
 hasConjiweb=true
 hasLoginText=true
 pageErrors=[]
-screenshot=C:/Users/Stone/Documents/github/staging-plan-browser-smoke.png
+screenshot=staging-browser-smoke.png
 ```
 
 k6 low-concurrency smoke:

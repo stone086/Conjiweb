@@ -16,7 +16,7 @@ Status: PARTIAL_STATIC_AND_API_SMOKE
 ## Automated smoke collected on 2026-05-10
 
 ```text
-https://cjw.52nbc.com/ returned HTTP 200 and served index.html.
+https://example.com/ returned HTTP 200 and served index.html.
 Security headers present: HSTS, X-Frame-Options, X-Content-Type-Options,
 Referrer-Policy, Permissions-Policy, COOP, CORP, CSP, Reporting-Endpoints.
 CSP keeps img-src at 'self' blob:; QR rendering was changed to canvas, so

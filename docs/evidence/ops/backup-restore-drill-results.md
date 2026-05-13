@@ -14,7 +14,7 @@ Status: PASS_DESTRUCTIVE_STAGING_RESTORE
 
 ## 2026-05-13 destructive staging restore
 
-Target: `https://staging.cjw.52nbc.com`
+Target: `https://staging.example.com`
 
 Drill id: `staging-restore-20260513T112640Z`
 
@@ -43,10 +43,10 @@ active
 active
 
 curl http://127.0.0.1:8000/health
-{"status":"ok","version":"2.3.4"}
+{"status":"ok","version":"2.3.5"}
 
 account:
-acct-staging-restore-20260513T112640Z|staging-restore-20260513T112640Z@staging.cjw.52nbc.com
+acct-staging-restore-20260513T112640Z|staging-restore-20260513T112640Z@staging.example.com
 
 message:
 msg-staging-restore-20260513T112640Z|restore drill message staging-restore-20260513T112640Z
