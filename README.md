@@ -99,16 +99,6 @@ sudo /opt/conjiweb/manage.sh update-frontend
 sudo systemctl restart conjiweb-api
 ```
 
-### 3) One-Click Push + Multi-Host Update (Windows operator machine)
-
-Run from your local checkout directory:
-
-```powershell
-.\update-conjiweb-all.ps1
-```
-
-This script is your standard flow: push latest code, then update `vmiss` and `zorin-lan`.
-
 ## Release Validation
 
 The 2.3.5 staging pass followed `Conjiweb_Staging_完整部署方案.txt` and completed
