@@ -101,8 +101,7 @@ sudo systemctl restart conjiweb-api
 
 ## Release Validation
 
-The 2.3.5 staging pass followed `Conjiweb_Staging_完整部署方案.txt` and completed
-all 10 planned steps, including:
+The 2.3.5 staging pass completed all 10 planned validation steps, including:
 
 - Full fresh installation with `bash install.sh`
 - Health checks for PostgreSQL, Redis, MinIO, Prosody, Coturn, API, Nginx,
