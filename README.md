@@ -1,12 +1,14 @@
 # Conjiweb
 
 Conjiweb is a web XMPP client/server project with an OMEMO-focused roadmap.
-This repository contains the production app plus the 2.0 migration work.
+This repository contains the production app, deployment automation, and staging
+validation evidence for the current release line.
 
 ## Status
 
-- Active branch: `2.0` architecture migration on top of the existing deployable stack.
-- Current package version: `2.2.0` (see [package.json](package.json)).
+- Active branch: `main`.
+- Current package version: `2.3.5` (see [package.json](package.json) and [VERSION](VERSION)).
+- Staging validation: 10/10 deployment-plan steps completed for 2.3.5.
 - Frontend source of truth: `apps/web`
 - Backend API source: `apps/api`
 
@@ -80,6 +82,10 @@ chmod +x install.sh manage.sh
 sudo ./install.sh
 ```
 
+The 2.3.5 staging validation includes a full fresh-install rerun using
+`bash install.sh`. The install path was corrected for Ubuntu 22.04 / Python
+3.10 compatible dependency hashes.
+
 ### 2) Routine Server Update (single host)
 
 Run on the server where Conjiweb is installed:
@@ -102,6 +108,25 @@ Run from your local checkout directory:
 ```
 
 This script is your standard flow: push latest code, then update `vmiss` and `zorin-lan`.
+
+## Release Validation
+
+The 2.3.5 staging pass followed `Conjiweb_Staging_完整部署方案.txt` and completed
+all 10 planned steps, including:
+
+- Full fresh installation with `bash install.sh`
+- Health checks for PostgreSQL, Redis, MinIO, Prosody, Coturn, API, Nginx,
+  Prometheus, and Alertmanager
+- Browser compatibility evidence
+- Backup/restore drill evidence
+- Performance baseline evidence
+- Evidence gate validation
+
+Primary release report:
+[docs/release/2.3.5-validation-report.md](docs/release/2.3.5-validation-report.md)
+
+Install evidence:
+[docs/evidence/install/staging-install-results.md](docs/evidence/install/staging-install-results.md)
 
 ## Production Notes
 
